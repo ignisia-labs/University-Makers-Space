@@ -1,0 +1,74 @@
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  defaultProfile,
+  initialProjects,
+  initialReservations,
+  initialVisits,
+  type Project,
+  type Reservation,
+  type StudentProfile,
+  type Visit,
+} from "./makerspace-data";
+
+type MakerSpaceState = {
+  profile: StudentProfile;
+  onboarded: boolean;
+  projects: Project[];
+  reservations: Reservation[];
+  visits: Visit[];
+  completeOnboarding: (profile: StudentProfile) => void;
+  addProject: (project: Omit<Project, "id">) => void;
+  addReservation: (reservation: Omit<Reservation, "id">) => void;
+  addVisit: (visit: Omit<Visit, "id">) => void;
+};
+
+const MakerSpaceContext = createContext<MakerSpaceState | null>(null);
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+export function MakerSpaceProvider({ children }: { children: ReactNode }) {
+  const [profile, setProfile] = useState<StudentProfile>(defaultProfile);
+  const [onboarded, setOnboarded] = useState(false);
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [reservations, setReservations] =
+    useState<Reservation[]>(initialReservations);
+  const [visits, setVisits] = useState<Visit[]>(initialVisits);
+
+  const value = useMemo<MakerSpaceState>(
+    () => ({
+      profile,
+      onboarded,
+      projects,
+      reservations,
+      visits,
+      completeOnboarding: (next) => {
+        setProfile(next);
+        setOnboarded(true);
+      },
+      addProject: (project) =>
+        setProjects((prev) => [{ ...project, id: uid() }, ...prev]),
+      addReservation: (reservation) =>
+        setReservations((prev) => [{ ...reservation, id: uid() }, ...prev]),
+      addVisit: (visit) => setVisits((prev) => [{ ...visit, id: uid() }, ...prev]),
+    }),
+    [profile, onboarded, projects, reservations, visits],
+  );
+
+  return (
+    <MakerSpaceContext.Provider value={value}>
+      {children}
+    </MakerSpaceContext.Provider>
+  );
+}
+
+export function useMakerSpace() {
+  const ctx = useContext(MakerSpaceContext);
+  if (!ctx) throw new Error("useMakerSpace must be used inside MakerSpaceProvider");
+  return ctx;
+}
