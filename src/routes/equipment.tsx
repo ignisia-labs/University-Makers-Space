@@ -35,9 +35,7 @@ const categories: Array<"All" | EquipmentCategory> = [
 
 function EquipmentPage() {
   const [filter, setFilter] = useState<"All" | EquipmentCategory>("All");
-  const items = equipmentCatalogue.filter(
-    (e) => filter === "All" || e.category === filter,
-  );
+  const items = equipmentCatalogue.filter((e) => filter === "All" || e.category === filter);
 
   return (
     <AppShell title="Equipment" subtitle={`${items.length} machines listed`}>
@@ -76,14 +74,10 @@ function EquipmentPage() {
             </div>
             <div className="p-4">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                <h2 className="min-w-0 truncate text-base font-semibold">
-                  {item.name}
-                </h2>
+                <h2 className="min-w-0 truncate text-base font-semibold">{item.name}</h2>
                 <StatusBadge label={item.status} />
               </div>
-              <p className="mt-1 text-xs font-medium text-muted-foreground">
-                {item.category}
-              </p>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">{item.category}</p>
               <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
                 {item.specs.map((spec) => (
                   <li key={spec}>· {spec}</li>

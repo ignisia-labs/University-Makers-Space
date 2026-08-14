@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Users, X } from "lucide-react";
+import { ArrowLeft, Plus, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
@@ -8,21 +8,10 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import {
-  directoryStudents,
-  facultyMentors,
-  resourceOptions,
-  type Student,
-} from "@/lib/makerspace-data";
-import { cn } from "@/lib/utils";
+import { TeamMembers } from "@/components/CreateProject/TeamMembers";
+import { MentorSelect } from "@/components/CreateProject/MentorSelect";
+import { ResourceSelection } from "@/components/CreateProject/ResourceSelection";
 
 export const Route = createFileRoute("/projects")({
   head: () => ({
@@ -64,9 +53,7 @@ function ProjectsPage() {
               <h2 className="min-w-0 truncate text-lg font-semibold">{project.name}</h2>
               <StatusBadge label={project.status} />
             </div>
-            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-              {project.description}
-            </p>
+            <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{project.description}</p>
             <dl className="mt-4 space-y-1.5 text-sm">
               <div className="flex flex-wrap gap-x-2">
                 <dt className="text-muted-foreground">Leader</dt>
@@ -99,7 +86,14 @@ function ProjectsPage() {
       >
         <ProjectWizard
           onSubmit={(data) => {
-            addProject({ ...data, leader: profile.fullName, status: "Mentor Approval Pending" });
+            addProject({
+              ...data,
+              leader: profile.fullName,
+              members: [],
+              status: data.invitedEmails.length
+                ? "Team Acceptance Pending"
+                : "Mentor Approval Pending",
+            });
             setOpen(false);
             toast.success("Project submitted for mentor verification");
           }}
@@ -115,36 +109,24 @@ function ProjectWizard({
   onSubmit: (data: {
     name: string;
     description: string;
-    members: Student[];
+    invitedEmails: string[];
     mentor: string;
     resources: string[];
   }) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [query, setQuery] = useState("");
-  const [members, setMembers] = useState<Student[]>([]);
-  const [mentor, setMentor] = useState(facultyMentors[0]!);
+  const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
+  const [mentor, setMentor] = useState("");
   const [resources, setResources] = useState<string[]>([]);
-
-  const matches = directoryStudents.filter(
-    (s) =>
-      !members.some((m) => m.id === s.id) &&
-      query.length > 0 &&
-      s.name.toLowerCase().includes(query.toLowerCase()),
-  );
-
-  const toggleResource = (item: string) =>
-    setResources((prev) =>
-      prev.includes(item) ? prev.filter((r) => r !== item) : [...prev, item],
-    );
+  const [screen, setScreen] = useState<"details" | "resources">("details");
 
   return (
     <form
       className="space-y-6"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ name, description, members, mentor, resources });
+        onSubmit({ name, description, invitedEmails, mentor, resources });
       }}
     >
       <div className="space-y-2">
@@ -171,109 +153,40 @@ function ProjectWizard({
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="p-members">Invite team members</Label>
-        <Input
-          id="p-members"
-          className="h-12"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name"
-        />
-        {matches.length > 0 && (
-          <ul className="card-surface divide-y divide-border overflow-hidden">
-            {matches.map((student) => (
-              <li key={student.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMembers((prev) => [...prev, student]);
-                    setQuery("");
-                  }}
-                  className="flex min-h-12 w-full items-center justify-between px-4 text-left text-sm hover:bg-accent"
-                >
-                  <span className="font-medium">{student.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {student.department}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {members.length > 0 && (
-          <ul className="flex flex-wrap gap-2 pt-1">
-            {members.map((member) => (
-              <li key={member.id}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMembers((prev) => prev.filter((m) => m.id !== member.id))
-                  }
-                  aria-label={`Remove ${member.name}`}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 text-sm font-medium hover:bg-accent"
-                >
-                  {member.name}
-                  <X className="size-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="p-mentor">Faculty mentor</Label>
-        <Select value={mentor} onValueChange={setMentor}>
-          <SelectTrigger id="p-mentor" className="h-12 w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {facultyMentors.map((m) => (
-              <SelectItem key={m} value={m} className="min-h-11">
-                {m}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {(Object.keys(resourceOptions) as Array<keyof typeof resourceOptions>).map(
-        (group) => (
-          <div key={group} className="space-y-2">
-            <Label>{group} required</Label>
-            <ul className="flex flex-wrap gap-2">
-              {resourceOptions[group].map((item) => {
-                const active = resources.includes(item);
-                return (
-                  <li key={item}>
-                    <button
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => toggleResource(item)}
-                      className={cn(
-                        "min-h-11 rounded-full border px-4 text-sm font-medium transition-colors",
-                        active
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border bg-card hover:bg-accent",
-                      )}
-                    >
-                      {item}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ),
+      {screen === "details" ? (
+        <>
+          <TeamMembers emails={invitedEmails} onChange={setInvitedEmails} />
+          <MentorSelect value={mentor} onValueChange={setMentor} />
+          <button
+            type="button"
+            onClick={() => setScreen("resources")}
+            className="inline-flex min-h-14 w-full items-center justify-center rounded-xl border border-border bg-card px-6 text-base font-semibold hover:bg-accent"
+          >
+            Choose resources{resources.length ? ` (${resources.length})` : ""}
+          </button>
+        </>
+      ) : (
+        <>
+          <ResourceSelection selected={resources} onChange={setResources} />
+          <button
+            type="button"
+            onClick={() => setScreen("details")}
+            className="inline-flex min-h-12 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" /> Back to project details
+          </button>
+        </>
       )}
 
-      <button
-        type="submit"
-        className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
-      >
-        Submit for Verification
-      </button>
+      {screen === "resources" && (
+        <button
+          type="submit"
+          disabled={!name.trim() || !description.trim() || !mentor}
+          className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          Submit for Verification
+        </button>
+      )}
     </form>
   );
 }

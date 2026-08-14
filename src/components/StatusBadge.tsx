@@ -13,6 +13,7 @@ const map: Record<string, Tone> = {
   Verified: "success",
   Available: "success",
   Active: "success",
+  "Team Acceptance Pending": "warning",
   "Mentor Approval Pending": "warning",
   "Under Maintenance": "warning",
   Draft: "muted",
@@ -21,13 +22,7 @@ const map: Record<string, Tone> = {
   "Project Slot": "info",
 };
 
-export function StatusBadge({
-  label,
-  className,
-}: {
-  label: string;
-  className?: string;
-}) {
+export function StatusBadge({ label, className }: { label: string; className?: string }) {
   const tone = map[label] ?? "muted";
   return (
     <span

@@ -4,13 +4,15 @@ import eqElectronics from "@/assets/eq-electronics.jpg";
 import eqRobotics from "@/assets/eq-robotics.jpg";
 import eqWorkstation from "@/assets/eq-workstation.jpg";
 
-export type ProjectStatus = "Draft" | "Mentor Approval Pending" | "Verified";
+export type ProjectStatus =
+  "Draft" | "Team Acceptance Pending" | "Mentor Approval Pending" | "Verified";
 
 export type Student = {
   id: string;
   name: string;
   prn: string;
   department: string;
+  email?: string;
 };
 
 export type Project = {
@@ -22,6 +24,7 @@ export type Project = {
   mentor: string;
   status: ProjectStatus;
   resources: string[];
+  invitedEmails: string[];
 };
 
 export type Reservation = {
@@ -31,6 +34,7 @@ export type Reservation = {
   slot: string;
   attendees: number;
   status: "Active" | "Completed";
+  resources: string[];
 };
 
 export type Visit = {
@@ -43,11 +47,7 @@ export type Visit = {
 };
 
 export type EquipmentCategory =
-  | "3D Printing"
-  | "Laser"
-  | "Robotics"
-  | "Electronics"
-  | "Workstations";
+  "3D Printing" | "Laser" | "Robotics" | "Electronics" | "Workstations";
 
 export type Equipment = {
   id: string;
@@ -87,12 +87,7 @@ export const departments = [
 
 export const programmes = ["B.Tech", "B.Des", "M.Tech", "MBA Tech", "Ph.D"];
 
-export const academicYears = [
-  "First Year",
-  "Second Year",
-  "Third Year",
-  "Final Year",
-];
+export const academicYears = ["First Year", "Second Year", "Third Year", "Final Year"];
 
 export const facultyMentors = [
   "Dr. Neha Kulkarni — CSE",
@@ -121,48 +116,42 @@ export const resourceOptions = {
     "Robotic Arm",
     "CAD Workstation",
   ],
-  Consumables: [
-    "PLA Filament",
-    "Acrylic Sheets",
-    "Jumper Wires",
-    "PCB Blanks",
-    "MDF Board",
-  ],
+  Consumables: ["PLA Filament", "Acrylic Sheets", "Jumper Wires", "PCB Blanks", "MDF Board"],
 };
 
 export const initialProjects: Project[] = [
   {
     id: "p1",
     name: "Autonomous Campus Rover",
-    description:
-      "A LiDAR-guided rover that maps and patrols the campus perimeter autonomously.",
+    description: "A LiDAR-guided rover that maps and patrols the campus perimeter autonomously.",
     leader: "Aarav Deshmukh",
     members: [directoryStudents[0]!, directoryStudents[3]!],
     mentor: "Prof. Amit Shirke — Robotics",
     status: "Verified",
     resources: ["Robotic Arm", "CAD Workstation", "Jumper Wires"],
+    invitedEmails: [],
   },
   {
     id: "p2",
     name: "IoT Air Quality Grid",
-    description:
-      "Distributed ESP32 sensor nodes streaming live AQI data across the campus.",
+    description: "Distributed ESP32 sensor nodes streaming live AQI data across the campus.",
     leader: "Aarav Deshmukh",
     members: [directoryStudents[1]!],
     mentor: "Prof. Rohan Bhide — E&TC",
     status: "Mentor Approval Pending",
     resources: ["Soldering Station", "PCB Blanks", "Oscilloscope"],
+    invitedEmails: [],
   },
   {
     id: "p3",
     name: "Modular Prosthetic Hand",
-    description:
-      "3D printed low-cost prosthetic hand with servo-driven articulated fingers.",
+    description: "3D printed low-cost prosthetic hand with servo-driven articulated fingers.",
     leader: "Aarav Deshmukh",
     members: [directoryStudents[2]!, directoryStudents[4]!, directoryStudents[5]!],
     mentor: "Dr. Sanjana Rao — Mechanical",
     status: "Draft",
     resources: ["FDM 3D Printer", "PLA Filament"],
+    invitedEmails: [],
   },
 ];
 
@@ -174,6 +163,7 @@ export const initialReservations: Reservation[] = [
     slot: "10:30 – 11:30",
     attendees: 3,
     status: "Active",
+    resources: ["Robotic Arm", "CAD Workstation"],
   },
 ];
 

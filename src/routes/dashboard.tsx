@@ -1,13 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  Boxes,
-  CalendarClock,
-  Check,
-  Footprints,
-  Plus,
-  CalendarDays,
-  Users,
-} from "lucide-react";
+import { Boxes, CalendarClock, Check, Footprints, Plus, CalendarDays, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
@@ -32,12 +24,7 @@ export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
-const steps = [
-  "Create Project",
-  "Verification",
-  "Book Slot",
-  "Visit MakerSpace",
-];
+const steps = ["Create Project", "Verification", "Book Slot", "Visit MakerSpace"];
 
 const actions = [
   { to: "/projects", label: "New Project", icon: Plus },
@@ -104,9 +91,7 @@ function Dashboard() {
             <article className="card-surface p-5 sm:p-6">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
                 <div className="min-w-0">
-                  <p className="truncate text-lg font-semibold">
-                    {upcoming.projectName}
-                  </p>
+                  <p className="truncate text-lg font-semibold">{upcoming.projectName}</p>
                   <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <CalendarDays className="size-4" /> {upcoming.date}
@@ -130,9 +115,7 @@ function Dashboard() {
             </article>
           ) : (
             <article className="card-surface p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                No upcoming reservation yet.
-              </p>
+              <p className="text-sm text-muted-foreground">No upcoming reservation yet.</p>
               <Link
                 to="/book"
                 className="mt-4 inline-flex min-h-12 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"

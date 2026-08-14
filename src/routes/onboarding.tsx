@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,6 +15,7 @@ import { useMakerSpace } from "@/lib/makerspace-context";
 import { academicYears, departments, programmes } from "@/lib/makerspace-data";
 
 export const Route = createFileRoute("/onboarding")({
+  validateSearch: z.object({ invite: z.string().optional() }),
   head: () => ({
     meta: [
       { title: "Complete your profile — MIT-WPU MakerSpace" },
@@ -33,9 +35,10 @@ export const Route = createFileRoute("/onboarding")({
 });
 
 function Onboarding() {
-  const { profile, completeOnboarding } = useMakerSpace();
+  const { profile, completeOnboarding, acceptProjectInvitation } = useMakerSpace();
   const navigate = useNavigate();
   const [form, setForm] = useState(profile);
+  const { invite: invitationProjectId } = Route.useSearch();
 
   const set = (key: keyof typeof form) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -46,8 +49,7 @@ function Onboarding() {
         <p className="text-sm font-semibold text-primary">Step 1 of 1</p>
         <h1 className="mt-1 text-3xl font-bold">Complete your student profile</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          We use these details to verify your project registrations and MakerSpace
-          visits.
+          We use these details to verify your project registrations and MakerSpace visits.
         </p>
 
         <form
@@ -55,7 +57,12 @@ function Onboarding() {
           onSubmit={(e) => {
             e.preventDefault();
             completeOnboarding(form);
-            toast.success("Profile completed. Welcome to the MakerSpace!");
+            if (invitationProjectId) {
+              acceptProjectInvitation(invitationProjectId, form);
+              toast.success("Profile completed. You have joined the project team.");
+            } else {
+              toast.success("Profile completed. Welcome to the MakerSpace!");
+            }
             navigate({ to: "/dashboard" });
           }}
         >

@@ -71,9 +71,8 @@ function Landing() {
             Where student ideas become working hardware.
           </h1>
           <p className="mt-5 max-w-xl text-base text-muted-foreground sm:text-lg">
-            Register your project, get mentor verification, reserve a capacity-aware
-            slot and walk into a fully equipped lab for rapid prototyping, 3D printing,
-            electronics and IoT.
+            Register your project, get mentor verification, reserve a capacity-aware slot and walk
+            into a fully equipped lab for rapid prototyping, 3D printing, electronics and IoT.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
@@ -105,10 +104,7 @@ function Landing() {
           <h2 className="text-2xl font-bold sm:text-3xl">Lab capabilities</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {capabilities.map(({ icon: Icon, title, body }) => (
-              <article
-                key={title}
-                className="card-surface p-5 transition-shadow hover:shadow-lg"
-              >
+              <article key={title} className="card-surface p-5 transition-shadow hover:shadow-lg">
                 <span className="grid size-11 place-items-center rounded-xl bg-accent text-accent-foreground">
                   <Icon className="size-5" />
                 </span>

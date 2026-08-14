@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, CircleAlert } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { ResponsiveModal } from "@/components/ResponsiveModal";
+import { SlotBookingModal } from "@/components/Booking/SlotBookingModal";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { bookingDates, timeSlots } from "@/lib/makerspace-data";
@@ -43,9 +43,7 @@ function BookPage() {
   const capacityUsed = attending.length;
 
   const toggleAttendee = (id: string) =>
-    setAttending((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
-    );
+    setAttending((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
 
   if (verified.length === 0) {
     return (
@@ -116,8 +114,8 @@ function BookPage() {
             ))}
           </ul>
           <p className="mt-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-            This booking will consume <strong>{capacityUsed}</strong> of the lab's
-            capacity for the selected slot.
+            This booking will consume <strong>{capacityUsed}</strong> of the lab's capacity for the
+            selected slot.
           </p>
         </Step>
 
@@ -213,49 +211,28 @@ function BookPage() {
         </button>
       </div>
 
-      <ResponsiveModal
+      <SlotBookingModal
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Confirm your reservation"
-        description="Please review the details before confirming."
-      >
-        <dl className="space-y-3 text-sm">
-          <Row label="Project" value={project?.name ?? "—"} />
-          <Row
-            label="Date"
-            value={`${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`}
-          />
-          <Row label="Slot" value={selectedSlot?.label ?? "—"} />
-          <Row label="Attendees" value={`${capacityUsed} student(s)`} />
-        </dl>
-        <button
-          type="button"
-          onClick={() => {
-            addReservation({
-              projectName: project?.name ?? "",
-              date: `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`,
-              slot: selectedSlot?.label ?? "",
-              attendees: capacityUsed,
-              status: "Active",
-            });
-            setConfirmOpen(false);
-            toast.success("Reservation confirmed");
-          }}
-          className="mt-6 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
-        >
-          <Check className="size-5" /> Confirm Reservation
-        </button>
-      </ResponsiveModal>
+        projectName={project?.name ?? "—"}
+        date={`${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`}
+        slot={selectedSlot?.label ?? "—"}
+        attendees={capacityUsed}
+        projectResources={project?.resources ?? []}
+        onConfirm={(resources) => {
+          addReservation({
+            projectName: project?.name ?? "",
+            date: `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`,
+            slot: selectedSlot?.label ?? "",
+            attendees: capacityUsed,
+            status: "Active",
+            resources,
+          });
+          setConfirmOpen(false);
+          toast.success("Reservation confirmed");
+        }}
+      />
     </AppShell>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-semibold">{value}</dd>
-    </div>
   );
 }
 
@@ -275,11 +252,7 @@ function AttendeeRow({
   return (
     <li>
       <label className="flex min-h-14 cursor-pointer items-center gap-3 py-2">
-        <Checkbox
-          checked={checked}
-          onCheckedChange={() => onToggle(id)}
-          className="size-6"
-        />
+        <Checkbox checked={checked} onCheckedChange={() => onToggle(id)} className="size-6" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{name}</span>
           <span className="block truncate text-xs text-muted-foreground">{meta}</span>
@@ -308,9 +281,7 @@ function Step({
         </span>
         <h2 className="truncate text-base font-semibold">{title}</h2>
         {aside && (
-          <span className="shrink-0 text-xs font-semibold text-muted-foreground">
-            {aside}
-          </span>
+          <span className="shrink-0 text-xs font-semibold text-muted-foreground">{aside}</span>
         )}
       </div>
       {children}

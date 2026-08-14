@@ -96,9 +96,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
-      { name: "twitter:description", content: "Book slots, manage projects and explore 3D printing, laser, electronics and robotics equipment at the MIT-WPU MakerSpace." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Book slots, manage projects and explore 3D printing, laser, electronics and robotics equipment at the MIT-WPU MakerSpace.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png",
+      },
     ],
     links: [
       {

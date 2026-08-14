@@ -89,9 +89,7 @@ export function AppShell({
             {expanded && (
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{profile.fullName}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  PRN {profile.prn}
-                </p>
+                <p className="truncate text-xs text-muted-foreground">PRN {profile.prn}</p>
               </div>
             )}
           </div>
@@ -103,9 +101,7 @@ export function AppShell({
           <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-4 sm:px-6">
             <div className="min-w-0">
               <h1 className="truncate text-xl font-bold sm:text-2xl">{title}</h1>
-              {subtitle && (
-                <p className="truncate text-sm text-muted-foreground">{subtitle}</p>
-              )}
+              {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
             </div>
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground md:hidden">
               {initials}
@@ -113,9 +109,7 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 pb-28 pt-5 sm:px-6 md:pb-12">
-          {children}
-        </main>
+        <main className="mx-auto max-w-5xl px-4 pb-28 pt-5 sm:px-6 md:pb-12">{children}</main>
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">

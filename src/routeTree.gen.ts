@@ -16,6 +16,7 @@ import { Route as EquipmentRouteImport } from './routes/equipment'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as VisitsRouteImport } from './routes/visits'
+import { Route as InvitationsProjectIdRouteImport } from './routes/invitations/$projectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +53,11 @@ const VisitsRoute = VisitsRouteImport.update({
   path: '/visits',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InvitationsProjectIdRoute = InvitationsProjectIdRouteImport.update({
+  id: '/invitations/$projectId',
+  path: '/invitations/$projectId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/visits': typeof VisitsRoute
+  '/invitations/$projectId': typeof InvitationsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/visits': typeof VisitsRoute
+  '/invitations/$projectId': typeof InvitationsProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +88,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/projects': typeof ProjectsRoute
   '/visits': typeof VisitsRoute
+  '/invitations/$projectId': typeof InvitationsProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/visits'
+    | '/invitations/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/visits'
+    | '/invitations/$projectId'
   id:
     | '__root__'
     | '/'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/projects'
     | '/visits'
+    | '/invitations/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +131,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ProjectsRoute: typeof ProjectsRoute
   VisitsRoute: typeof VisitsRoute
+  InvitationsProjectIdRoute: typeof InvitationsProjectIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VisitsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invitations/$projectId': {
+      id: '/invitations/$projectId'
+      path: '/invitations/$projectId'
+      fullPath: '/invitations/$projectId'
+      preLoaderRoute: typeof InvitationsProjectIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -183,6 +203,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ProjectsRoute: ProjectsRoute,
   VisitsRoute: VisitsRoute,
+  InvitationsProjectIdRoute: InvitationsProjectIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
