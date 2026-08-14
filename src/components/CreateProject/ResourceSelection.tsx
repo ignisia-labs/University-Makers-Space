@@ -48,7 +48,7 @@ export function ResourceSelection({
     );
 
   return (
-    <section aria-labelledby="resource-selection-title">
+    <section aria-labelledby="resource-selection-title" className="min-w-0 max-w-full">
       <h2 id="resource-selection-title" className="text-lg font-semibold">
         Resources for this project
       </h2>
@@ -62,8 +62,12 @@ export function ResourceSelection({
         placeholder="Search resources"
         className="mt-5 h-12"
       />
-      <Tabs value={tab} onValueChange={(value) => setTab(value as CategoryId)} className="mt-4">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl p-1">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as CategoryId)}
+        className="mt-4 w-full min-w-0 max-w-full"
+      >
+        <TabsList className="h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl p-1">
           {Object.entries(categories).map(([id, category]) => (
             <TabsTrigger key={id} value={id} className="min-h-11 shrink-0 px-3 text-xs">
               {category.label}
@@ -75,7 +79,7 @@ export function ResourceSelection({
             item.toLowerCase().includes(debouncedSearch),
           );
           return (
-            <TabsContent key={id} value={id}>
+            <TabsContent key={id} value={id} className="min-w-0 max-w-full">
               {items.length ? (
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {items.map((item) => {

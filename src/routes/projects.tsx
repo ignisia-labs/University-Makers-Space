@@ -123,7 +123,7 @@ function ProjectWizard({
 
   return (
     <form
-      className="space-y-6"
+      className="min-w-0 space-y-6"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit({ name, description, invitedEmails, mentor, resources });
