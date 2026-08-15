@@ -7,155 +7,599 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum EquipmentStatus {
-  available
-  partially_available
-  in_use
-  reserved
-  unavailable
-  under_maintenance
-  damaged
-  out_of_service
-}
-
-enum BookingStatus {
-  pending
-  approved
-  active
-  completed
-  cancelled
-  rejected
-  no_show
+enum UserRole {
+  STUDENT
+  FACULTY_MENTOR
+  LAB_ASSISTANT
+  ADMIN
+  SUPER_ADMIN
 }
 
 enum ProjectStatus {
-  draft
-  team_acceptance_pending
-  mentor_approval_pending
-  verified
-  rejected
-  archived
+  DRAFT
+  TEAM_ACCEPTANCE_PENDING
+  MENTOR_APPROVAL_PENDING
+  VERIFIED
+  REJECTED
+  ARCHIVED
+}
+
+enum ProjectMemberRole {
+  LEADER
+  MEMBER
+}
+
+enum ProjectMemberStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  REMOVED
+}
+
+enum MentorRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum EquipmentStatus {
+  AVAILABLE
+  PARTIALLY_AVAILABLE
+  IN_USE
+  UNAVAILABLE
+  UNDER_MAINTENANCE
+  DAMAGED
+  OUT_OF_SERVICE
+}
+
+enum SlotStatus {
+  OPEN
+  BLOCKED
+  CLOSED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum QuickVisitStatus {
+  REQUESTED
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AttendanceStatus {
+  EXPECTED
+  CHECKED_IN
+  CHECKED_OUT
+  NO_SHOW
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum DeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }
 
 model User {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String
-  email          String   @unique
-  passwordHash   String   @map("password_hash")
-  roles          String[] @default(["student"])
-  avatarUrl      String?  @map("avatar_url")
-  tokenVersion   Int      @default(0) @map("token_version")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
-  bookings       Booking[]
-  projects       Project[] @relation("CreatedProjects")
-  events         Event[] @relation("OrganizedEvents")
-  memberships    ProjectMember[]
-  registrations  EventRegistration[]
-  notifications  Notification[]
+  id                  String               @id @default(uuid()) @db.Uuid
+  googleSubject       String?              @unique @map("google_subject")
+  email               String               @unique
+  name                String
+  avatarUrl           String?              @map("avatar_url")
+  roles               UserRole[]           @default([STUDENT])
+  profileComplete     Boolean              @default(false) @map("profile_complete")
+  isActive            Boolean              @default(true) @map("is_active")
+  tokenVersion        Int                  @default(0) @map("token_version")
+  lastLoginAt         DateTime?            @map("last_login_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  deletedAt           DateTime?            @map("deleted_at")
+  studentProfile      StudentProfile?
+  sessions            Session[]
+  provisionsCreated   UserProvisioning[]   @relation("ProvisionCreatedBy")
+  provisionClaimed    UserProvisioning?    @relation("ProvisionClaimedBy")
+  labsCreated         Lab[]                @relation("LabCreatedBy")
+  projectsCreated     Project[]            @relation("ProjectCreatedBy")
+  projectMemberships  ProjectMember[]
+  projectsMentored    Project[]            @relation("CurrentMentor")
+  mentorRequests      MentorRequest[]      @relation("MentorFaculty")
+  bookingsCreated     Booking[]            @relation("BookingCreatedBy")
+  bookingsCancelled   Booking[]            @relation("BookingCancelledBy")
+  bookingParticipants BookingParticipant[]
+  quickVisits         QuickVisit[]
+  visits              Visit[]              @relation("VisitUser")
+  visitsCheckedIn     Visit[]              @relation("VisitCheckedInBy")
+  visitsCheckedOut    Visit[]              @relation("VisitCheckedOutBy")
+  eventsOrganized     Event[]              @relation("EventOrganizer")
+  eventRegistrations  EventRegistration[]
+  notifications       Notification[]
+  uploads             Upload[]
+  auditEvents         AuditLog[]           @relation("AuditActor")
 
   @@index([email])
+  @@index([roles], type: Gin)
+  @@index([isActive, deletedAt])
   @@index([createdAt])
   @@map("users")
 }
 
-model Equipment {
-  id                String   @id @default(uuid()) @db.Uuid
-  name              String
-  description       String
-  category          String
-  status            EquipmentStatus @default(available)
-  imageUrl          String?  @map("image_url")
-  totalQuantity     Int      @default(1) @map("total_quantity")
-  availableQuantity Int      @default(1) @map("available_quantity")
-  specs             String[] @default([])
-  visible           Boolean  @default(true)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
-  bookings          Booking[]
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  revokedAt        DateTime? @map("revoked_at")
+  ipAddress        String?   @map("ip_address")
+  userAgent        String?   @map("user_agent")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([category])
-  @@index([status])
-  @@index([createdAt])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model UserProvisioning {
+  id          String     @id @default(uuid()) @db.Uuid
+  email       String     @unique
+  roles       UserRole[]
+  isActive    Boolean    @default(true) @map("is_active")
+  createdById String?    @map("created_by_id") @db.Uuid
+  claimedById String?    @unique @map("claimed_by_id") @db.Uuid
+  claimedAt   DateTime?  @map("claimed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdBy   User?      @relation("ProvisionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  claimedBy   User?      @relation("ProvisionClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+
+  @@index([isActive, claimedAt])
+  @@map("user_provisioning")
+}
+
+model Department {
+  id         String           @id @default(uuid()) @db.Uuid
+  code       String           @unique
+  name       String           @unique
+  isActive   Boolean          @default(true) @map("is_active")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  programmes Programme[]
+  students   StudentProfile[]
+
+  @@map("departments")
+}
+
+model Programme {
+  id           String           @id @default(uuid()) @db.Uuid
+  departmentId String           @map("department_id") @db.Uuid
+  code         String
+  name         String
+  isActive     Boolean          @default(true) @map("is_active")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  department   Department       @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  students     StudentProfile[]
+
+  @@unique([departmentId, code])
+  @@index([departmentId, isActive])
+  @@map("programmes")
+}
+
+model StudentProfile {
+  userId       String     @id @map("user_id") @db.Uuid
+  prn          String     @unique @db.VarChar(10)
+  departmentId String     @map("department_id") @db.Uuid
+  programmeId  String     @map("programme_id") @db.Uuid
+  academicYear Int        @map("academic_year")
+  division     String?
+  phone        String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  programme    Programme  @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+
+  @@index([departmentId])
+  @@index([programmeId, academicYear])
+  @@map("student_profiles")
+}
+
+model Lab {
+  id                      String               @id @default(uuid()) @db.Uuid
+  name                    String               @unique
+  code                    String               @unique
+  description             String?
+  timeZone                String               @default("Asia/Kolkata") @map("time_zone")
+  slotDurationMinutes     Int                  @default(60) @map("slot_duration_minutes")
+  bookingCapacity         Int                  @default(20) @map("booking_capacity")
+  quickVisitCapacity      Int                  @default(10) @map("quick_visit_capacity")
+  bookingHorizonDays      Int                  @default(14) @map("booking_horizon_days")
+  cancellationWindowHours Int                  @default(2) @map("cancellation_window_hours")
+  isActive                Boolean              @default(true) @map("is_active")
+  createdById             String?              @map("created_by_id") @db.Uuid
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  createdBy               User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  schedules               LabSchedule[]
+  closures                LabClosure[]
+  slots                   LabSlot[]
+  equipmentCategories     EquipmentCategory[]
+  equipment               Equipment[]
+  consumableCategories    ConsumableCategory[]
+  consumables             Consumable[]
+  projects                Project[]
+  bookings                Booking[]
+  quickVisits             QuickVisit[]
+  visits                  Visit[]
+  events                  Event[]
+
+  @@index([isActive])
+  @@map("labs")
+}
+
+model LabSchedule {
+  id             String  @id @default(uuid()) @db.Uuid
+  labId          String  @map("lab_id") @db.Uuid
+  dayOfWeek      Int     @map("day_of_week")
+  opensAtMinute  Int     @map("opens_at_minute")
+  closesAtMinute Int     @map("closes_at_minute")
+  isOpen         Boolean @default(true) @map("is_open")
+  lab            Lab     @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, dayOfWeek])
+  @@map("lab_schedules")
+}
+
+model LabClosure {
+  id        String   @id @default(uuid()) @db.Uuid
+  labId     String   @map("lab_id") @db.Uuid
+  startsAt  DateTime @map("starts_at")
+  endsAt    DateTime @map("ends_at")
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at")
+  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+
+  @@index([labId, startsAt, endsAt])
+  @@map("lab_closures")
+}
+
+model LabSlot {
+  id                 String       @id @default(uuid()) @db.Uuid
+  labId              String       @map("lab_id") @db.Uuid
+  startsAt           DateTime     @map("starts_at")
+  endsAt             DateTime     @map("ends_at")
+  bookingCapacity    Int          @map("booking_capacity")
+  quickVisitCapacity Int          @map("quick_visit_capacity")
+  status             SlotStatus   @default(OPEN)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  lab                Lab          @relation(fields: [labId], references: [id], onDelete: Cascade)
+  bookings           Booking[]
+  quickVisits        QuickVisit[]
+
+  @@unique([labId, startsAt, endsAt])
+  @@index([labId, status, startsAt])
+  @@map("lab_slots")
+}
+
+model EquipmentCategory {
+  id        String      @id @default(uuid()) @db.Uuid
+  labId     String      @map("lab_id") @db.Uuid
+  name      String
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  lab       Lab         @relation(fields: [labId], references: [id], onDelete: Cascade)
+  equipment Equipment[]
+
+  @@unique([labId, name])
+  @@index([labId, isActive])
+  @@map("equipment_categories")
+}
+
+model Equipment {
+  id                  String                        @id @default(uuid()) @db.Uuid
+  labId               String                        @map("lab_id") @db.Uuid
+  categoryId          String                        @map("category_id") @db.Uuid
+  name                String
+  description         String
+  status              EquipmentStatus               @default(AVAILABLE)
+  imageUrl            String?                       @map("image_url")
+  totalQuantity       Int                           @default(1) @map("total_quantity")
+  availableQuantity   Int                           @default(1) @map("available_quantity")
+  specs               String[]                      @default([])
+  visible             Boolean                       @default(true)
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+  deletedAt           DateTime?                     @map("deleted_at")
+  lab                 Lab                           @relation(fields: [labId], references: [id], onDelete: Restrict)
+  category            EquipmentCategory             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  projectRequirements ProjectEquipmentRequirement[]
+  bookingRequirements BookingEquipment[]
+
+  @@unique([labId, name])
+  @@index([labId, categoryId, status])
+  @@index([visible, deletedAt])
   @@map("equipment")
 }
 
-model Booking {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  equipmentId String   @map("equipment_id") @db.Uuid
-  startTime   DateTime @map("start_time")
-  endTime     DateTime @map("end_time")
-  status      BookingStatus @default(pending)
-  notes       String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-  user        User @relation(fields: [userId], references: [id])
-  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+model ConsumableCategory {
+  id          String       @id @default(uuid()) @db.Uuid
+  labId       String       @map("lab_id") @db.Uuid
+  name        String
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  lab         Lab          @relation(fields: [labId], references: [id], onDelete: Cascade)
+  consumables Consumable[]
 
-  @@index([userId])
-  @@index([equipmentId])
-  @@index([status])
-  @@index([startTime])
-  @@map("bookings")
+  @@unique([labId, name])
+  @@map("consumable_categories")
+}
+
+model Consumable {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  labId               String                         @map("lab_id") @db.Uuid
+  categoryId          String                         @map("category_id") @db.Uuid
+  name                String
+  unit                String
+  description         String?
+  isActive            Boolean                        @default(true) @map("is_active")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  lab                 Lab                            @relation(fields: [labId], references: [id], onDelete: Restrict)
+  category            ConsumableCategory             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  projectRequirements ProjectConsumableRequirement[]
+  bookingRequirements BookingConsumable[]
+
+  @@unique([labId, name])
+  @@index([labId, categoryId, isActive])
+  @@map("consumables")
 }
 
 model Project {
-  id          String   @id @default(uuid()) @db.Uuid
-  title       String
-  description String
-  creatorId   String   @map("creator_id") @db.Uuid
-  status      ProjectStatus @default(draft)
-  tags        String[] @default([])
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-  creator     User @relation("CreatedProjects", fields: [creatorId], references: [id])
-  members     ProjectMember[]
+  id                     String                         @id @default(uuid()) @db.Uuid
+  labId                  String                         @map("lab_id") @db.Uuid
+  creatorId              String                         @map("creator_id") @db.Uuid
+  currentMentorId        String?                        @map("current_mentor_id") @db.Uuid
+  title                  String
+  description            String
+  domain                 String?
+  status                 ProjectStatus                  @default(DRAFT)
+  tags                   String[]                       @default([])
+  rejectionReason        String?                        @map("rejection_reason")
+  createdAt              DateTime                       @default(now()) @map("created_at")
+  updatedAt              DateTime                       @updatedAt @map("updated_at")
+  deletedAt              DateTime?                      @map("deleted_at")
+  lab                    Lab                            @relation(fields: [labId], references: [id], onDelete: Restrict)
+  creator                User                           @relation("ProjectCreatedBy", fields: [creatorId], references: [id], onDelete: Restrict)
+  currentMentor          User?                          @relation("CurrentMentor", fields: [currentMentorId], references: [id], onDelete: SetNull)
+  members                ProjectMember[]
+  mentorRequests         MentorRequest[]
+  equipmentRequirements  ProjectEquipmentRequirement[]
+  consumableRequirements ProjectConsumableRequirement[]
+  bookings               Booking[]
 
-  @@index([creatorId])
-  @@index([status])
-  @@index([createdAt])
+  @@index([creatorId, status])
+  @@index([currentMentorId, status])
+  @@index([labId, status, createdAt])
   @@map("projects")
 }
 
 model ProjectMember {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @map("project_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  role      String   @default("member")
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  project   Project @relation(fields: [projectId], references: [id])
-  user      User @relation(fields: [userId], references: [id])
+  id                  String              @id @default(uuid()) @db.Uuid
+  projectId           String              @map("project_id") @db.Uuid
+  userId              String?             @map("user_id") @db.Uuid
+  email               String
+  role                ProjectMemberRole   @default(MEMBER)
+  status              ProjectMemberStatus @default(INVITED)
+  invitationTokenHash String?             @unique @map("invitation_token_hash")
+  invitationExpiresAt DateTime?           @map("invitation_expires_at")
+  acceptedAt          DateTime?           @map("accepted_at")
+  removedAt           DateTime?           @map("removed_at")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  project             Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@unique([projectId, email])
   @@unique([projectId, userId])
-  @@index([projectId])
-  @@index([userId])
+  @@index([userId, status])
+  @@index([email, status])
   @@map("project_members")
 }
 
+model MentorRequest {
+  id          String              @id @default(uuid()) @db.Uuid
+  projectId   String              @map("project_id") @db.Uuid
+  facultyId   String              @map("faculty_id") @db.Uuid
+  status      MentorRequestStatus @default(PENDING)
+  reason      String?
+  requestedAt DateTime            @default(now()) @map("requested_at")
+  respondedAt DateTime?           @map("responded_at")
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  faculty     User                @relation("MentorFaculty", fields: [facultyId], references: [id], onDelete: Restrict)
+
+  @@index([facultyId, status, requestedAt])
+  @@index([projectId, status])
+  @@map("mentor_requests")
+}
+
+model ProjectEquipmentRequirement {
+  projectId   String    @map("project_id") @db.Uuid
+  equipmentId String    @map("equipment_id") @db.Uuid
+  quantity    Int       @default(1)
+  notes       String?
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@id([projectId, equipmentId])
+  @@map("project_equipment_requirements")
+}
+
+model ProjectConsumableRequirement {
+  projectId        String     @map("project_id") @db.Uuid
+  consumableId     String     @map("consumable_id") @db.Uuid
+  expectedQuantity Decimal?   @map("expected_quantity") @db.Decimal(12, 3)
+  notes            String?
+  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  consumable       Consumable @relation(fields: [consumableId], references: [id], onDelete: Restrict)
+
+  @@id([projectId, consumableId])
+  @@map("project_consumable_requirements")
+}
+
+model Booking {
+  id                 String               @id @default(uuid()) @db.Uuid
+  labId              String               @map("lab_id") @db.Uuid
+  labSlotId          String               @map("lab_slot_id") @db.Uuid
+  projectId          String               @map("project_id") @db.Uuid
+  createdById        String               @map("created_by_id") @db.Uuid
+  cancelledById      String?              @map("cancelled_by_id") @db.Uuid
+  idempotencyKey     String               @map("idempotency_key") @db.Uuid
+  attendeeCount      Int                  @map("attendee_count")
+  status             BookingStatus        @default(CONFIRMED)
+  notes              String?
+  qrTokenHash        String?              @unique @map("qr_token_hash")
+  qrExpiresAt        DateTime?            @map("qr_expires_at")
+  cancelledAt        DateTime?            @map("cancelled_at")
+  cancellationReason String?              @map("cancellation_reason")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  lab                Lab                  @relation(fields: [labId], references: [id], onDelete: Restrict)
+  labSlot            LabSlot              @relation(fields: [labSlotId], references: [id], onDelete: Restrict)
+  project            Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy          User                 @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy        User?                @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  participants       BookingParticipant[]
+  equipment          BookingEquipment[]
+  consumables        BookingConsumable[]
+  visits             Visit[]
+
+  @@unique([createdById, idempotencyKey])
+  @@index([labSlotId, status])
+  @@index([projectId, createdAt])
+  @@index([createdById, status, createdAt])
+  @@map("bookings")
+}
+
+model BookingParticipant {
+  bookingId        String           @map("booking_id") @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  attendanceStatus AttendanceStatus @default(EXPECTED) @map("attendance_status")
+  booking          Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user             User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([bookingId, userId])
+  @@index([userId, attendanceStatus])
+  @@map("booking_participants")
+}
+
+model BookingEquipment {
+  bookingId   String    @map("booking_id") @db.Uuid
+  equipmentId String    @map("equipment_id") @db.Uuid
+  quantity    Int       @default(1)
+  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@id([bookingId, equipmentId])
+  @@map("booking_equipment")
+}
+
+model BookingConsumable {
+  bookingId        String     @map("booking_id") @db.Uuid
+  consumableId     String     @map("consumable_id") @db.Uuid
+  expectedQuantity Decimal?   @map("expected_quantity") @db.Decimal(12, 3)
+  booking          Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  consumable       Consumable @relation(fields: [consumableId], references: [id], onDelete: Restrict)
+
+  @@id([bookingId, consumableId])
+  @@map("booking_consumables")
+}
+
+model QuickVisit {
+  id             String           @id @default(uuid()) @db.Uuid
+  labId          String           @map("lab_id") @db.Uuid
+  labSlotId      String           @map("lab_slot_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  idempotencyKey String           @map("idempotency_key") @db.Uuid
+  purpose        String
+  status         QuickVisitStatus @default(REQUESTED)
+  qrTokenHash    String?          @unique @map("qr_token_hash")
+  qrExpiresAt    DateTime?        @map("qr_expires_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  lab            Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)
+  labSlot        LabSlot          @relation(fields: [labSlotId], references: [id], onDelete: Restrict)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  visit          Visit?
+
+  @@unique([userId, idempotencyKey])
+  @@index([labSlotId, status])
+  @@index([userId, createdAt])
+  @@map("quick_visits")
+}
+
+model Visit {
+  id             String           @id @default(uuid()) @db.Uuid
+  labId          String           @map("lab_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  bookingId      String?          @map("booking_id") @db.Uuid
+  quickVisitId   String?          @unique @map("quick_visit_id") @db.Uuid
+  status         AttendanceStatus @default(CHECKED_IN)
+  checkedInAt    DateTime         @default(now()) @map("checked_in_at")
+  checkedOutAt   DateTime?        @map("checked_out_at")
+  checkedInById  String           @map("checked_in_by_id") @db.Uuid
+  checkedOutById String?          @map("checked_out_by_id") @db.Uuid
+  lab            Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)
+  user           User             @relation("VisitUser", fields: [userId], references: [id], onDelete: Restrict)
+  booking        Booking?         @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  quickVisit     QuickVisit?      @relation(fields: [quickVisitId], references: [id], onDelete: Restrict)
+  checkedInBy    User             @relation("VisitCheckedInBy", fields: [checkedInById], references: [id], onDelete: Restrict)
+  checkedOutBy   User?            @relation("VisitCheckedOutBy", fields: [checkedOutById], references: [id], onDelete: SetNull)
+
+  @@unique([bookingId, userId])
+  @@index([labId, status, checkedInAt])
+  @@index([userId, checkedInAt])
+  @@map("visits")
+}
+
 model Event {
-  id          String   @id @default(uuid()) @db.Uuid
-  title       String
-  description String
-  organizerId String   @map("organizer_id") @db.Uuid
-  location    String
-  startTime   DateTime @map("start_time")
-  endTime     DateTime @map("end_time")
-  capacity    Int
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-  organizer   User @relation("OrganizedEvents", fields: [organizerId], references: [id])
+  id            String              @id @default(uuid()) @db.Uuid
+  labId         String              @map("lab_id") @db.Uuid
+  title         String
+  description   String
+  organizerId   String              @map("organizer_id") @db.Uuid
+  location      String
+  startTime     DateTime            @map("start_time")
+  endTime       DateTime            @map("end_time")
+  capacity      Int
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  deletedAt     DateTime?           @map("deleted_at")
+  lab           Lab                 @relation(fields: [labId], references: [id], onDelete: Restrict)
+  organizer     User                @relation("EventOrganizer", fields: [organizerId], references: [id], onDelete: Restrict)
   registrations EventRegistration[]
 
+  @@index([labId, startTime])
   @@index([organizerId])
-  @@index([startTime])
-  @@index([createdAt])
   @@map("events")
 }
 
@@ -164,41 +608,80 @@ model EventRegistration {
   eventId      String   @map("event_id") @db.Uuid
   userId       String   @map("user_id") @db.Uuid
   registeredAt DateTime @default(now()) @map("registered_at")
-  event        Event @relation(fields: [eventId], references: [id])
-  user         User @relation(fields: [userId], references: [id])
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([eventId, userId])
-  @@index([eventId])
   @@index([userId])
   @@map("event_registrations")
 }
 
 model Notification {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  type      String
-  message   String
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
-  user      User @relation(fields: [userId], references: [id])
+  id         String                 @id @default(uuid()) @db.Uuid
+  userId     String                 @map("user_id") @db.Uuid
+  type       String
+  title      String
+  body       String
+  href       String?
+  isRead     Boolean                @default(false) @map("is_read")
+  readAt     DateTime?              @map("read_at")
+  createdAt  DateTime               @default(now()) @map("created_at")
+  deletedAt  DateTime?              @map("deleted_at")
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
 
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
+  @@index([userId, isRead, createdAt])
   @@map("notifications")
 }
 
-model Upload {
-  id        String   @id @default(uuid()) @db.Uuid
-  ownerId   String   @map("owner_id") @db.Uuid
-  url       String
-  publicId  String   @map("public_id")
-  mimeType  String   @map("mime_type")
-  bytes     Int
-  createdAt DateTime @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
+model NotificationDelivery {
+  id             String              @id @default(uuid()) @db.Uuid
+  notificationId String              @map("notification_id") @db.Uuid
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(PENDING)
+  providerId     String?             @map("provider_id")
+  attempts       Int                 @default(0)
+  lastError      String?             @map("last_error")
+  sentAt         DateTime?           @map("sent_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  notification   Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
 
-  @@index([ownerId])
+  @@unique([notificationId, channel])
+  @@index([status, createdAt])
+  @@map("notification_deliveries")
+}
+
+model Upload {
+  id        String    @id @default(uuid()) @db.Uuid
+  ownerId   String    @map("owner_id") @db.Uuid
+  url       String
+  publicId  String    @map("public_id")
+  mimeType  String    @map("mime_type")
+  bytes     Int
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
   @@map("uploads")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadata    Json?
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  requestId   String?  @map("request_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
 }

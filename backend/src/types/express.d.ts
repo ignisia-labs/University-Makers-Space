@@ -1,10 +1,17 @@
-import type { User } from "@prisma/client";
+import type { UserRole } from "@prisma/client";
 
 declare global {
   namespace Express {
     interface Request {
       requestId: string;
-      user?: Pick<User, "id" | "email" | "roles" | "tokenVersion" | "isActive">;
+      user?: {
+        id: string;
+        email: string;
+        roles: UserRole[];
+        profileComplete: boolean;
+        isActive: boolean;
+        sessionId: string;
+      };
     }
   }
 }

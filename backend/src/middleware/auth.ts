@@ -4,7 +4,7 @@ import { env } from "../config/env.js";
 import { prisma } from "../config/db.js";
 import { ApiError } from "../utils/api-error.js";
 
-export type AccessPayload = { sub: string; tokenVersion: number; type: "access" };
+export type AccessPayload = { sub: string; sid: string; type: "access" };
 
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {
   const header = req.header("authorization");
@@ -14,14 +14,37 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as AccessPayload;
     if (payload.type !== "access") throw new Error("Wrong token type");
-    const user = await prisma.user.findFirst({
-      where: { id: payload.sub, deletedAt: null },
-      select: { id: true, email: true, roles: true, tokenVersion: true, isActive: true },
+    const session = await prisma.session.findFirst({
+      where: {
+        id: payload.sid,
+        userId: payload.sub,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            roles: true,
+            profileComplete: true,
+            isActive: true,
+            deletedAt: true,
+          },
+        },
+      },
     });
-    if (!user || !user.isActive || user.tokenVersion !== payload.tokenVersion) {
+    if (!session || !session.user.isActive || session.user.deletedAt) {
       throw new ApiError(401, "UNAUTHENTICATED", "Session is no longer valid");
     }
-    req.user = user;
+    req.user = {
+      id: session.user.id,
+      email: session.user.email,
+      roles: session.user.roles,
+      profileComplete: session.user.profileComplete,
+      isActive: session.user.isActive,
+      sessionId: session.id,
+    };
     next();
   } catch (error) {
     if (error instanceof ApiError) throw error;

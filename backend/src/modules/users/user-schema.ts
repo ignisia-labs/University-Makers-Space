@@ -1,7 +1,17 @@
+import { UserRole } from "@prisma/client";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 import { idParam, listQuery } from "../shared/schemas.js";
 
-const role = z.enum(["student", "admin", "moderator", "staff"]);
+const role = z.nativeEnum(UserRole);
+const institutionalEmail = z
+  .string()
+  .trim()
+  .email()
+  .toLowerCase()
+  .refine((email) => email.endsWith(`@${env.GOOGLE_HOSTED_DOMAIN}`), {
+    message: `Email must use @${env.GOOGLE_HOSTED_DOMAIN}`,
+  });
 
 export const listUsersSchema = z.object({
   query: listQuery.extend({ role: role.optional(), isActive: z.coerce.boolean().optional() }).strict(),
@@ -9,12 +19,38 @@ export const listUsersSchema = z.object({
 
 export const updateUserSchema = z.object({
   params: idParam,
-  body: z.object({
-    name: z.string().trim().min(2).max(100).optional(),
-    roles: z.array(role).min(1).optional(),
-    avatarUrl: z.string().url().nullable().optional(),
-    isActive: z.boolean().optional(),
-  }).strict(),
+  body: z
+    .object({
+      name: z.string().trim().min(2).max(100).optional(),
+      avatarUrl: z.string().url().nullable().optional(),
+      isActive: z.boolean().optional(),
+    })
+    .strict(),
+});
+
+export const updateRolesSchema = z.object({
+  params: idParam,
+  body: z.object({ roles: z.array(role).min(1) }).strict(),
+});
+
+export const provisioningSchema = z.object({
+  body: z
+    .object({
+      email: institutionalEmail,
+      roles: z.array(role).min(1),
+      isActive: z.boolean().default(true),
+    })
+    .strict(),
+});
+
+export const updateProvisioningSchema = z.object({
+  params: idParam,
+  body: z
+    .object({
+      roles: z.array(role).min(1).optional(),
+      isActive: z.boolean().optional(),
+    })
+    .strict(),
 });
 
 export const userIdSchema = z.object({ params: idParam });
