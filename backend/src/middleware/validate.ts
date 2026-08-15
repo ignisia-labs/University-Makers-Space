@@ -10,7 +10,10 @@ export function validate(schema: AnyZodObject) {
         400,
         "VALIDATION_ERROR",
         "Invalid request data",
-        result.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        result.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
       );
     }
     req.body = result.data.body ?? {};

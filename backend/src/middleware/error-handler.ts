@@ -23,8 +23,23 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
 function normalizeError(err: unknown) {
   if (err instanceof ApiError) return err;
-  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-    return new ApiError(409, "CONFLICT", "Resource already exists");
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2002") {
+      return new ApiError(409, "CONFLICT", "Resource already exists");
+    }
+    if (err.code === "P2003") {
+      return new ApiError(400, "INVALID_REFERENCE", "A referenced resource does not exist");
+    }
+    if (err.code === "P2025") {
+      return new ApiError(404, "NOT_FOUND", "Resource not found");
+    }
+    if (err.code === "P2034") {
+      return new ApiError(
+        409,
+        "TRANSACTION_CONFLICT",
+        "The resource changed during this request; retry with current availability",
+      );
+    }
   }
   return new ApiError(500, "INTERNAL_ERROR", "Internal server error", [], false);
 }
