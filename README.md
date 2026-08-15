@@ -3,7 +3,7 @@
 ## BY IGNISIA CLUB
 
 <div align="center">
-  <img src="https://images.unsplash.com/photo-1516321165247-4aa89a48be28?auto=format&fit=crop&w=1200&q=80" alt="Makerspace community workspace" width="1100" />
+  <img src="./backend/Screenshot 2026-08-15 221217.png" alt="Ignisia Club brand banner" width="1100" />
 </div>
 
 A bold digital platform for university makerspaces — built to help students, faculty, and club teams turn ideas into projects, prototypes, and real-world innovation.
