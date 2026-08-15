@@ -19,6 +19,14 @@ export async function update(req: Request, res: Response) {
   return ok(res, "Equipment updated", await service.update(req.params.id!, req.body));
 }
 
+export async function updateAvailability(req: Request, res: Response) {
+  return ok(
+    res,
+    "Equipment availability updated",
+    await service.updateAvailability(req.params.id!, req.body, req.user!.id),
+  );
+}
+
 export async function remove(req: Request, res: Response) {
   await service.remove(req.params.id!);
   return noContent(res);

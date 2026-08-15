@@ -8,13 +8,49 @@ import {
   createEquipmentSchema,
   equipmentIdSchema,
   listEquipmentSchema,
+  updateEquipmentAvailabilitySchema,
   updateEquipmentSchema,
 } from "./equipment-schema.js";
 
 export const equipmentRoutes = Router();
 
-equipmentRoutes.get("/", authenticate, validate(listEquipmentSchema), asyncHandler(controller.list));
-equipmentRoutes.get("/:id", authenticate, validate(equipmentIdSchema), asyncHandler(controller.get));
-equipmentRoutes.post("/", authenticate, authorize("admin", "staff"), validate(createEquipmentSchema), asyncHandler(controller.create));
-equipmentRoutes.patch("/:id", authenticate, authorize("admin", "staff"), validate(updateEquipmentSchema), asyncHandler(controller.update));
-equipmentRoutes.delete("/:id", authenticate, authorize("admin"), validate(equipmentIdSchema), asyncHandler(controller.remove));
+equipmentRoutes.get(
+  "/",
+  authenticate,
+  validate(listEquipmentSchema),
+  asyncHandler(controller.list),
+);
+equipmentRoutes.get(
+  "/:id",
+  authenticate,
+  validate(equipmentIdSchema),
+  asyncHandler(controller.get),
+);
+equipmentRoutes.post(
+  "/",
+  authenticate,
+  authorize("equipment.manage"),
+  validate(createEquipmentSchema),
+  asyncHandler(controller.create),
+);
+equipmentRoutes.patch(
+  "/:id/availability",
+  authenticate,
+  authorize("equipment.availability.manage"),
+  validate(updateEquipmentAvailabilitySchema),
+  asyncHandler(controller.updateAvailability),
+);
+equipmentRoutes.patch(
+  "/:id",
+  authenticate,
+  authorize("equipment.manage"),
+  validate(updateEquipmentSchema),
+  asyncHandler(controller.update),
+);
+equipmentRoutes.delete(
+  "/:id",
+  authenticate,
+  authorize("equipment.manage"),
+  validate(equipmentIdSchema),
+  asyncHandler(controller.remove),
+);
