@@ -2,27 +2,44 @@
 
 **Project:** MIT-WPU University Maker's Space (UMS)  
 **Baseline branch:** `backend-harsh`  
-**Roadmap version:** 1.0  
+**Roadmap version:** 1.1 — RFP-conformance correction
+
 **Last updated:** 2026-08-16 (Asia/Kolkata)  
 **Source requirements:** `MakerSpace PRD.docx`  
 **Detailed traceability:** `docs/audit/SRS_UniversityMakersSpace_20260816.md` and `docs/audit/FRS_UniversityMakersSpace_20260816.md`
 
-This document is the shared execution page for local and remote contributors. It defines what currently works, what is still a prototype, the agreed eight delivery phases, and the acceptance checks required before a phase can be called complete.
+This document is the shared execution page for local and remote contributors. It defines what currently works, what is still a prototype, the agreed eight delivery phases, and the acceptance checks required before a phase can be called complete. `MakerSpace PRD.docx` Version 1.0 is authoritative: when this roadmap, current code, stakeholder notes, or a proposed implementation differs from the RFP, contributors must follow the RFP and record the discrepancy rather than silently expanding scope.
 
 ## 1. Rules that apply to every phase
 
 - PostgreSQL is the authoritative product data store. Do not add new production workflows to `makerspace-context.tsx`.
-- Keep laboratories, capacities, operating hours, schedules, domains, departments, programmes, academic years, equipment, consumables, policies, and notification templates configurable. Do not hardcode client catalogue data into business logic.
+- Keep the Version 1 architecture a modular monolith with clear Auth, Users, Projects, Resources, Booking, Visits, Notifications, and Administration boundaries; do not introduce premature microservices.
+- Keep the MakerSpace name, capacities, operating hours, schedules, departments, programmes, academic years, equipment, consumables, categories, approval requirements, and policies configurable. Do not hardcode client catalogue data into business logic.
 - Google Workspace proves identity. Backend sessions, permissions, ownership checks, and persisted roles authorize actions.
-- Never trust a frontend role, route, hidden button, QR payload, project ID, price, capacity, or availability value.
+- Never trust a frontend role, route, hidden button, project ID, participant count, capacity, equipment availability, or entity state.
 - The **Prototype view** role switch is for reviewing unfinished mock workspaces only. It never grants backend permissions and must be removed in Phase 8.
 - Use the shared frontend API client in `src/lib/api-client.ts`; do not create per-screen `fetch` wrappers or store access tokens in local/session storage.
 - All list endpoints must be paginated or intentionally bounded. Prevent unrestricted university-directory enumeration.
-- Capacity, inventory, invitation decisions, mentor decisions, attendance, and state transitions must be transaction-safe and idempotent where retries are possible.
-- Every material mutation must have validation, authorization, a stable error code, and an audit or domain-event plan.
+- Booking capacity, project membership acceptance, project verification, role assignment, attendance, and state transitions require strong consistency. Retry-prone actions such as project/booking creation, invitation acceptance, Faculty decisions, and cancellation must be idempotent.
+- Important privileged and operational mutations must have validation, authorization, stable error codes, and the RFP-required audit fields. Email, non-critical notifications, and analytics may be eventually consistent.
 - Append material changes and decisions to `DEVELOPMENT_CHANGELOG.md` and update the SRS/FRS status when a requirement changes state.
 - Never commit `.env` files, access tokens, Google secrets, database credentials, or production data.
 - Do not rewrite published Lovable/Git history. Use normal branches and pull requests.
+
+### Version 1 scope boundary
+
+The following RFP items are deliberately **Future Scope** and must not be added to Phases 1–8 unless the RFP is formally revised:
+
+- AI recommendations, booking assistance, or safety guidance.
+- Mandatory barcode or QR scanning, university ID/NFC/RFID, or automated entry hardware.
+- Equipment-specific reservations or full machine scheduling engines.
+- 3D-printing or laser-cutting file/job queues.
+- Consumable stock accounting, purchasing, warehouse functions, or issue/return inventory.
+- Machine IoT telemetry, preventive maintenance, equipment issue-ticket workflows, or safety-training/certification systems.
+- Multi-laboratory Student booking and academic-timetable integration. Version 1 remains one MakerSpace while keeping every operational entity linked to a future-proof `Lab`.
+- Project documents/uploads, project storage allocation, workshops/events, push-notification expansion, advanced analytics, HOD dashboards, expanded project lifecycle/showcases, smart-capacity recommendations, waitlists, recurring bookings, external collaborators, payments, grading, and university-wide project management.
+
+Project Domain/Category is optional/future-configurable in Version 1. The required project information is Project Name and Project Description.
 
 ## 2. What works now
 
@@ -35,6 +52,7 @@ This document is the shared execution page for local and remote contributors. It
 - Session restoration after browser refresh through `/auth/refresh` and `/auth/me`.
 - Authenticated route guards, onboarding redirects, account-derived identity, and logout.
 - New-student onboarding persisted to PostgreSQL.
+- The current implementation enforces a fixed 10-digit PRN based on earlier stakeholder context. The RFP instead requires the institution's defined, normalized, preferably unique PRN rule; this must be confirmed and corrected/configured in Phase 2 rather than represented as an RFP requirement.
 - Database-backed active departments, department-filtered programmes, and academic-year options.
 - Real signed-in name, email, PRN/profile information on the shell, dashboard, and profile page.
 - Tab-scoped **Prototype view** switch for Student, Faculty Mentor, Lab Assistant, Admin, and Super Admin mock workspaces.
@@ -44,13 +62,15 @@ This document is the shared execution page for local and remote contributors. It
 - Permission-based authorization and deny-by-default privileged-role provisioning.
 - User/session revocation behavior for account and role changes.
 - Scoped project CRUD, member invitation creation, mentor request, and mentor decision foundations.
-- Serializable, idempotent booking creation with slot locking and capacity/resource checks.
+- Serializable, idempotent booking creation with slot locking and attendee-capacity checks. The current service also blocks/reserves equipment and consumables; that behavior conflicts with the RFP's advisory-only Version 1 equipment model and must be corrected in Phase 4.
 - Booking cancellation and controlled operational status transitions.
 - Equipment catalogue endpoints and audited Lab Assistant availability updates.
-- Event, notification, user administration, provisioning, and upload foundations.
+- Notification, user administration, and provisioning foundations.
 - Authenticated reference reads for departments, programmes, academic years, labs, and equipment categories.
 - Structured response envelopes, request IDs, Zod validation, Redis-backed rate limiting, logs, and Prisma error mapping.
 - Versioned Prisma migrations and seed data for local development.
+- Events and general uploads exist in the codebase but are Future Scope and do not count toward Version 1 completion.
+- QR-related booking fields/behavior exist in the current backend but are Future Scope and must not be exposed as a Version 1 requirement or attendance workflow.
 
 ### Automated evidence currently available
 
@@ -69,8 +89,8 @@ This document is the shared execution page for local and remote contributors. It
 - Faculty approval UI is not connected end to end.
 - Lab schedules, closures, slot generation, and availability APIs/UI are missing.
 - Booking screens are not connected to real slot/project/booking APIs.
-- Quick Visits, QR check-in/out, live occupancy, late arrival, and no-show workflows are missing.
-- Consumables and most Admin configuration/reporting UI are missing.
+- Quick Visits, manual Lab Assistant check-in/out, live occupancy, late arrival, overstay, and no-show workflows are missing.
+- Consumable requirement selection and most Admin configuration/reporting UI are missing; consumable inventory is not part of Version 1.
 - Workflow notifications, transactional email delivery, and near-real-time updates are missing.
 - Service worker/offline UX, route splitting, accessibility/performance acceptance, CI/CD, staging, monitoring, backup/restore, load testing, and security acceptance are missing.
 - No RFP launch gate has yet been proven against a production-like environment.
@@ -119,7 +139,7 @@ Useful URLs:
 2. Sign in with a verified `@mitwpu.edu.in` Workspace account. A non-institutional account must be rejected by the backend.
 3. For an incomplete Student account, verify redirection to onboarding.
 4. Verify departments and academic years load from the API; selecting a department must filter programmes.
-5. Verify invalid or non-10-digit PRNs cannot be submitted.
+5. Verify invalid PRNs are rejected by the current validation, while recording that the exact MIT-WPU PRN rule still requires institutional confirmation under the RFP.
 6. Complete onboarding and confirm redirection to the dashboard with the real name and PRN.
 7. Refresh the browser. The session should restore without another Google prompt.
 8. Open Profile and Settings and verify persisted identity plus logout.
@@ -144,7 +164,7 @@ npx prisma migrate status
 
 ### API-only testing caveat
 
-Swagger can exercise implemented backend foundations, but successful privileged operations require a genuinely provisioned account and correct persisted state. The Prototype view switch does not grant API permissions. Booking APIs also require valid seeded/configured slots, a verified project, accepted participants, and available resources.
+Swagger can exercise implemented backend foundations, but successful privileged operations require a genuinely provisioned account and correct persisted state. The Prototype view switch does not grant API permissions. Booking APIs require valid configured slots, a verified project, accepted participants, and attendee capacity. Current equipment/consumable blocking and QR behavior are known RFP deviations scheduled for correction in Phase 4.
 
 ## 5. The agreed eight phases
 
@@ -154,10 +174,12 @@ Swagger can exercise implemented backend foundations, but successful privileged 
 
 Deliverables:
 
+- Public landing page and MIT-WPU Google CTA.
 - Shared frontend API/error client.
 - Google sign-in handshake, session restoration, refresh coordination, `/auth/me`, and logout.
-- Authenticated and role-aware route guards.
-- Connected Student onboarding.
+- Default Student creation plus deny-by-default pre-provisioned Faculty Mentor, Lab Assistant, Admin, and Super Admin identity handling.
+- Authenticated and role-aware route guards for all five roles.
+- Short connected Student onboarding with Google email read-only; full name, PRN, department, programme/class, and year; division/section only when required; and phone only if institutionally required. Both client and server validate required fields.
 - Authenticated reference-data reads.
 - Real identity/profile rendering.
 - Local database migration/seed and Phase 1 test coverage.
@@ -173,52 +195,73 @@ Exit gate:
 
 Deliverables:
 
-- Safe, paginated teammate and Faculty Mentor search.
-- Atomic/idempotent project draft and submission contract.
-- Project metadata, domain, team members, invitations, mentor request, equipment requirements, and consumable requirements.
-- Invitation accept, decline, expiry, cancellation, and duplicate-response behavior.
-- Faculty queue plus approve/reject flow with reasons.
-- Connected Student project list/detail/create/edit UI and Faculty verification UI.
-- Ownership, eligibility, state-transition, audit, and notification-outbox tests.
+- Student profile view/edit behavior for the Student's own permitted fields, including replacement of the fixed 10-digit assumption with the client-confirmed normalized/unique MIT-WPU PRN validation rule.
+- Indexed, server-side, debounced, minimum-length, paginated teammate and authorized Faculty Mentor search that never downloads the university directory. Display only the identification fields required by the RFP.
+- Project list/search and detail for projects where the Student is Team Leader or Member. Each result shows Project Name, Team Leader, member count, Faculty Mentor, verification status, and next booking when applicable.
+- Project Detail sections for header/status, overview/description, Team Leader and member acceptance, Faculty Mentor/approval, expected equipment, expected consumables, and role-appropriate actions; its bookings section is connected in Phase 4.
+- Required Project Name and Project Description. Domain/Category remains optional and is shown only when configured; it must not block Version 1 project creation.
+- Explicit states: Draft, Team Acceptance Pending, Mentor Approval Pending, Verified, Rejected, and Archived. UI uses human-readable status messages rather than enum names.
+- Atomic/idempotent project creation: create the project, accepted Team Leader membership, invitations, Faculty Mentor request, equipment/consumable requirement links, audit/domain events, and asynchronous notification jobs as one consistent operation.
+- Configured equipment and consumables are expected project requirements only; selecting them does not reserve stock, quantities, machines, or time.
+- Invitation records and Pending, Accepted, Declined, Cancelled, and—if expiration is enabled—Expired behavior. Email/deep links return the authenticated user to the relevant invitation; repeated responses are idempotent.
+- A project becomes Verified only after all required invited members accept and the assigned Faculty Mentor approves. Declined invitations and pending conditions remain visible in human language.
+- Faculty Dashboard and project lists for Pending Approval, Active Projects, and Historical Projects. The decision view includes project name/description, leader, team, expected equipment/consumables, and submission date. Reject requires a reason.
+- Pre-verification Team Leader editing, invitation cancellation, accepted-member removal, Faculty Mentor changes, and post-verification major edits with the RFP-defined re-verification effects. Faculty change revokes the previous approval and returns the project to Mentor Approval Pending; resource-change approval effects remain policy-configurable.
+- Connected Student Dashboard states for new user, pending invitation, pending mentor approval, and relevant quick actions.
+- Ownership, privacy, eligibility, state-transition, idempotency, rate-limit, audit, and notification-generation tests.
 
 Exit gate:
 
-- A Student can create a solo or team project, complete invitations, request a mentor, and receive an approval/rejection using only persisted data.
-- An unapproved or incomplete project cannot proceed to booking.
+- A Student can manage their profile, create a solo or team project, complete invitations, declare expected requirements, request an authorized Faculty Mentor, and receive an approval/rejection using only persisted data.
+- Project lists, details, dashboard states, Faculty queues, edits, member removal, mentor changes, and re-verification rules match the RFP.
+- Only a verified project led by the signed-in Team Leader can proceed to booking.
+- Phase 2 must create the correct notification/outbox records and deep-link targets; the RFP's actual asynchronous email-delivery acceptance remains open until Phase 7.
 
 ### Phase 3 — Lab configuration, schedules, and slot availability
 
-**Goal:** Generate bookable availability entirely from configurable lab policy.
+**Goal:** Generate Version 1 MakerSpace availability entirely from configurable lab policy while retaining a future-proof Lab relationship without adding multi-lab Student booking.
 
 Deliverables:
 
-- Admin CRUD for labs, weekly schedules, holidays/closures, slot duration, booking horizon, capacities, cancellation window, and late-arrival policy.
-- Idempotent slot generation/regeneration service and scheduled job.
-- Availability API by lab/date/resource with remaining attendee and equipment capacity.
-- Time-zone-safe handling using the lab's configured time zone.
-- Connected calendar/date/slot selection UI.
-- Tests for weekends, closures, schedule changes, horizon boundaries, and duplicate generation.
+- Admin configuration for MakerSpace name, weekly available days/hours, date-based closures/special hours, slot duration, attendee capacity, booking horizon, cancellation window, optional maximum future bookings per project, Quick Visit rules, and project-verification requirements.
+- Initial configurable values—not hardcoded rules—of 08:30 opening, 18:30 closing, 60-minute slots, and 20 Student booking capacity. Client-approved changes must require no code deployment.
+- Audited configuration changes with the appropriate confirmation UX.
+- Idempotent dated slot generation/regeneration from weekly configuration and date exceptions rather than manual per-slot entry.
+- Availability API by date/project/participant count with start/end time, remaining attendee capacity, and advisory availability for the selected project's configured equipment requirements.
+- MIT-WPU local-time display with consistent internal timestamps, preferably UTC, and no scattered frontend timezone assumptions.
+- Connected date and slot selection UI with no hardcoded dates, schedules, capacity, or catalogue data.
+- Tests for all configured operational days, closures, special hours, schedule changes, horizon/cancellation boundaries, time zones, and duplicate generation.
 
 Exit gate:
 
-- Admin configuration produces deterministic slots; Students see only active, future, policy-compliant availability with no hardcoded dates or capacities.
+- Version 1 operates the single MakerSpace through Lab-scoped data. Admin configuration produces deterministic policy-compliant slots and Students see correct future dates, remaining participant places, and advisory equipment status.
+- Multi-laboratory selection and academic-timetable integration remain Future Scope.
 
-### Phase 4 — End-to-end bookings and QR reservations
+### Phase 4 — End-to-end capacity bookings
 
 **Goal:** Connect the existing transactional booking core to the real Student experience.
 
 Deliverables:
 
-- Booking flow using verified projects, accepted participants, slots, equipment, and consumables.
-- Clear capacity/conflict errors and alternative-slot suggestions.
-- Booking history/detail/cancellation UI.
-- Server-generated QR credential with only a hash stored server-side; explicit expiry/revocation rules.
-- Near-real-time availability revalidation after create/cancel/status changes.
-- Real PostgreSQL concurrent-booking tests plus load tests for peak slot release.
+- RFP flow: Select eligible verified project → automatically select all accepted members → allow deselection → keep the Team Leader selected unless configured policy permits otherwise → choose date → choose slot → confirm.
+- Derive participant count from validated accepted-member IDs. Capacity is consumed by selected participants, not number of projects or browser-provided counts.
+- Display the selected project's equipment requirements and current availability for each slot as advisory information. Equipment unavailability must not block a general MakerSpace capacity booking in Version 1; equipment-specific reservations remain Future Scope.
+- Remove/disable current Version 1 booking behavior that reserves or rejects based on equipment/consumable quantities. Do not create consumable allocations or stock accounting.
+- Atomically lock/retrieve slot occupancy, recalculate confirmed capacity, validate selected participants and booking policy, create booking/participant history, commit, publish availability, and enqueue notifications.
+- Clear conflict UX showing the updated remaining places plus Refresh Availability and alternate slots instead of a generic error.
+- Confirmed, Cancelled by Student, Cancelled by Lab Assistant, No Show, Completed, and In Progress where applicable; historical rows are never deleted.
+- Student Slots experience with Upcoming, Available Slots, and Past sections plus booking detail and eligible Team Leader cancellation.
+- Update the Student Dashboard to prioritize an upcoming booking with project, date, slot, selected participants, and booking status, and show only actions the signed-in Student can actually perform.
+- Cancellation releases reserved attendee capacity, preserves actor/reason/time and original booking/project/participant details, and triggers relevant notification/operations updates.
+- Idempotency for creation and cancellation, controlled revalidation/real-time publication, real PostgreSQL concurrency tests, and peak booking load tests.
+- QR/barcode credentials are not generated, returned, or required by the Version 1 booking/attendance UI. They remain Future Scope.
 
 Exit gate:
 
-- Concurrent requests cannot exceed lab/equipment capacity, retries do not duplicate bookings, and the Student can create, view, and cancel a real reservation end to end.
+- Concurrent requests cannot exceed the configured attendee capacity, retries do not duplicate bookings, and a Team Leader can create, view, and cancel a real reservation end to end.
+- Equipment status is visible but does not create an equipment-specific reservation or incorrectly block MakerSpace capacity booking.
+- Historical booking facts remain intact when related current records later change.
+- Booking/cancellation notification events must be persisted; actual email delivery and live-client propagation remain open until Phase 7.
 
 ### Phase 5 — Quick Visits, attendance, and Lab Assistant operations
 
@@ -226,16 +269,23 @@ Exit gate:
 
 Deliverables:
 
-- Quick Visit request/cancel flow with the separately configurable visitor capacity.
-- QR scan/verify for booked Students versus visitors, with clear identity and reservation details.
-- Check-in, check-out, manual override, rejection, duplicate scan, late arrival, no-show, and visit-history behavior.
-- Live occupancy calculated from authoritative attendance records.
-- Lab Assistant operations dashboard with today's queue, incidents, capacity, and equipment availability actions.
-- Audit and concurrency tests for occupancy and repeated scans.
+- A short Quick Visit request using only necessary fields such as Student, purpose, requested/current time, status, entry time, and exit time. Exact operating rules come from configuration; the RFP does not mandate a separate Quick Visit capacity or a fixed value of 10.
+- Student Visit History showing date, Project Slot or Quick Visit type, project when applicable, entry time, exit time, and status.
+- Lab Assistant navigation for Live, Bookings, Visits, Equipment, and Projects.
+- Live Operations showing current slot, expected teams, expected participants, actual arrivals, current status, upcoming slots, and current physical occupancy.
+- Booking detail actions to mark selected individuals entered/exited or mark the entire team arrived/exited, recording actual timestamps and responsible Lab Assistant.
+- No mandatory manual PRN request during normal entry. Team/project/name selection is primary; manual search remains a fallback.
+- No Show or Lab Assistant cancellation with actor, timestamp, reason/status, preserved history, notification, and capacity release when operationally appropriate.
+- Live occupancy calculated from entered-but-not-exited attendance and kept separate from reserved booking capacity.
+- Late arrivals remain allowed with actual timestamps. Overstaying Students remain shown as inside until the Lab Assistant records exit.
+- Transaction, idempotency, authorization, occupancy, individual/team-action, no-show, late-arrival, overstay, and history tests.
+- No mandatory barcode or QR scanning; scanning and automated entry remain Future Scope.
 
 Exit gate:
 
-- Lab Assistants can safely process every supported arrival/departure path and occupancy never exceeds the configured booked/visitor limits.
+- Lab Assistants can answer who is expected and who is physically inside, process individual/team arrivals and exits without mandatory PRN or scanning, manage no-shows, and retain accurate visit history.
+- Reserved capacity and physical occupancy remain separate, and late arrivals/overstays behave exactly as specified by the RFP.
+- Attendance/equipment operations must emit the required update events; cross-client real-time delivery remains open until Phase 7.
 
 ### Phase 6 — Resources, administration, and reporting
 
@@ -243,33 +293,43 @@ Exit gate:
 
 Deliverables:
 
-- Equipment category/catalogue CRUD, visibility, status, quantity, specifications, images, and maintenance behavior.
-- Consumable categories, stock/availability, project requirements, and booking allocations.
-- Department, programme, academic-year, project-domain, and other reference-data administration.
-- User activation, provisioning, role management, and session-revocation UI.
-- Audit-log review and initial project/booking/visit/equipment utilization reports with safe CSV export.
-- Pagination, filtering, archive/restore strategy, and audit coverage.
+- Configurable equipment categories and resources with RFP fields: ID, name, category, description, Lab, image, total/available quantity, operational status, Student visibility, booking visibility, notes, and timestamps.
+- RFP availability semantics such as Available, Partially Available, In Use, Reserved, Unavailable, Under Maintenance, Damaged, and Out of Service, with aggregate quantity/status handled consistently.
+- Student Equipment screen backed by the API with category, availability, and search filters plus image, name, category, status, and description.
+- Fast Lab Assistant availability updates with reason categories such as Maintenance, Damage, Temporary Issue, or Other; changes propagate to Student equipment and slot views.
+- Admin management of persistent equipment properties. Preventive-maintenance scheduling, telemetry, issue tickets, certification, and dedicated machine reservations remain Future Scope.
+- Consumable categories/items with name, category, description, active/inactive, optional unit type, and Student selection for project requirements only. No Version 1 stock quantity, consumption, booking allocation, purchase, or issue/return workflow.
+- Department, programme, academic-year, equipment/consumable category, and other required reference-data administration. Project Domain/Category stays optional and cannot become a mandatory Version 1 field.
+- Super Admin indexed/paginated search by name, email, or role; pre-provision Faculty Mentor/Lab Assistant/Admin/Super Admin; change or disable privileged access; review account status; manage authorized permissions; invalidate/re-evaluate sessions; and audit sensitive changes.
+- Admin project, booking, and visit oversight plus operational dashboards focused on current occupancy, today's booking utilization, active projects, equipment unavailable, upcoming booking volume, and pending operational issues rather than decorative analytics.
+- Super Admin dashboard for privileged accounts, platform-health summary, MakerSpace configuration, audit events, permission/governance work, and the future-proof Lab relationship without enabling multi-lab Student booking.
+- Audit-log review containing actor, actor role, action, entity/type/ID, before/after where appropriate, timestamp, request ID, and policy-permitted IP/device metadata.
+- Initial operational reporting/export for bookings by date, visits by date, projects, and equipment availability. The RFP does not prescribe CSV as the only format and excludes advanced BI.
+- Server-side pagination/filtering/search, appropriate confirmation for destructive or sensitive actions, and audit coverage.
 
 Exit gate:
 
-- An authorized Admin can maintain launch configuration without direct database edits, while a Lab Assistant remains limited to operational availability actions.
+- Students can browse the real equipment and consumable-requirement catalogues; Lab Assistants can change only live availability; Admins can maintain persistent operational data; and only Super Admins can manage privileged roles/permissions.
+- Version 1 contains no consumable inventory, machine-job, preventive-maintenance, or advanced-analytics workflow.
 
 ### Phase 7 — Notifications, email, and near-real-time updates
 
-**Goal:** Make every approval, invitation, booking, incident, and reminder reliably reach the right people.
+**Goal:** Deliver the RFP-required workflow messages asynchronously and keep live operational views current.
 
 Deliverables:
 
-- Transactional outbox/domain events for invitation, mentor decision, booking, cancellation, reminder, incident, no-show, and administrative changes.
-- Queue worker with retry/backoff, deduplication, dead-letter handling, and delivery-attempt records.
-- Approved institutional email provider and editable templates.
-- Connected in-app notification centre and read/unread state.
-- SSE/WebSocket or controlled revalidation for availability, approvals, notifications, and occupancy.
-- Worker, retry, duplicate-delivery, authorization, and failure-observability tests.
+- Transactional notification/outbox events for Student Team Invitation, Faculty Mentor Request, Project Verification, Project Rejection with reason, Booking Confirmation, Booking Cancellation, and relevant in-app events including team acceptance/decline, mentor decisions, equipment issues, and system announcements.
+- Optional booking reminders only when later enabled by configuration; they are not a mandatory Version 1 launch behavior.
+- Asynchronous queue/worker: the business transaction succeeds, a notification job is created, the worker calls an institution-approved provider, transient failures retry, delivery attempts/final failures are logged, and user APIs never wait for provider delivery.
+- Idempotent event/delivery handling so a retried business action creates one logical notification.
+- Paginated in-app Notification Centre with unread indicator, recent notifications, read state, and direct links to the relevant project or booking.
+- SSE, WebSocket, pub/sub-backed revalidation, or lightweight periodic revalidation for slot capacity, equipment status, active occupancy, and Lab Assistant attendance changes. The selected mechanism degrades gracefully after disconnection.
+- Worker, retry, duplicate-delivery, privacy, authorization, deep-link, pagination, real-time disconnect/recovery, and failure-alerting tests.
+- Push notifications and university-messaging integration remain Future Scope.
 
 Exit gate:
 
-- Required recipients reliably receive one logical notification per event, failures are observable/retryable, and relevant screens update without a manual full-page refresh.
+- Required recipients reliably receive one logical email/in-app notification per RFP event, failures are observable/retryable without delaying user actions, and relevant live screens update or gracefully fall back to controlled revalidation.
 
 ### Phase 8 — Production readiness and launch acceptance
 
@@ -278,22 +338,58 @@ Exit gate:
 Deliverables:
 
 - Remove `makerspace-context.tsx` production workflow dependencies and remove the **Prototype view** role switch.
-- Complete PWA icons, service worker, installability, safe caching, offline shell, and offline/error/recovery UX.
-- Route-level code splitting and bundle/performance work.
-- WCAG 2.1 AA-oriented automated and manual accessibility verification.
-- End-to-end browser/device matrix for Student, Faculty, Lab Assistant, Admin, and Super Admin.
-- Security review: CSP, permissions policy, cookie/TLS configuration, rate limits, upload hardening, dependency/security scanning, and abuse cases.
-- Representative 40,000-user capacity model, booking-race load tests, and performance/SLO evidence.
-- CI/CD, development/staging/production environments, migration gates, rollback, monitoring, alerts, error tracking, logs/metrics/traces, backups/PITR, and restore drill.
-- RFP acceptance matrix signed off with client-approved catalogue, policies, roles, and content.
+- Finalize the public landing page content: what the MakerSpace is, what Students can build, how access works, resource highlights where desired, and primary MIT-WPU Google CTA. Use an approved cover video or comparable modern media treatment as directed by the RFP. Visual treatment must be premium, modern, calm, professional, university-appropriate, and aligned with the MIT-WPU theme rather than generic SaaS styling.
+- Complete the RFP navigation and action-oriented dashboards without decorative KPI overload: Student primary/secondary navigation including Help, focused Faculty dashboard, live Lab Assistant console, operational Admin dashboard, and governance-focused Super Admin dashboard.
+- Enforce the shared design system for typography, spacing, colours/semantic statuses, radii, shadows, forms, buttons, cards, navigation, dialogs/sheets, tables, loading, empty, error, and success states. No colour-only statuses or page-specific design inventions.
+- Responsive acceptance for desktop, mobile, tablet/iPad portrait and landscape: keyboard-friendly desktop, touch-first tablet with no hover dependency, and single-column mobile with large touch targets, compact/bottom navigation, guided booking, minimal typing, and sticky actions where useful.
+- WCAG 2.1 AA-oriented checks for contrast, keyboard navigation, visible focus, labels, semantic HTML, screen-reader status messages, accessible dialogs, reduced motion, and touch targets.
+- Loading/error/form UX: no indefinite spinner; every remote state supports loading, success, empty, error, and retry; primary content uses skeletons; forms preserve recoverable values, disable duplicate submission, and place client/server errors clearly. Include the RFP's meaningful empty states for Students without projects, Faculty without approvals, and Lab Assistants without current bookings. Avoid confirmation dialogs for reversible low-risk actions; confirm booking cancellation, project rejection, privileged role changes, and operationally significant unavailability changes.
+- Validate the fewer-clicks principle throughout: retain known context, avoid repeated fields, giant dropdowns, modal overload, technical language, dense mobile tables, and actions the user cannot perform. The booking flow remains Select Project → Select Attendees → Choose Slot → Confirm.
+- Complete PWA manifest, required icons, standalone/HTTPS launch, registered service worker, installability, home-screen launch, and explicit offline state. Cache only safe shell/static/reference content; never treat slot capacity, booking status, live equipment availability, permissions, or attendance as authoritative cache data. Block offline booking/attendance writes.
+- Route-level code splitting, lazy loading, optimized images, server pagination, request deduplication, safe caching/prefetching/background revalidation, and removal of duplicate calls/oversized global state.
+- Meet/evidence the RFP performance targets where feasible: landing LCP about ≤2.5 seconds, routine API reads generally <500 ms, search suggestions about <500–800 ms after debounce, booking generally <2 seconds, and near-instant cached/shell navigation under representative conditions.
+- Security verification for authentication, sessions/cookies, CSRF, redirect allowlists, backend authorization/ownership/state, mass assignment, SQL injection, XSS, malformed/oversized input, rate limits, CSP, HSTS, X-Content-Type-Options, Referrer-Policy, frame protection, Permissions-Policy, privacy, log redaction, TLS, managed secrets, encryption at rest in managed storage, and least-privilege storage/database access. Do not store sensitive data in browser localStorage. Machine/project file-submission security remains Future Scope.
+- Explicit threat tests: Student calling Admin API, changing another project ID, modifying browser role state, sending arbitrary participant IDs/counts, duplicate booking, expired invitation, and disabled-user authentication.
+- Capacity model for the RFP population of 20,000+ Students and approximately 2,000+ Faculty/Lab Assistant/Admin users, including peak simultaneous authentication/search/booking demand. Keep application servers stateless, use shared database/session/queue/cache/real-time services, configure connection pooling, and monitor connections/query/transaction duration.
+- Full automated/manual test matrix: unit, real-database integration, authentication/provisioning, booking concurrency, end-to-end Student/Faculty/operations flows, responsive, accessibility, security, performance, and load tests across latest Chrome, Edge, Safari, modern Firefox, Android Chrome, iOS Safari, iPadOS Safari, and Android tablets.
+- Prove all ten RFP critical scenarios: New Student, pre-provisioned Faculty, project verification, rejected project, booking, concurrent booking, Student cancellation, Lab entry, Lab exit, and equipment failure propagation.
+- Define and enforce retention for projects, bookings, visits, audit logs, and personal data. Preserve original booking date/time, project, participants, cancellation, and attendance history.
+- Development/staging/production separation; CI/CD lint/type/unit/integration/build/security/staging/smoke/controlled-production gates; versioned/backward-safe migrations where practical; staging migration tests; recovery/rollback plan; and no direct manual production schema edits.
+- Automated backups, point-in-time recovery where available, retention policy, documented recovery, and a tested restore process.
+- Target 99.9% monthly availability excluding scheduled maintenance, prioritizing booking/attendance during MakerSpace operating hours.
+- Centralized logs, metrics, error/performance/database monitoring, request tracing/correlation IDs, and uptime monitoring with alerts for elevated errors, authentication spikes, database/queue/email failures, booking anomalies, high latency, and outages.
+- RFP acceptance matrix signed off using client-approved catalogue, operational policies, roles, content, retention, and configuration. Do not include Future Scope features in the Version 1 launch gate.
 
 Exit gate:
 
 - No mock role/data path remains in production.
-- Every launch-critical RFP condition has test evidence and operational ownership.
-- Staging acceptance, security/load gates, backup restore, and production smoke/rollback procedures pass.
+- All 23 RFP launch-readiness criteria and all ten critical end-to-end scenarios have evidence and operational ownership.
+- Staging, responsive/browser, accessibility, security, performance/load, installability/offline, monitoring, backup/restore, migration, and production smoke/recovery gates pass.
+- Version 1 contains no Future Scope behavior presented as a launch requirement.
 
-## 6. Remote team workflow
+## 6. RFP coverage index
+
+This index prevents phase grouping from changing or hiding the RFP scope. Section numbers refer to `MakerSpace PRD.docx` Version 1.0.
+
+| RFP sections | Requirement area                                                                                                                                                      | Roadmap ownership                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1–6          | Vision, goals, non-goals, scale, configuration, UX principles                                                                                                         | Global rules, Version 1 boundary, Phase 8                                                         |
+| 7–12         | Google authentication, provisioning, roles, permissions, onboarding                                                                                                   | Phase 1; profile correction/edit in Phase 2; administration/security acceptance in Phases 6 and 8 |
+| 13–15        | Landing page, Student navigation, adaptive dashboard                                                                                                                  | Phases 1, 2, 4, and final Phase 8 acceptance                                                      |
+| 16–26        | Projects, states, teams, invitations, mentor selection/approval, requirements, Faculty views                                                                          | Phase 2                                                                                           |
+| 27–40        | Configured slots, participant capacity, booking flow, advisory equipment status, concurrency, conflict UX, states, cancellation/history                               | Phases 3 and 4; notifications/revalidation in Phase 7                                             |
+| 41–52        | Quick Visits, visit history, Lab Assistant console, manual entry/exit, occupancy, no-show                                                                             | Phase 5                                                                                           |
+| 53–63        | Equipment, consumable-requirement catalogue, Admin configuration, Super Admin governance                                                                              | Phase 6                                                                                           |
+| 64–68        | Email, in-app notifications, notification centre, scalable search                                                                                                     | Search in Phases 2 and 6; delivery/realtime in Phase 7                                            |
+| 69–83        | Responsive desktop/tablet/mobile, PWA/offline, visual system, accessibility, performance, loading/errors                                                              | Phase 8                                                                                           |
+| 84–106       | Scalability, consistency, security, privacy, audit, protection, backups, reliability, observability, alerts                                                           | Global rules and Phase 8; domain consistency in Phases 2–7                                        |
+| 107–117      | Data/API architecture, frontend state/forms/time, schedule generation/closures, retention, initial analytics/reporting                                                | Domain phases 2–7 and production acceptance in Phase 8                                            |
+| 118–124      | Unit/integration/E2E/concurrency/responsive/accessibility/security/performance/load testing, browser support, deployment, CI/CD, migrations, secrets                  | Phase-specific tests plus Phase 8 acceptance                                                      |
+| 125–153      | Modular-monolith/scaling/caching/connection architecture, threat cases, UX rules, dashboards, ownership, project edits, capacity/attendance/history, future-proof Lab | Global rules and Phases 2–8                                                                       |
+| 154–184      | Future Scope                                                                                                                                                          | Explicitly excluded from Version 1 phases                                                         |
+| 185–187      | Success metrics, 23 launch criteria, product summary                                                                                                                  | Phase 8 acceptance and operational evidence                                                       |
+
+## 7. Remote team workflow
 
 1. Start from the latest remote baseline:
 
@@ -301,10 +397,10 @@ Exit gate:
    git fetch origin
    git switch backend-harsh
    git pull --ff-only
-   git switch -c phase-<number>/<short-scope>-<name>
+   git switch -c development-<name>
    ```
 
-2. Pick one bounded work item from the **current phase**. Do not start a later phase if it depends on an unfinished contract.
+2. Begin with the first incomplete phase. Complete bounded work items within that phase; if its exit gate passes and time remains, continue only to the next consecutive phase. Never skip a dependency.
 3. Before implementation, write or confirm the API contract, state transitions, permissions, error codes, and database constraints relevant to the item.
 4. Avoid editing the same core file in multiple parallel branches. Recommended lanes inside a phase:
    - data model/migrations and backend service;
@@ -321,7 +417,7 @@ Exit gate:
    - automated/manual verification evidence;
    - screenshots for visible changes.
 
-## 7. Copy-paste implementation prompt
+## 8. Copy-paste implementation prompt
 
 Replace the bracketed fields before giving this prompt to a teammate or coding agent.
 
@@ -330,9 +426,9 @@ You are contributing to the MIT-WPU University Maker's Space (UMS) repository.
 
 Repository: https://github.com/ignisia-labs/University-Makers-Space
 Baseline branch: backend-harsh
-Assigned phase: Phase [NUMBER] — [PHASE NAME]
-Assigned work item: [ONE BOUNDED DELIVERABLE]
-Owner/branch: phase-[NUMBER]/[SHORT-SCOPE]-[NAME]
+Starting phase: Phase [NUMBER] — [PHASE NAME]
+Starting work item: [ONE BOUNDED DELIVERABLE OR COMPLETE PHASE]
+Owner/branch: development-[NAME]
 
 Before making changes, read these sources completely:
 1. MakerSpace PRD.docx
@@ -342,7 +438,7 @@ Before making changes, read these sources completely:
 5. DEVELOPMENT_CHANGELOG.md
 6. backend/docs/api-contract.md and backend/docs/openapi.yaml for affected APIs
 
-Use backend-harsh as the source-of-truth baseline. Work only inside the assigned phase/item and preserve existing unrelated changes. Do not rewrite published Git history.
+Use backend-harsh as the code baseline and MakerSpace PRD.docx Version 1.0 as the requirements authority. If code, roadmap wording, stakeholder notes, or the proposed solution conflicts with the RFP, stop, record the conflict, and follow the RFP unless the repository owner supplies a formal scope revision. Start at the first assigned/incomplete phase and, if time permits, continue only to the next consecutive phase after the current phase exit gate passes. Preserve unrelated changes and do not rewrite published Git history.
 
 Architecture constraints:
 - PostgreSQL is authoritative; do not add production state to makerspace-context.tsx.
@@ -351,8 +447,10 @@ Architecture constraints:
 - The Prototype view switch is mock navigation only and must never grant API access.
 - Use src/lib/api-client.ts and the existing auth/session lifecycle.
 - Use Zod validation, standard API envelopes/errors, bounded/paginated reads, audit/domain events, and Prisma migrations.
-- Design retried mutations to be idempotent and capacity/inventory/state changes to be transaction/concurrency safe.
-- Never expose secrets, unrestricted directory data, raw QR secrets after creation, or internal-only fields.
+- Design retried mutations to be idempotent and booking capacity, membership, verification, role, attendance, and state changes to be transaction/concurrency safe.
+- In Version 1, equipment/consumables are configured project requirements and equipment availability is advisory during capacity booking; do not create equipment-specific reservations or consumable inventory/allocation behavior.
+- Never expose secrets, unrestricted directory data, browser-controlled participant counts/permissions, or internal-only fields.
+- Do not implement RFP Future Scope: QR/barcode/NFC entry, equipment-specific reservations, consumable inventory, files/job queues, multi-lab Student booking, timetable integration, events, AI, IoT/maintenance, advanced analytics, waitlists, recurring bookings, external collaborators, or other deferred capabilities.
 
 Required workflow:
 1. Inspect the current implementation and map the assigned item to its RFP/SRS/FRS IDs.
@@ -363,6 +461,7 @@ Required workflow:
 6. Run frontend lint/build and backend lint/build/tests plus Prisma validation/migration checks when the schema changes.
 7. Update backend/docs/api-contract.md, backend/docs/openapi.yaml, requirement status in the audit files, docs/IMPLEMENTATION_ROADMAP.md, and DEVELOPMENT_CHANGELOG.md when behavior changes.
 8. Return a concise handoff containing changed files, migrations, endpoints, permissions, tests run, remaining gaps, and exact manual test steps.
+9. After each completed phase, create a clearly labelled commit and record the phase evidence. If time runs out mid-phase, report it as Partial and stop at a safe commit; never mark it Complete.
 
 Definition of done:
 - The assigned deliverable works end to end with persisted data.
@@ -370,11 +469,12 @@ Definition of done:
 - No relevant values are hardcoded.
 - Error, empty, loading, retry, responsive, and accessible states are handled.
 - Tests and documentation pass the current phase's exit gate.
+- No Future Scope feature is counted toward Version 1 completion.
 
-Do not begin a later phase or broaden the feature without explicit approval. If a required decision or client catalogue value is unavailable, make the value configurable, document the assumption, and stop only when proceeding would produce incompatible behavior.
+Do not skip an incomplete prerequisite phase or broaden the feature without explicit approval. If a required decision or client catalogue value is unavailable, keep the RFP-defined value configurable, document the dependency, and do not invent a product rule that changes Version 1 scope.
 ```
 
-## 8. Coordination record
+## 9. Coordination record
 
 Use pull requests/issues for active assignments. At minimum, record:
 

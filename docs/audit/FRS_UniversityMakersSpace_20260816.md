@@ -85,10 +85,10 @@ The system SHALL create a new valid institutional user with only `STUDENT` and `
 
 _Source: `backend/src/modules/auth/auth-service.ts:144`_
 
-The system SHALL validate unique ten-digit PRN, active department/programme consistency, year range, and optional phone/division, then atomically persist the profile and mark it complete.
+The system SHALL validate the institution's defined normalized and preferably unique PRN rule, active department/programme consistency, configured academic year, and policy-required division/section or phone fields, then atomically persist the profile and mark it complete. The RFP does not define a fixed digit length.
 
 **Current endpoint:** `POST /auth/onboarding`  
-**Status:** Implemented core. Authenticated reference APIs expose active departments, filtered programmes and configured academic years; the connected form validates and persists onboarding. ⚠️ GAP: Admin editing and production acceptance remain.
+**Status:** Partial. Authenticated reference APIs expose active departments, filtered programmes and configured academic years; the connected form persists onboarding. ⚠️ GAP: the current fixed 10-digit PRN rule requires institutional confirmation/replacement, and Admin editing plus production acceptance remain.
 
 ### FR-USER-003 — Provision privileged identities
 
@@ -132,10 +132,10 @@ The invited user SHALL accept or decline using the intended email identity. Repe
 
 _Source: `backend/src/modules/projects/project-service.ts:168`_
 
-The project leader SHALL request an active Faculty Mentor only after invitations resolve. The system SHALL allow at most one pending request.
+The project leader SHALL select an active Faculty Mentor as part of project creation/submission. The system SHALL create the request consistently with the project aggregate and allow at most one pending request. Mentor approval alone SHALL NOT verify the project while required team invitations remain unaccepted.
 
 **Current endpoint:** `POST /projects/:id/mentor-requests`  
-**Status:** Implemented in backend, but not part of atomic project submission and not connected to notifications/UI.
+**Status:** Partial. The current backend creates the request only after invitations resolve, rather than as part of the RFP's atomic project submission; it is also not connected to notifications/UI.
 
 ### FR-PROJECT-005 — Decide a mentor request
 
@@ -170,7 +170,7 @@ The leader SHALL select configured equipment and consumables as expected require
 
 ### FR-SLOT-001 — Configure operating policy
 
-Admins SHALL manage lab name, timezone, weekly hours, closures, slot duration, booking/Quick Visit capacities, horizon, and cancellation window, with audit logging.
+Admins SHALL manage MakerSpace name, timezone, weekly hours, closures/special hours, slot duration, attendee capacity, booking horizon, cancellation window, and configurable Quick Visit rules, with audit logging. The RFP does not mandate a separate Quick Visit capacity.
 
 **Status:** Schema only; no API.
 
@@ -190,7 +190,7 @@ The system SHALL return eligible dates/slots, remaining attendee capacity, and p
 
 _Source: `backend/src/modules/bookings/booking-service.ts:67`_
 
-The system SHALL validate leader ownership, verified project, accepted selected members, lab match, booking window, slot status, attendee capacity, resources, and idempotency inside a serializable slot-row-locked transaction.
+The system SHALL validate leader ownership, verified project, accepted selected members, lab match, booking window, slot status, attendee capacity, and idempotency inside a serializable slot-row-locked transaction. Project-relevant equipment availability SHALL be advisory in Version 1 rather than a dedicated reservation constraint.
 
 **Current endpoint:** `POST /bookings`  
 **Status:** Implemented in backend. ⚠️ GAP: The RFP treats equipment as advisory in V1, while the current service blocks a booking when requested equipment is unavailable and reserves per-slot equipment quantities.
@@ -233,7 +233,7 @@ After booking/cancellation/status changes, the system SHALL invalidate/publish s
 
 ### FR-VISIT-001 — Request Quick Visit
 
-The system SHALL reserve one place against separate configurable Quick Visit capacity using an idempotent locked transaction.
+The system SHALL create a short Quick Visit request with only necessary fields and apply the configured Quick Visit operating rules. The RFP does not require a separate capacity pool or fixed visitor limit.
 
 **Status:** Schema only; no route/service.
 
@@ -364,19 +364,19 @@ Routes SHALL be code-split and primary assets optimized to meet the RFP's LCP/na
 
 The redesigned schema contains 31 domain models. Presence means the storage shape exists, not that its workflow is implemented.
 
-| Domain       | Entities                                                                                         | Key constraints/indexes                                                      | Runtime status                     |
-| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ---------------------------------- |
-| Identity     | User, Session, UserProvisioning                                                                  | Unique Google subject/email, role GIN, session expiry/revocation indexes     | Implemented core                   |
-| Academics    | Department, Programme, StudentProfile                                                            | Unique PRN; department/programme relation and active validation              | Partial APIs                       |
-| Labs         | Lab, LabSchedule, LabClosure, LabSlot                                                            | Per-lab weekly schedule, closure ranges, unique dated slots, capacities      | Schema only                        |
-| Resources    | EquipmentCategory, Equipment, ConsumableCategory, Consumable                                     | Lab-scoped names, status/category indexes, quantity checks                   | Equipment partial; consumables gap |
-| Projects     | Project, ProjectMember, MentorRequest, ProjectEquipmentRequirement, ProjectConsumableRequirement | Scoped indexes, unique membership/email, one pending mentor request          | Partial                            |
-| Reservations | Booking, BookingParticipant, BookingEquipment, BookingConsumable                                 | User idempotency key, slot/status indexes, attendee checks                   | Booking core implemented           |
-| Visits       | QuickVisit, Visit                                                                                | Separate idempotency/capacity source; exactly one booking/Quick Visit source | Schema only                        |
-| Events       | Event, EventRegistration                                                                         | Date/capacity checks, unique registration                                    | Future scope implemented           |
-| Messaging    | Notification, NotificationDelivery                                                               | User/read index, unique channel delivery                                     | Basic notifications; delivery gap  |
-| Files        | Upload                                                                                           | Owner/time index                                                             | Future scope partial               |
-| Governance   | AuditLog                                                                                         | Actor/time, entity/time, action/time indexes                                 | Partial writes; no read API        |
+| Domain       | Entities                                                                                         | Key constraints/indexes                                                  | Runtime status                     |
+| ------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ | ---------------------------------- |
+| Identity     | User, Session, UserProvisioning                                                                  | Unique Google subject/email, role GIN, session expiry/revocation indexes | Implemented core                   |
+| Academics    | Department, Programme, StudentProfile                                                            | Unique PRN; department/programme relation and active validation          | Partial APIs                       |
+| Labs         | Lab, LabSchedule, LabClosure, LabSlot                                                            | Per-lab weekly schedule, closure ranges, unique dated slots, capacities  | Schema only                        |
+| Resources    | EquipmentCategory, Equipment, ConsumableCategory, Consumable                                     | Lab-scoped names, status/category indexes, quantity checks               | Equipment partial; consumables gap |
+| Projects     | Project, ProjectMember, MentorRequest, ProjectEquipmentRequirement, ProjectConsumableRequirement | Scoped indexes, unique membership/email, one pending mentor request      | Partial                            |
+| Reservations | Booking, BookingParticipant, BookingEquipment, BookingConsumable                                 | User idempotency key, slot/status indexes, attendee checks               | Booking core implemented           |
+| Visits       | QuickVisit, Visit                                                                                | Quick Visit or booking source; entry/exit and active-visit indexes       | Schema only                        |
+| Events       | Event, EventRegistration                                                                         | Date/capacity checks, unique registration                                | Future scope implemented           |
+| Messaging    | Notification, NotificationDelivery                                                               | User/read index, unique channel delivery                                 | Basic notifications; delivery gap  |
+| Files        | Upload                                                                                           | Owner/time index                                                         | Future scope partial               |
+| Governance   | AuditLog                                                                                         | Actor/time, entity/time, action/time indexes                             | Partial writes; no read API        |
 
 Historical integrity gap: Booking preserves the slot relation and participant identifiers, but does not snapshot project title, participant display identity, or resource labels. Mutable related records can change how old history renders.
 

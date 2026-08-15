@@ -82,3 +82,11 @@ This log records product context, implementation decisions, and material changes
 - Recorded the current working/testable baseline, mock-versus-persisted boundaries, local setup and Phase 1 acceptance checklist.
 - Consolidated remaining RFP delivery into eight ordered phases with deliverables and evidence-based exit gates; Phase 8 explicitly removes the temporary Prototype view role switch.
 - Added remote branching/PR coordination rules and a reusable implementation prompt that requires RFP traceability, backend authorization, configurable data, complete vertical slices, tests, documentation, and explicit handoff evidence.
+
+## 2026-08-16 — Roadmap corrected to strict RFP Version 1 scope
+
+- Re-audited the complete `MakerSpace PRD.docx` against the shared roadmap and made the RFP authoritative over earlier stakeholder assumptions, current implementation choices, and future proposals.
+- Removed QR/barcode entry, consumable stock/inventory, equipment-specific reservations, upload hardening, multi-lab Student booking, and other Future Scope capabilities from the Version 1 phases.
+- Corrected the target population to 20,000+ Students and approximately 2,000+ Faculty/Lab Assistant/Admin users, and removed the unsupported separate Quick Visit capacity commitment.
+- Expanded the eight phases to cover previously implicit RFP requirements including initial configurable hours/capacity, project re-verification rules, advisory equipment availability, manual individual/team attendance, overstay, dashboards/search, design/UX/accessibility, PWA cache safety, retention, connection pooling, 99.9% availability, browser support, security threats, ten critical end-to-end scenarios, and all launch gates.
+- Updated the reusable contributor prompt and SRS/FRS traceability so Future Scope cannot be counted toward Version 1 completion and code deviations must be recorded and corrected rather than normalized into the roadmap.
