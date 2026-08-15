@@ -11,6 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "@/lib/auth-context";
+import type { AuthClient } from "@/lib/auth-client";
 import { MakerSpaceProvider } from "@/lib/makerspace-context";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -74,7 +76,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+  authClient: AuthClient;
+}>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -138,6 +143,11 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script
+          id="google-identity-services"
+          src="https://accounts.google.com/gsi/client"
+          async
+        ></script>
       </head>
       <body>
         {children}
@@ -148,15 +158,17 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const { queryClient, authClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MakerSpaceProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <Toaster position="top-center" />
-      </MakerSpaceProvider>
+      <AuthProvider client={authClient}>
+        <MakerSpaceProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+          <Toaster position="top-center" />
+        </MakerSpaceProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

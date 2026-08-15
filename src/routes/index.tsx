@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Boxes, Cpu, Printer, Wrench, ArrowRight } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Boxes, Cpu, Printer, Wrench } from "lucide-react";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import heroImage from "@/assets/hero-makerspace.jpg";
 
 export const Route = createFileRoute("/")({
@@ -53,12 +54,12 @@ function Landing() {
           <span className="font-display text-base font-bold tracking-tight">
             MIT-WPU <span className="text-primary">MakerSpace</span>
           </span>
-          <Link
-            to="/onboarding"
+          <a
+            href="#institutional-sign-in"
             className="tap hidden items-center rounded-xl border border-border px-4 text-sm font-semibold sm:inline-flex sm:py-2"
           >
-            Student sign in
-          </Link>
+            Institutional sign in
+          </a>
         </div>
       </header>
 
@@ -74,18 +75,9 @@ function Landing() {
             Register your project, get mentor verification, reserve a capacity-aware slot and walk
             into a fully equipped lab for rapid prototyping, 3D printing, electronics and IoT.
           </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link
-              to="/onboarding"
-              className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              Sign in with MIT-WPU (@mitwpu.edu.in)
-              <ArrowRight className="size-5" />
-            </Link>
+          <div className="mt-8">
+            <GoogleSignInButton />
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Only verified @mitwpu.edu.in institutional accounts can access the platform.
-          </p>
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-border shadow-[var(--shadow-card)]">
@@ -124,12 +116,12 @@ function Landing() {
               Create project → mentor verification → book a slot → visit the MakerSpace.
             </p>
           </div>
-          <Link
-            to="/onboarding"
+          <a
+            href="#institutional-sign-in"
             className="inline-flex min-h-14 items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
           >
-            Get started
-          </Link>
+            Sign in to get started
+          </a>
         </div>
       </section>
 
