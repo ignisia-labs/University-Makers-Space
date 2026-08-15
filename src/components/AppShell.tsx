@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Boxes,
   CalendarClock,
@@ -12,9 +12,19 @@ import {
   Settings,
   UserRound,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { useAuth } from "@/lib/auth-context";
+import type { AuthUserRole } from "@/lib/auth-client";
+import {
+  prototypeDestination,
+  prototypeRoles,
+  readPrototypeRole,
+  storePrototypeRole,
+  toAuthRole,
+  toPrototypeRole,
+} from "@/lib/prototype-role";
 
 const studentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -34,34 +44,58 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { profile, role, setRole, notifications } = useMakerSpace();
+  const { notifications, role, setRole } = useMakerSpace();
+  const { client, user } = useAuth();
+  const navigate = useNavigate();
   const [roleOpen, setRoleOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const initials = profile.fullName
+  const displayName = user?.name ?? "MakerSpace user";
+  const initials = displayName
     .split(" ")
     .map((p) => p[0])
     .join("")
     .slice(0, 2);
 
+  const primaryRole: AuthUserRole = user?.roles.includes("SUPER_ADMIN")
+    ? "SUPER_ADMIN"
+    : user?.roles.includes("ADMIN")
+      ? "ADMIN"
+      : user?.roles.includes("LAB_ASSISTANT")
+        ? "LAB_ASSISTANT"
+        : user?.roles.includes("FACULTY_MENTOR")
+          ? "FACULTY_MENTOR"
+          : "STUDENT";
+  const roleLabel: Record<AuthUserRole, string> = {
+    STUDENT: "Student",
+    FACULTY_MENTOR: "Faculty Mentor",
+    LAB_ASSISTANT: "Lab Assistant",
+    ADMIN: "Admin",
+    SUPER_ADMIN: "Super Admin",
+  };
+  useEffect(() => {
+    setRole(toPrototypeRole(readPrototypeRole() ?? primaryRole));
+  }, [primaryRole, setRole]);
+
+  const previewRole = toAuthRole(role);
   const nav =
-    role === "Student"
+    previewRole === "STUDENT"
       ? studentNav
       : ([
           {
             to:
-              role === "Faculty Mentor"
+              previewRole === "FACULTY_MENTOR"
                 ? "/faculty"
-                : role === "Lab Assistant"
+                : previewRole === "LAB_ASSISTANT"
                   ? "/operations"
-                  : role === "Admin"
+                  : previewRole === "ADMIN"
                     ? "/admin"
                     : "/super-admin",
             label:
-              role === "Faculty Mentor"
+              previewRole === "FACULTY_MENTOR"
                 ? "Faculty"
-                : role === "Lab Assistant"
+                : previewRole === "LAB_ASSISTANT"
                   ? "Operations"
-                  : role,
+                  : roleLabel[previewRole],
             icon: LayoutDashboard,
           },
         ] as const);
@@ -145,40 +179,64 @@ export function AppShell({
             </span>
             {expanded && (
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{profile.fullName}</p>
-                <p className="truncate text-xs text-muted-foreground">PRN {profile.prn}</p>
+                <p className="truncate text-sm font-semibold">{displayName}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {user?.studentProfile?.prn
+                    ? `PRN ${user.studentProfile.prn}`
+                    : roleLabel[primaryRole]}
+                </p>
               </div>
             )}
           </div>
           {expanded && (
-            <div className="relative mt-3">
-              <button
-                type="button"
-                onClick={() => setRoleOpen((value) => !value)}
-                className="flex min-h-10 w-full items-center justify-between rounded-lg bg-muted px-3 text-xs font-semibold"
-              >
-                Prototype role: {role}
-                <ChevronDown className="size-3" />
-              </button>
-              {roleOpen && (
-                <div className="absolute bottom-11 z-40 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                  {(
-                    ["Student", "Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"] as const
-                  ).map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => {
-                        setRole(item);
-                        setRoleOpen(false);
-                      }}
-                      className="block min-h-9 w-full rounded-lg px-2 text-left text-xs hover:bg-accent"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="mt-3 space-y-2">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setRoleOpen((value) => !value)}
+                  className="flex min-h-10 w-full items-center justify-between rounded-lg bg-muted px-3 text-xs font-semibold"
+                >
+                  Prototype view: {role}
+                  <ChevronDown className="size-3" aria-hidden="true" />
+                </button>
+                {roleOpen && (
+                  <div className="absolute bottom-11 z-40 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
+                    {prototypeRoles.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => {
+                          setRole(item);
+                          storePrototypeRole(item);
+                          setRoleOpen(false);
+                          void navigate({ to: prototypeDestination(item) });
+                        }}
+                        className="block min-h-9 w-full rounded-lg px-2 text-left text-xs hover:bg-accent"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-1">
+                <span className="truncate text-[11px] text-muted-foreground">
+                  Account: {roleLabel[primaryRole]}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void client
+                      .logout()
+                      .then(() => navigate({ to: "/" }))
+                      .catch(() => undefined)
+                  }
+                  aria-label="Sign out"
+                  className="grid size-9 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

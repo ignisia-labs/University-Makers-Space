@@ -1,7 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { LogOut } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-export const Route = createFileRoute("/settings")({ component: Settings });
+import { requireAuthenticated } from "@/lib/auth-guards";
+import { useAuth } from "@/lib/auth-context";
+export const Route = createFileRoute("/settings")({
+  beforeLoad: requireAuthenticated,
+  component: Settings,
+});
 function Settings() {
+  const { client } = useAuth();
+  const navigate = useNavigate();
   return (
     <AppShell title="Settings" subtitle="Preferences">
       <section className="card-surface divide-y p-2">
@@ -14,6 +22,14 @@ function Settings() {
           <input type="checkbox" defaultChecked className="size-5" />
         </label>
       </section>
+      <button
+        type="button"
+        onClick={() => void client.logout().then(() => navigate({ to: "/" }))}
+        className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive sm:w-auto"
+      >
+        <LogOut className="size-4" aria-hidden="true" />
+        Sign out
+      </button>
     </AppShell>
   );
 }
