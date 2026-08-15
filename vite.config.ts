@@ -14,6 +14,14 @@ export default defineConfig({
     // Keep symlinked dependency paths intact. This avoids generated imports resolving
     // through the workspace's apostrophe-containing absolute path during Nitro builds.
     resolve: { preserveSymlinks: true },
+    // Some desktop/workspace file systems do not reliably emit native watch events.
+    // Polling keeps HMR dependable so source changes appear without restarting Vite.
+    server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
+      watch: { usePolling: true, interval: 300 },
+    },
   },
   tanstackStart: {
     router: {

@@ -54,7 +54,7 @@ function Landing() {
             MIT-WPU <span className="text-primary">MakerSpace</span>
           </span>
           <Link
-            to="/onboarding"
+            to="/login"
             className="tap hidden items-center rounded-xl border border-border px-4 text-sm font-semibold sm:inline-flex sm:py-2"
           >
             Student sign in
@@ -76,7 +76,7 @@ function Landing() {
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link
-              to="/onboarding"
+              to="/login"
               className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Sign in with MIT-WPU (@mitwpu.edu.in)
@@ -125,7 +125,7 @@ function Landing() {
             </p>
           </div>
           <Link
-            to="/onboarding"
+            to="/login"
             className="inline-flex min-h-14 items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
           >
             Get started
@@ -134,7 +134,17 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
-        MIT World Peace University · MakerSpace Management Platform
+        <p>MIT World Peace University · MakerSpace Management Platform</p>
+        <p className="mt-1 text-[10px] tracking-wide text-muted-foreground/75">
+          <a
+            href="https://ignisia.tech"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            An <span className="font-semibold text-[#2938cf]">Ignisia</span> project
+          </a>
+        </p>
       </footer>
     </div>
   );

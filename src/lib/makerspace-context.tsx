@@ -23,6 +23,7 @@ import {
 type State = {
   profile: StudentProfile;
   role: AppRole;
+  authenticated: boolean;
   onboarded: boolean;
   projects: Project[];
   reservations: Reservation[];
@@ -33,7 +34,8 @@ type State = {
   auditLogs: AuditEvent[];
   config: LabConfig;
   completeOnboarding: (p: StudentProfile) => void;
-  setRole: (r: AppRole) => void;
+  beginPrototypeSession: () => void;
+  signOut: () => void;
   addProject: (p: Omit<Project, "id" | "createdAt">) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
   addReservation: (r: Omit<Reservation, "id">) => void;
@@ -56,6 +58,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState(defaultProfile);
   const [role, setRole] = useState<AppRole>("Student");
+  const [authenticated, setAuthenticated] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
   const [projects, setProjects] = useState(initialProjects);
   const [reservations, setReservations] = useState(initialReservations);
@@ -74,6 +77,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     () => ({
       profile,
       role,
+      authenticated,
       onboarded,
       projects,
       reservations,
@@ -87,7 +91,15 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         setProfile(p);
         setOnboarded(true);
       },
-      setRole,
+      beginPrototypeSession() {
+        setRole("Student");
+        setAuthenticated(true);
+      },
+      signOut() {
+        setAuthenticated(false);
+        setRole("Student");
+        setOnboarded(false);
+      },
       addProject(p) {
         setProjects((prev) => [
           { ...p, id: uid(), createdAt: new Date().toLocaleDateString("en-IN") },
@@ -176,6 +188,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     [
       profile,
       role,
+      authenticated,
       onboarded,
       projects,
       reservations,

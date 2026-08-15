@@ -7,7 +7,6 @@ import {
   Menu,
   Footprints,
   Bell,
-  ChevronDown,
   LogOut,
   Settings,
   UserRound,
@@ -23,7 +22,6 @@ const studentNav = [
   { to: "/visits", label: "Visits", icon: Footprints },
   { to: "/equipment", label: "Equipment", icon: Boxes },
 ] as const;
-
 export function AppShell({
   title,
   subtitle,
@@ -34,14 +32,23 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { profile, role, setRole, notifications } = useMakerSpace();
-  const [roleOpen, setRoleOpen] = useState(false);
+  const { profile, role, notifications, authenticated, signOut } = useMakerSpace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const initials = profile.fullName
     .split(" ")
     .map((p) => p[0])
     .join("")
     .slice(0, 2);
+
+  const requiredRole = pathname.startsWith("/faculty")
+    ? "Faculty Mentor"
+    : pathname.startsWith("/operations")
+      ? "Lab Assistant"
+      : pathname.startsWith("/super-admin")
+        ? "Super Admin"
+        : pathname.startsWith("/admin")
+          ? "Admin"
+          : null;
 
   const nav =
     role === "Student"
@@ -66,6 +73,42 @@ export function AppShell({
           },
         ] as const);
   const unread = notifications.filter((item) => !item.read).length;
+  if (!authenticated) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background px-4">
+        <section className="card-surface max-w-md p-6 text-center">
+          <h1 className="text-xl font-bold">Sign in required</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Use your MIT-WPU institutional account to continue.
+          </p>
+          <Link
+            to="/login"
+            className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
+          >
+            Go to sign in
+          </Link>
+        </section>
+      </main>
+    );
+  }
+  if (requiredRole && role !== requiredRole) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background px-4">
+        <section className="card-surface max-w-md p-6 text-center">
+          <h1 className="text-xl font-bold">Access restricted</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your MIT-WPU account does not have permission to open this workspace.
+          </p>
+          <Link
+            to="/dashboard"
+            className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
+          >
+            Go to dashboard
+          </Link>
+        </section>
+      </main>
+    );
+  }
   return (
     <div className="min-h-screen bg-background">
       <aside
@@ -151,35 +194,14 @@ export function AppShell({
             )}
           </div>
           {expanded && (
-            <div className="relative mt-3">
-              <button
-                type="button"
-                onClick={() => setRoleOpen((value) => !value)}
-                className="flex min-h-10 w-full items-center justify-between rounded-lg bg-muted px-3 text-xs font-semibold"
-              >
-                Prototype role: {role}
-                <ChevronDown className="size-3" />
-              </button>
-              {roleOpen && (
-                <div className="absolute bottom-11 z-40 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                  {(
-                    ["Student", "Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"] as const
-                  ).map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => {
-                        setRole(item);
-                        setRoleOpen(false);
-                      }}
-                      className="block min-h-9 w-full rounded-lg px-2 text-left text-xs hover:bg-accent"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={signOut}
+              className="mt-3 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs font-semibold text-muted-foreground hover:bg-sidebar-accent"
+            >
+              <LogOut className="size-3.5" />
+              Sign out
+            </button>
           )}
         </div>
       </aside>

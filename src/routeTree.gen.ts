@@ -15,6 +15,7 @@ import { Route as BookRouteImport } from './routes/book'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as EquipmentRouteImport } from './routes/equipment'
 import { Route as FacultyRouteImport } from './routes/faculty'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as OperationsRouteImport } from './routes/operations'
@@ -54,6 +55,11 @@ const EquipmentRoute = EquipmentRouteImport.update({
 const FacultyRoute = FacultyRouteImport.update({
   id: '/faculty',
   path: '/faculty',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotificationsRoute = NotificationsRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/equipment': typeof EquipmentRoute
   '/faculty': typeof FacultyRoute
+  '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/operations': typeof OperationsRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/equipment': typeof EquipmentRoute
   '/faculty': typeof FacultyRoute
+  '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/operations': typeof OperationsRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/equipment': typeof EquipmentRoute
   '/faculty': typeof FacultyRoute
+  '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/operations': typeof OperationsRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/equipment'
     | '/faculty'
+    | '/login'
     | '/notifications'
     | '/onboarding'
     | '/operations'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/equipment'
     | '/faculty'
+    | '/login'
     | '/notifications'
     | '/onboarding'
     | '/operations'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/equipment'
     | '/faculty'
+    | '/login'
     | '/notifications'
     | '/onboarding'
     | '/operations'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   EquipmentRoute: typeof EquipmentRoute
   FacultyRoute: typeof FacultyRoute
+  LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   OperationsRoute: typeof OperationsRoute
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/faculty'
       fullPath: '/faculty'
       preLoaderRoute: typeof FacultyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/notifications': {
@@ -373,6 +393,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   EquipmentRoute: EquipmentRoute,
   FacultyRoute: FacultyRoute,
+  LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   OperationsRoute: OperationsRoute,
