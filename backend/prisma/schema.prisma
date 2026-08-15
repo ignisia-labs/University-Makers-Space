@@ -202,6 +202,18 @@ model Programme {
   @@map("programmes")
 }
 
+model AcademicYearOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  value     Int      @unique
+  label     String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, value])
+  @@map("academic_year_options")
+}
+
 model StudentProfile {
   userId       String     @id @map("user_id") @db.Uuid
   prn          String     @unique @db.VarChar(10)
