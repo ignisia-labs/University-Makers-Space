@@ -2,7 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { type AppRole } from "@/lib/makerspace-data";
-export const Route = createFileRoute("/super-admin")({ component: SuperAdmin });
+import { requireRoles } from "@/lib/auth-guards";
+export const Route = createFileRoute("/super-admin")({
+  beforeLoad: requireRoles("SUPER_ADMIN"),
+  component: SuperAdmin,
+});
 function SuperAdmin() {
   const { users, updateUserRole, auditLogs } = useMakerSpace();
   const roles: AppRole[] = ["Student", "Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"];

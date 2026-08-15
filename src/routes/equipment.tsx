@@ -4,8 +4,10 @@ import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { equipmentCatalogue, type EquipmentCategory } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
+import { requireAuthenticated } from "@/lib/auth-guards";
 
 export const Route = createFileRoute("/equipment")({
+  beforeLoad: requireAuthenticated,
   head: () => ({
     meta: [
       { title: "Equipment catalogue — MIT-WPU MakerSpace" },

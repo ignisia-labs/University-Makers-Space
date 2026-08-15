@@ -12,8 +12,10 @@ import { useMakerSpace } from "@/lib/makerspace-context";
 import { TeamMembers } from "@/components/CreateProject/TeamMembers";
 import { MentorSelect } from "@/components/CreateProject/MentorSelect";
 import { ResourceSelection } from "@/components/CreateProject/ResourceSelection";
+import { requireRoles } from "@/lib/auth-guards";
 
 export const Route = createFileRoute("/projects")({
+  beforeLoad: requireRoles("STUDENT"),
   head: () => ({
     meta: [
       { title: "Projects hub — MIT-WPU MakerSpace" },

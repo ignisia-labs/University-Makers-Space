@@ -2,7 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
-export const Route = createFileRoute("/operations")({ component: Operations });
+import { requireRoles } from "@/lib/auth-guards";
+export const Route = createFileRoute("/operations")({
+  beforeLoad: requireRoles("LAB_ASSISTANT"),
+  component: Operations,
+});
 function Operations() {
   const { reservations, equipment, updateVisit, addVisit, updateEquipment, markReservationNoShow } =
     useMakerSpace();

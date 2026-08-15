@@ -2,8 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { requireInvitation } from "@/lib/auth-guards";
 
 export const Route = createFileRoute("/invitations/$projectId")({
+  beforeLoad: requireInvitation,
   component: ProjectInvitation,
 });
 

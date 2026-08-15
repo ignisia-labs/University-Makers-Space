@@ -5,7 +5,11 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import type { Equipment } from "@/lib/makerspace-data";
-export const Route = createFileRoute("/admin")({ component: Admin });
+import { requireRoles } from "@/lib/auth-guards";
+export const Route = createFileRoute("/admin")({
+  beforeLoad: requireRoles("ADMIN", "SUPER_ADMIN"),
+  component: Admin,
+});
 function Admin() {
   const { config, saveConfig, equipment, updateEquipment, addEquipment, removeEquipment } =
     useMakerSpace();

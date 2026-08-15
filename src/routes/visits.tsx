@@ -6,8 +6,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { quickVisitPurposes } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
+import { requireRoles } from "@/lib/auth-guards";
 
 export const Route = createFileRoute("/visits")({
+  beforeLoad: requireRoles("STUDENT"),
   head: () => ({
     meta: [
       { title: "Quick visit & history — MIT-WPU MakerSpace" },

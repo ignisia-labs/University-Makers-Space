@@ -8,8 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { bookingDates, timeSlots } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
+import { requireRoles } from "@/lib/auth-guards";
 
 export const Route = createFileRoute("/book")({
+  beforeLoad: requireRoles("STUDENT"),
   head: () => ({
     meta: [
       { title: "Book a slot — MIT-WPU MakerSpace" },

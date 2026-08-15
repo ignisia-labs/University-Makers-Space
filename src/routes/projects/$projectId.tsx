@@ -2,7 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
-export const Route = createFileRoute("/projects/$projectId")({ component: ProjectDetails });
+import { requireRoles } from "@/lib/auth-guards";
+export const Route = createFileRoute("/projects/$projectId")({
+  beforeLoad: requireRoles("STUDENT"),
+  component: ProjectDetails,
+});
 function ProjectDetails() {
   const { projectId } = Route.useParams();
   const { projects, profile, updateProject } = useMakerSpace();

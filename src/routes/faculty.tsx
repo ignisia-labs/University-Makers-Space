@@ -5,7 +5,11 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import type { Project } from "@/lib/makerspace-data";
-export const Route = createFileRoute("/faculty")({ component: Faculty });
+import { requireRoles } from "@/lib/auth-guards";
+export const Route = createFileRoute("/faculty")({
+  beforeLoad: requireRoles("FACULTY_MENTOR"),
+  component: Faculty,
+});
 function Faculty() {
   const { projects, updateProject } = useMakerSpace();
   const [project, setProject] = useState<Project | null>(null);

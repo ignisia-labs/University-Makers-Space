@@ -1,7 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { useMakerSpace } from "@/lib/makerspace-context";
-export const Route = createFileRoute("/notifications")({ component: Notifications });
+import { requireAuthenticated } from "@/lib/auth-guards";
+export const Route = createFileRoute("/notifications")({
+  beforeLoad: requireAuthenticated,
+  component: Notifications,
+});
 function Notifications() {
   const { notifications, markNotificationRead, markAllNotificationsRead } = useMakerSpace();
   return (
