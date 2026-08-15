@@ -52,6 +52,7 @@ Our platform brings structure to the chaos of creativity so students can focus o
 ## 🛠️ Tech stack
 
 ### Frontend
+
 - React
 - TypeScript
 - Vite
@@ -60,6 +61,7 @@ Our platform brings structure to the chaos of creativity so students can focus o
 - Modern UI component system
 
 ### Backend
+
 - Node.js
 - Express
 - TypeScript
@@ -96,7 +98,7 @@ npm run dev
 Open the app here:
 
 ```text
-http://localhost:5173
+http://localhost:8081
 ```
 
 ### 4) Run the backend
