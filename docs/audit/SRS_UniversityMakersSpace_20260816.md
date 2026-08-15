@@ -184,16 +184,16 @@ Highest-risk blockers:
 
 ## 10. Recommended delivery sequence
 
-1. Completed in Phase 1: connect Google GIS, CSRF, access/refresh session handling, `/auth/me`, logout, onboarding reference data, and role route guards.
-2. Continue replacing the in-memory frontend provider per vertical workflow using the shared API/query foundation.
-3. Complete the atomic project workflow, invitation responses, safe user/faculty search, requirements, and notifications.
-4. Build lab configuration, closure, slot generation, and availability APIs.
-5. Add real-DB booking concurrency tests, then connect booking and cancellation UI.
-6. Build Quick Visit, attendance, occupancy, no-show, late-arrival, and Lab Assistant operations.
-7. Complete equipment availability separation, categories, consumables, and Admin configuration.
-8. Implement email worker and event-driven in-app notifications.
-9. Add service worker/offline UX, route splitting, accessibility/performance verification.
-10. Establish CI/CD, staging, backups/restore, monitoring/alerts, security testing, and launch acceptance.
+The canonical delivery plan is maintained in `docs/IMPLEMENTATION_ROADMAP.md`. Its eight phases are:
+
+1. Integration and identity foundation — completed core.
+2. Projects, teams, and mentor verification.
+3. Lab configuration, schedules, and slot availability.
+4. End-to-end bookings and QR reservations.
+5. Quick Visits, attendance, and Lab Assistant operations.
+6. Resources, administration, and reporting.
+7. Notifications, email, and near-real-time updates.
+8. Production readiness and launch acceptance, including removal of mock data paths and the Prototype view switch.
 
 ---
 

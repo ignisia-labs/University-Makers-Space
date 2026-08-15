@@ -75,3 +75,10 @@ This log records product context, implementation decisions, and material changes
 - Hardened Express async authentication/rate-limit middleware error propagation and marked auth responses `Cache-Control: no-store` to prevent stale browser identity/permission responses.
 - Added reference-data authentication/filter/validation integration coverage and updated the API/OpenAPI plus RFP SRS/FRS traceability records.
 - Retained the frontend-only prototype role switch until Phase 8 so stakeholders can review every mock workspace with one authenticated account. The selected preview role never changes the persisted account role or backend permissions, and is stored only for the current browser tab.
+
+## 2026-08-16 — Shared eight-phase implementation roadmap
+
+- Added `docs/IMPLEMENTATION_ROADMAP.md` as the shared execution source for local and remote contributors.
+- Recorded the current working/testable baseline, mock-versus-persisted boundaries, local setup and Phase 1 acceptance checklist.
+- Consolidated remaining RFP delivery into eight ordered phases with deliverables and evidence-based exit gates; Phase 8 explicitly removes the temporary Prototype view role switch.
+- Added remote branching/PR coordination rules and a reusable implementation prompt that requires RFP traceability, backend authorization, configurable data, complete vertical slices, tests, documentation, and explicit handoff evidence.

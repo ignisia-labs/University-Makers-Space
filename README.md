@@ -165,6 +165,8 @@ Made for the Ignisia Club ecosystem — a place where ideas become projects, pro
 
 Pull requests and feature ideas are welcome. For larger changes, open an issue first so the direction and architecture stay aligned with the project vision.
 
+All contributors must use the shared [implementation roadmap](docs/IMPLEMENTATION_ROADMAP.md) for the current baseline, eight agreed phases, exit gates, remote workflow, and reusable task prompt.
+
 ---
 
 ## 📜 License
