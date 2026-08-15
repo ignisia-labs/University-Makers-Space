@@ -1,82 +1,105 @@
-# University Makers Space
+# MAKERS LAB APP
 
-A modern makerspace platform for managing bookings, projects, equipment access, events, and community collaboration inside a university innovation lab.
+## BY IGNISIA CLUB
 
-## What we do
+<div align="center">
+  <img src="https://images.unsplash.com/photo-1516321165247-4aa89a48be28?auto=format&fit=crop&w=1200&q=80" alt="Makerspace community workspace" width="1100" />
+</div>
 
-University Makers Space helps students, faculty, and staff:
+A bold digital platform for university makerspaces — built to help students, faculty, and club teams turn ideas into projects, prototypes, and real-world innovation.
 
-- book equipment and lab resources
-- manage maker projects and team invites
-- track project progress and ownership
-- browse upcoming events and registrations
-- access a central dashboard for operations and notifications
-- support admin and moderation workflows for lab coordination
+### Build faster. Create bigger. Make smarter.
 
-This project is designed to make the makerspace feel organized, accessible, and student-friendly while giving admins the tools they need to run the space smoothly.
+University Makers Space is the central hub for managing equipment access, project collaboration, events, bookings, and community activity inside a modern innovation lab.
 
-## Platform overview
+---
 
-- Frontend: React + TypeScript + TanStack Router + Tailwind CSS
-- Backend: Express + TypeScript + Prisma + PostgreSQL
-- Auth: JWT with refresh-token flow
-- Real-time/queue workflows: Redis + BullMQ
-- File uploads: Cloudinary
-- API docs: Swagger UI in development
+## 🚀 What we do
 
-## Features
+We help makers and creators inside the club and university ecosystem to:
 
-- Equipment booking and status management
-- Project creation, member management, and invitations
-- Event listings and registrations
-- Notifications and activity tracking
+- book lab equipment and workshop resources
+- manage maker projects and team collaborations
+- invite members and track ownership
+- discover upcoming events and community activities
+- organize admin operations and role-based permissions
+- keep notifications, tasks, and approvals in one place
+
+This app creates a smooth, student-first experience while giving admins and moderators the control they need to run a productive maker ecosystem.
+
+---
+
+## ✨ Why it matters
+
+The makerspace is more than a room — it is a space for experimentation, invention, and leadership.
+
+Our platform brings structure to the chaos of creativity so students can focus on building instead of managing logistics.
+
+---
+
+## 🧩 Core features
+
+- Equipment booking and reservation management
+- Project creation with members and invites
+- Event discovery and registrations
+- Notifications and activity updates
 - Role-based access for students, staff, moderators, and admins
-- Search, filtering, pagination, and structured API responses
-- Secure API layer with validation, logging, rate limiting, and CORS config
+- Search, filtering, pagination, and smart API responses
+- Secure backend architecture with validation, logging, and rate limiting
 
-## Tech stack
+---
+
+## 🛠️ Tech stack
 
 ### Frontend
 - React
 - TypeScript
 - Vite
-- TanStack Start / Router
+- TanStack Router
 - Tailwind CSS
-- shadcn/ui-inspired components
+- Modern UI component system
 
 ### Backend
 - Node.js
 - Express
+- TypeScript
 - Prisma ORM
 - PostgreSQL
 - Redis
-- JWT
-- Cloudinary
+- JWT auth
+- Cloudinary uploads
 - Zod validation
 
-## Local development
+---
 
-### 1) Install dependencies
+## 📍 Local development
+
+### 1) Clone the project
 
 ```bash
 git clone https://github.com/ignisia-labs/University-Makers-Space.git
 cd University-Makers-Space
+```
+
+### 2) Install frontend dependencies
+
+```bash
 npm install
 ```
 
-### 2) Start the frontend
+### 3) Run the frontend
 
 ```bash
 npm run dev
 ```
 
-Then open:
+Open the app here:
 
 ```text
 http://localhost:5173
 ```
 
-### 3) Start the backend
+### 4) Run the backend
 
 ```bash
 cd backend
@@ -86,45 +109,62 @@ npm run prisma:generate
 npm run dev
 ```
 
-Then open:
+Check the API health here:
 
 ```text
 http://localhost:4000/health
 ```
 
-Swagger docs are available at:
+Swagger docs:
 
 ```text
 http://localhost:4000/api/docs
 ```
 
-## Environment notes
+---
 
-The backend requires PostgreSQL, Redis, and valid environment variables set in the backend `.env` file. You’ll need to configure:
+## ⚙️ Environment setup
+
+The backend requires valid environment variables in `backend/.env`:
 
 - `DATABASE_URL`
 - `REDIS_URL`
 - `JWT_SECRET`
 - `JWT_REFRESH_SECRET`
-- `CLOUDINARY_*`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
 - `FRONTEND_URL`
 
-## Project structure
+---
+
+## 🗂️ Project structure
 
 ```text
 .
-├── src/                 # Frontend app
+├── src/                 # Frontend application
 ├── public/              # Static assets
-├── backend/             # Express + Prisma API
+├── backend/             # Express + Prisma backend
 ├── package.json         # Frontend scripts
-├── README.md            # Project docs
-└── vite.config.ts       # Vite config
+├── README.md            # Project documentation
+├── vite.config.ts       # App config
+└── .gitignore
 ```
 
-## Contributing
+---
 
-Pull requests are welcome. For larger changes, please open an issue first so the project direction can be discussed clearly.
+## 🌍 Built for innovation
 
-## License
+Made for the Ignisia Club ecosystem — a place where ideas become projects, projects become prototypes, and prototypes become impact.
 
-This project is currently for internal academic and lab use. Update this section if you plan to open-source or license it formally.
+---
+
+## 🤝 Contributing
+
+Pull requests and feature ideas are welcome. For larger changes, open an issue first so the direction and architecture stay aligned with the project vision.
+
+---
+
+## 📜 License
+
+This project is intended for academic and club-based innovation use. Update this section if formal licensing is required.
