@@ -190,20 +190,28 @@ export async function completeOnboarding(
     if (!user.roles.includes(UserRole.STUDENT)) {
       throw new ApiError(403, "STUDENT_PROFILE_NOT_REQUIRED", "This account is not a student");
     }
-    const programme = await tx.programme.findFirst({
-      where: {
-        id: input.programmeId,
-        departmentId: input.departmentId,
-        isActive: true,
-        department: { isActive: true },
-      },
-    });
+    const [programme, academicYear] = await Promise.all([
+      tx.programme.findFirst({
+        where: {
+          id: input.programmeId,
+          departmentId: input.departmentId,
+          isActive: true,
+          department: { isActive: true },
+        },
+      }),
+      tx.academicYearOption.findFirst({
+        where: { value: input.academicYear, isActive: true },
+      }),
+    ]);
     if (!programme) {
       throw new ApiError(
         400,
         "INVALID_ACADEMIC_SELECTION",
         "Programme does not belong to the selected active department",
       );
+    }
+    if (!academicYear) {
+      throw new ApiError(400, "INVALID_ACADEMIC_YEAR", "Academic year is not active");
     }
     const profile = await tx.studentProfile.upsert({
       where: { userId },
@@ -265,7 +273,10 @@ function signAccessToken(userId: string, sessionId: string) {
 
 function signRefreshToken(userId: string, sessionId: string) {
   const payload: RefreshPayload = { sub: userId, sid: sessionId, type: "refresh" };
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, { expiresIn: REFRESH_TTL_SECONDS });
+  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+    expiresIn: REFRESH_TTL_SECONDS,
+    jwtid: crypto.randomUUID(),
+  });
 }
 
 function hashToken(token: string) {
@@ -275,7 +286,9 @@ function hashToken(token: string) {
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+  return (
+    leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer)
+  );
 }
 
 function assertMatchingCsrf(bodyToken: string, cookieToken: string | undefined) {

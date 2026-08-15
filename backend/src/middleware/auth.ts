@@ -6,7 +6,11 @@ import { ApiError } from "../utils/api-error.js";
 
 export type AccessPayload = { sub: string; sid: string; type: "access" };
 
-export async function authenticate(req: Request, _res: Response, next: NextFunction) {
+export function authenticate(req: Request, _res: Response, next: NextFunction) {
+  void authenticateRequest(req).then(() => next(), next);
+}
+
+async function authenticateRequest(req: Request) {
   const header = req.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
   if (!token) throw new ApiError(401, "UNAUTHENTICATED", "Authentication required");
@@ -45,7 +49,6 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       isActive: session.user.isActive,
       sessionId: session.id,
     };
-    next();
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(401, "UNAUTHENTICATED", "Invalid or expired token");

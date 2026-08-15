@@ -16,9 +16,13 @@ export const onboardingSchema = z.object({
       prn: z.string().regex(/^\d{10}$/, "PRN must contain exactly 10 digits"),
       departmentId: z.string().uuid(),
       programmeId: z.string().uuid(),
-      academicYear: z.number().int().min(1).max(8),
+      academicYear: z.number().int().positive(),
       division: z.string().trim().min(1).max(30).optional(),
-      phone: z.string().trim().regex(/^\+?[0-9]{10,15}$/).optional(),
+      phone: z
+        .string()
+        .trim()
+        .regex(/^\+?[0-9]{10,15}$/)
+        .optional(),
     })
     .strict(),
 });

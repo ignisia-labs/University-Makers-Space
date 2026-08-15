@@ -10,6 +10,11 @@ import { googleSignInSchema, onboardingSchema } from "./auth-schema.js";
 export const authRoutes = Router();
 const authLimiter = rateLimit({ prefix: "auth", windowSeconds: 900, max: 20 });
 
+authRoutes.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 authRoutes.get("/google/config", controller.googleConfig);
 authRoutes.get("/google/csrf", authLimiter, controller.loginCsrf);
 authRoutes.post(
