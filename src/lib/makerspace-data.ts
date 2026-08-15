@@ -4,8 +4,24 @@ import eqElectronics from "@/assets/eq-electronics.jpg";
 import eqRobotics from "@/assets/eq-robotics.jpg";
 import eqWorkstation from "@/assets/eq-workstation.jpg";
 
+export type AppRole = "Student" | "Faculty Mentor" | "Lab Assistant" | "Admin" | "Super Admin";
 export type ProjectStatus =
-  "Draft" | "Team Acceptance Pending" | "Mentor Approval Pending" | "Verified";
+  | "Draft"
+  | "Team Acceptance Pending"
+  | "Mentor Approval Pending"
+  | "Verified"
+  | "Rejected"
+  | "Archived";
+export type BookingStatus = "Active" | "Completed" | "Cancelled" | "No Show";
+export type EquipmentStatus =
+  | "Available"
+  | "Partially Available"
+  | "In Use"
+  | "Reserved"
+  | "Unavailable"
+  | "Under Maintenance"
+  | "Damaged"
+  | "Out of Service";
 
 export type Student = {
   id: string;
@@ -13,8 +29,8 @@ export type Student = {
   prn: string;
   department: string;
   email?: string;
+  present?: boolean;
 };
-
 export type Project = {
   id: string;
   name: string;
@@ -25,18 +41,21 @@ export type Project = {
   status: ProjectStatus;
   resources: string[];
   invitedEmails: string[];
+  rejectionReason?: string;
+  createdAt: string;
 };
-
 export type Reservation = {
   id: string;
+  projectId: string;
   projectName: string;
   date: string;
   slot: string;
   attendees: number;
-  status: "Active" | "Completed";
+  participantIds: string[];
+  status: BookingStatus;
   resources: string[];
+  cancelledReason?: string;
 };
-
 export type Visit = {
   id: string;
   type: "Project Slot" | "Quick Visit";
@@ -44,20 +63,22 @@ export type Visit = {
   date: string;
   entry: string;
   exit: string | null;
+  status: "Requested" | "Active" | "Completed";
 };
-
 export type EquipmentCategory =
-  "3D Printing" | "Laser" | "Robotics" | "Electronics" | "Workstations";
-
+  "3D Printing" | "Laser" | "Robotics" | "Electronics" | "Workstations" | "Sensors & Actuators";
 export type Equipment = {
   id: string;
   name: string;
   category: EquipmentCategory;
-  status: "Available" | "Under Maintenance";
+  status: EquipmentStatus;
   image: string;
   specs: string[];
+  description: string;
+  totalQuantity: number;
+  availableQuantity: number;
+  visible: boolean;
 };
-
 export type StudentProfile = {
   email: string;
   fullName: string;
@@ -65,6 +86,32 @@ export type StudentProfile = {
   department: string;
   programme: string;
   academicYear: string;
+};
+export type Notification = {
+  id: string;
+  title: string;
+  body: string;
+  href: string;
+  read: boolean;
+  createdAt: string;
+};
+export type AppUser = { id: string; name: string; email: string; role: AppRole; active: boolean };
+export type AuditEvent = {
+  id: string;
+  action: string;
+  actor: string;
+  entity: string;
+  timestamp: string;
+};
+export type LabConfig = {
+  labName: string;
+  openingTime: string;
+  closingTime: string;
+  slotDuration: number;
+  capacity: number;
+  bookingHorizon: number;
+  cancellationWindow: number;
+  closureDates: string[];
 };
 
 export const defaultProfile: StudentProfile = {
@@ -75,7 +122,6 @@ export const defaultProfile: StudentProfile = {
   programme: "B.Tech",
   academicYear: "Third Year",
 };
-
 export const departments = [
   "Computer Science & Engineering",
   "Electronics & Communication",
@@ -84,11 +130,8 @@ export const departments = [
   "Civil Engineering",
   "Design",
 ];
-
 export const programmes = ["B.Tech", "B.Des", "M.Tech", "MBA Tech", "Ph.D"];
-
 export const academicYears = ["First Year", "Second Year", "Third Year", "Final Year"];
-
 export const facultyMentors = [
   "Dr. Neha Kulkarni — CSE",
   "Prof. Rohan Bhide — E&TC",
@@ -96,16 +139,36 @@ export const facultyMentors = [
   "Prof. Amit Shirke — Robotics",
   "Dr. Priya Nair — Design",
 ];
-
 export const directoryStudents: Student[] = [
-  { id: "s2", name: "Isha Kulkarni", prn: "1032220912", department: "CSE" },
-  { id: "s3", name: "Rehan Shaikh", prn: "1032221044", department: "E&TC" },
-  { id: "s4", name: "Meera Joshi", prn: "1032220778", department: "Mechanical" },
-  { id: "s5", name: "Kabir Menon", prn: "1032221190", department: "Robotics" },
-  { id: "s6", name: "Tanvi Patil", prn: "1032220633", department: "Design" },
-  { id: "s7", name: "Arjun Nair", prn: "1032221457", department: "CSE" },
+  {
+    id: "s2",
+    name: "Isha Kulkarni",
+    prn: "1032220912",
+    department: "CSE",
+    email: "isha.kulkarni@mitwpu.edu.in",
+  },
+  {
+    id: "s3",
+    name: "Rehan Shaikh",
+    prn: "1032221044",
+    department: "E&TC",
+    email: "rehan.shaikh@mitwpu.edu.in",
+  },
+  {
+    id: "s4",
+    name: "Meera Joshi",
+    prn: "1032220778",
+    department: "Mechanical",
+    email: "meera.joshi@mitwpu.edu.in",
+  },
+  {
+    id: "s5",
+    name: "Kabir Menon",
+    prn: "1032221190",
+    department: "Robotics",
+    email: "kabir.menon@mitwpu.edu.in",
+  },
 ];
-
 export const resourceOptions = {
   Equipment: [
     "FDM 3D Printer",
@@ -115,10 +178,11 @@ export const resourceOptions = {
     "Oscilloscope",
     "Robotic Arm",
     "CAD Workstation",
+    "ESP32 Kit",
+    "Ultrasonic Sensor",
   ],
   Consumables: ["PLA Filament", "Acrylic Sheets", "Jumper Wires", "PCB Blanks", "MDF Board"],
 };
-
 export const initialProjects: Project[] = [
   {
     id: "p1",
@@ -130,6 +194,7 @@ export const initialProjects: Project[] = [
     status: "Verified",
     resources: ["Robotic Arm", "CAD Workstation", "Jumper Wires"],
     invitedEmails: [],
+    createdAt: "12 Aug 2026",
   },
   {
     id: "p2",
@@ -141,32 +206,34 @@ export const initialProjects: Project[] = [
     status: "Mentor Approval Pending",
     resources: ["Soldering Station", "PCB Blanks", "Oscilloscope"],
     invitedEmails: [],
+    createdAt: "13 Aug 2026",
   },
   {
     id: "p3",
     name: "Modular Prosthetic Hand",
     description: "3D printed low-cost prosthetic hand with servo-driven articulated fingers.",
     leader: "Aarav Deshmukh",
-    members: [directoryStudents[2]!, directoryStudents[4]!, directoryStudents[5]!],
+    members: [directoryStudents[2]!],
     mentor: "Dr. Sanjana Rao — Mechanical",
     status: "Draft",
     resources: ["FDM 3D Printer", "PLA Filament"],
     invitedEmails: [],
+    createdAt: "14 Aug 2026",
   },
 ];
-
 export const initialReservations: Reservation[] = [
   {
     id: "r1",
+    projectId: "p1",
     projectName: "Autonomous Campus Rover",
     date: "Mon, 17 Aug",
     slot: "10:30 – 11:30",
     attendees: 3,
+    participantIds: ["leader", "s2", "s5"],
     status: "Active",
     resources: ["Robotic Arm", "CAD Workstation"],
   },
 ];
-
 export const initialVisits: Visit[] = [
   {
     id: "v1",
@@ -175,6 +242,7 @@ export const initialVisits: Visit[] = [
     date: "12 Aug 2026",
     entry: "10:32",
     exit: "11:28",
+    status: "Completed",
   },
   {
     id: "v2",
@@ -183,17 +251,9 @@ export const initialVisits: Visit[] = [
     date: "09 Aug 2026",
     entry: "15:04",
     exit: "15:21",
-  },
-  {
-    id: "v3",
-    type: "Project Slot",
-    title: "IoT Air Quality Grid",
-    date: "05 Aug 2026",
-    entry: "14:00",
-    exit: "16:05",
+    status: "Completed",
   },
 ];
-
 export const equipmentCatalogue: Equipment[] = [
   {
     id: "e1",
@@ -201,7 +261,11 @@ export const equipmentCatalogue: Equipment[] = [
     category: "3D Printing",
     status: "Available",
     image: eq3dPrinter,
-    specs: ["350 × 350 × 400 mm", "PLA / PETG / TPU", "0.1 mm layer"],
+    specs: ["350 × 350 × 400 mm", "PLA / PETG / TPU"],
+    description: "Large-format FDM prototyping printer.",
+    totalQuantity: 4,
+    availableQuantity: 3,
+    visible: true,
   },
   {
     id: "e2",
@@ -209,7 +273,11 @@ export const equipmentCatalogue: Equipment[] = [
     category: "Laser",
     status: "Under Maintenance",
     image: eqLaser,
-    specs: ["60 W CO2", "610 × 305 mm bed", "Acrylic, MDF, ply"],
+    specs: ["60 W CO2", "610 × 305 mm bed"],
+    description: "Laser fabrication for acrylic, MDF and ply.",
+    totalQuantity: 1,
+    availableQuantity: 0,
+    visible: true,
   },
   {
     id: "e3",
@@ -217,15 +285,23 @@ export const equipmentCatalogue: Equipment[] = [
     category: "Electronics",
     status: "Available",
     image: eqElectronics,
-    specs: ["Hakko FX-888D", "100 MHz DSO", "Bench PSU 30V/5A"],
+    specs: ["Hakko FX-888D", "100 MHz DSO"],
+    description: "Soldering and measurement bench.",
+    totalQuantity: 8,
+    availableQuantity: 6,
+    visible: true,
   },
   {
     id: "e4",
     name: "Dobot Magician Arm",
     category: "Robotics",
-    status: "Available",
+    status: "In Use",
     image: eqRobotics,
-    specs: ["4-axis", "500 g payload", "0.2 mm repeatability"],
+    specs: ["4-axis", "500 g payload"],
+    description: "Desktop robotic arm for prototyping.",
+    totalQuantity: 2,
+    availableQuantity: 1,
+    visible: true,
   },
   {
     id: "e5",
@@ -233,32 +309,25 @@ export const equipmentCatalogue: Equipment[] = [
     category: "Workstations",
     status: "Available",
     image: eqWorkstation,
-    specs: ["i7 / 32 GB / RTX", "SolidWorks, Fusion 360", "8 seats"],
-  },
-  {
-    id: "e6",
-    name: "Formlabs Form 3+",
-    category: "3D Printing",
-    status: "Under Maintenance",
-    image: eq3dPrinter,
-    specs: ["SLA resin", "145 × 145 × 185 mm", "25 µm layer"],
+    specs: ["i7 / 32 GB / RTX", "SolidWorks"],
+    description: "Design and simulation workstation.",
+    totalQuantity: 8,
+    availableQuantity: 8,
+    visible: true,
   },
 ];
-
 export const bookingDates = [
   { id: "d1", day: "Mon", date: "17", month: "Aug" },
   { id: "d2", day: "Tue", date: "18", month: "Aug" },
   { id: "d3", day: "Wed", date: "19", month: "Aug" },
   { id: "d4", day: "Thu", date: "20", month: "Aug" },
   { id: "d5", day: "Fri", date: "21", month: "Aug" },
-  { id: "d6", day: "Sat", date: "22", month: "Aug" },
 ];
-
 export const timeSlots = [
   {
     id: "t1",
     label: "09:00 – 10:00",
-    capacity: 12,
+    capacity: 20,
     booked: 9,
     equipment: [
       { name: "3D Printer", available: true },
@@ -268,7 +337,7 @@ export const timeSlots = [
   {
     id: "t2",
     label: "10:30 – 11:30",
-    capacity: 12,
+    capacity: 20,
     booked: 6,
     equipment: [
       { name: "3D Printer", available: true },
@@ -278,35 +347,21 @@ export const timeSlots = [
   {
     id: "t3",
     label: "12:00 – 13:00",
-    capacity: 12,
-    booked: 12,
-    equipment: [
-      { name: "3D Printer", available: false },
-      { name: "Electronics Bench", available: true },
-    ],
+    capacity: 20,
+    booked: 20,
+    equipment: [{ name: "Electronics Bench", available: true }],
   },
   {
     id: "t4",
     label: "14:30 – 15:30",
-    capacity: 12,
+    capacity: 20,
     booked: 4,
     equipment: [
       { name: "3D Printer", available: true },
       { name: "Electronics Bench", available: true },
     ],
   },
-  {
-    id: "t5",
-    label: "16:00 – 17:00",
-    capacity: 12,
-    booked: 7,
-    equipment: [
-      { name: "Laser Cutter", available: true },
-      { name: "CAD Workstation", available: true },
-    ],
-  },
 ];
-
 export const quickVisitPurposes = [
   "Component pickup",
   "Consult lab assistant",
@@ -314,3 +369,55 @@ export const quickVisitPurposes = [
   "Return material",
   "Explore equipment",
 ];
+export const initialNotifications: Notification[] = [
+  {
+    id: "n1",
+    title: "Mentor approval pending",
+    body: "Prof. Rohan Bhide has your project for review.",
+    href: "/projects",
+    read: false,
+    createdAt: "Today",
+  },
+  {
+    id: "n2",
+    title: "Upcoming slot",
+    body: "Campus Rover is booked for 17 Aug at 10:30.",
+    href: "/book",
+    read: false,
+    createdAt: "Today",
+  },
+];
+export const initialUsers: AppUser[] = [
+  { id: "u1", name: "Aarav Deshmukh", email: defaultProfile.email, role: "Student", active: true },
+  {
+    id: "u2",
+    name: "Prof. Rohan Bhide",
+    email: "rohan.bhide@mitwpu.edu.in",
+    role: "Faculty Mentor",
+    active: true,
+  },
+  {
+    id: "u3",
+    name: "Nisha Patil",
+    email: "nisha.patil@mitwpu.edu.in",
+    role: "Lab Assistant",
+    active: true,
+  },
+  {
+    id: "u4",
+    name: "Anil Jadhav",
+    email: "anil.jadhav@mitwpu.edu.in",
+    role: "Admin",
+    active: true,
+  },
+];
+export const initialConfig: LabConfig = {
+  labName: "MIT-WPU MakerSpace",
+  openingTime: "08:30",
+  closingTime: "18:30",
+  slotDuration: 60,
+  capacity: 20,
+  bookingHorizon: 14,
+  cancellationWindow: 2,
+  closureDates: [],
+};

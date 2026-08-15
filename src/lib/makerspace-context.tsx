@@ -1,74 +1,138 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import {
   defaultProfile,
+  equipmentCatalogue,
+  initialConfig,
+  initialNotifications,
   initialProjects,
   initialReservations,
+  initialUsers,
   initialVisits,
+  type AppRole,
+  type AppUser,
+  type AuditEvent,
+  type Equipment,
+  type LabConfig,
+  type Notification,
   type Project,
   type Reservation,
   type StudentProfile,
   type Visit,
 } from "./makerspace-data";
 
-type MakerSpaceState = {
+type State = {
   profile: StudentProfile;
+  role: AppRole;
   onboarded: boolean;
   projects: Project[];
   reservations: Reservation[];
   visits: Visit[];
-  completeOnboarding: (profile: StudentProfile) => void;
-  addProject: (project: Omit<Project, "id">) => void;
-  addReservation: (reservation: Omit<Reservation, "id">) => void;
-  addVisit: (visit: Omit<Visit, "id">) => void;
-  acceptProjectInvitation: (projectId: string, student: StudentProfile) => void;
+  equipment: Equipment[];
+  notifications: Notification[];
+  users: AppUser[];
+  auditLogs: AuditEvent[];
+  config: LabConfig;
+  completeOnboarding: (p: StudentProfile) => void;
+  setRole: (r: AppRole) => void;
+  addProject: (p: Omit<Project, "id" | "createdAt">) => void;
+  updateProject: (id: string, patch: Partial<Project>) => void;
+  addReservation: (r: Omit<Reservation, "id">) => void;
+  cancelReservation: (id: string, reason: string) => void;
+  markReservationNoShow: (id: string) => void;
+  addVisit: (v: Omit<Visit, "id">) => void;
+  updateVisit: (id: string, patch: Partial<Visit>) => void;
+  acceptProjectInvitation: (id: string, s: StudentProfile) => void;
+  updateEquipment: (id: string, patch: Partial<Equipment>) => void;
+  addEquipment: (e: Omit<Equipment, "id">) => void;
+  removeEquipment: (id: string) => void;
+  saveConfig: (c: LabConfig) => void;
+  updateUserRole: (id: string, role: AppRole) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 };
-
-const MakerSpaceContext = createContext<MakerSpaceState | null>(null);
-
+const Ctx = createContext<State | null>(null);
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export function MakerSpaceProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<StudentProfile>(defaultProfile);
+  const [profile, setProfile] = useState(defaultProfile);
+  const [role, setRole] = useState<AppRole>("Student");
   const [onboarded, setOnboarded] = useState(false);
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [reservations, setReservations] = useState<Reservation[]>(initialReservations);
-  const [visits, setVisits] = useState<Visit[]>(initialVisits);
-
-  const value = useMemo<MakerSpaceState>(
+  const [projects, setProjects] = useState(initialProjects);
+  const [reservations, setReservations] = useState(initialReservations);
+  const [visits, setVisits] = useState(initialVisits);
+  const [equipment, setEquipment] = useState(equipmentCatalogue);
+  const [notifications, setNotifications] = useState(initialNotifications);
+  const [users, setUsers] = useState(initialUsers);
+  const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
+  const [config, setConfig] = useState(initialConfig);
+  const audit = (action: string, entity: string) =>
+    setAuditLogs((prev) => [
+      { id: uid(), action, entity, actor: role, timestamp: new Date().toLocaleString("en-IN") },
+      ...prev,
+    ]);
+  const value = useMemo<State>(
     () => ({
       profile,
+      role,
       onboarded,
       projects,
       reservations,
       visits,
-      completeOnboarding: (next) => {
-        setProfile(next);
+      equipment,
+      notifications,
+      users,
+      auditLogs,
+      config,
+      completeOnboarding(p) {
+        setProfile(p);
         setOnboarded(true);
       },
-      addProject: (project) => setProjects((prev) => [{ ...project, id: uid() }, ...prev]),
-      addReservation: (reservation) =>
-        setReservations((prev) => [{ ...reservation, id: uid() }, ...prev]),
-      addVisit: (visit) => setVisits((prev) => [{ ...visit, id: uid() }, ...prev]),
-      acceptProjectInvitation: (projectId, student) =>
+      setRole,
+      addProject(p) {
+        setProjects((prev) => [
+          { ...p, id: uid(), createdAt: new Date().toLocaleDateString("en-IN") },
+          ...prev,
+        ]);
+        audit("Created project", p.name);
+      },
+      updateProject(id, patch) {
+        setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+        audit("Updated project", id);
+      },
+      addReservation(r) {
+        setReservations((prev) => [{ ...r, id: uid() }, ...prev]);
+        audit("Created booking", r.projectName);
+      },
+      cancelReservation(id, reason) {
+        setReservations((prev) =>
+          prev.map((r) =>
+            r.id === id ? { ...r, status: "Cancelled", cancelledReason: reason } : r,
+          ),
+        );
+        audit("Cancelled booking", id);
+      },
+      markReservationNoShow(id) {
+        setReservations((prev) => prev.map((r) => (r.id === id ? { ...r, status: "No Show" } : r)));
+        audit("Marked booking no-show", id);
+      },
+      addVisit(v) {
+        setVisits((prev) => [{ ...v, id: uid() }, ...prev]);
+        audit("Requested visit", v.title);
+      },
+      updateVisit(id, patch) {
+        setVisits((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+        audit("Updated attendance", id);
+      },
+      acceptProjectInvitation(id, student) {
         setProjects((prev) =>
-          prev.map((project) => {
-            const email = student.email.trim().toLowerCase();
-            if (
-              project.id !== projectId ||
-              !project.invitedEmails.some((invited) => invited.toLowerCase() === email) ||
-              project.members.some((member) => member.email?.toLowerCase() === email)
-            ) {
-              return project;
-            }
-
-            const invitedEmails = project.invitedEmails.filter(
-              (invited) => invited.toLowerCase() !== email,
-            );
-
+          prev.map((p) => {
+            if (p.id !== id || !p.invitedEmails.includes(student.email)) return p;
+            const invitations = p.invitedEmails.filter((email) => email !== student.email);
             return {
-              ...project,
+              ...p,
+              invitedEmails: invitations,
               members: [
-                ...project.members,
+                ...p.members,
                 {
                   id: uid(),
                   name: student.fullName,
@@ -77,23 +141,56 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
                   email: student.email,
                 },
               ],
-              invitedEmails,
-              status:
-                invitedEmails.length === 0 && project.status === "Team Acceptance Pending"
-                  ? "Mentor Approval Pending"
-                  : project.status,
+              status: invitations.length === 0 ? "Mentor Approval Pending" : p.status,
             };
           }),
-        ),
+        );
+      },
+      updateEquipment(id, patch) {
+        setEquipment((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+        audit("Updated equipment", id);
+      },
+      addEquipment(e) {
+        setEquipment((prev) => [{ ...e, id: uid() }, ...prev]);
+        audit("Added equipment", e.name);
+      },
+      removeEquipment(id) {
+        setEquipment((prev) => prev.filter((e) => e.id !== id));
+        audit("Removed equipment", id);
+      },
+      saveConfig(c) {
+        setConfig(c);
+        audit("Updated lab configuration", c.labName);
+      },
+      updateUserRole(id, nextRole) {
+        setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: nextRole } : u)));
+        audit("Changed user role", id);
+      },
+      markNotificationRead(id) {
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      },
+      markAllNotificationsRead() {
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      },
     }),
-    [profile, onboarded, projects, reservations, visits],
+    [
+      profile,
+      role,
+      onboarded,
+      projects,
+      reservations,
+      visits,
+      equipment,
+      notifications,
+      users,
+      auditLogs,
+      config,
+    ],
   );
-
-  return <MakerSpaceContext.Provider value={value}>{children}</MakerSpaceContext.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
-
 export function useMakerSpace() {
-  const ctx = useContext(MakerSpaceContext);
-  if (!ctx) throw new Error("useMakerSpace must be used inside MakerSpaceProvider");
-  return ctx;
+  const value = useContext(Ctx);
+  if (!value) throw new Error("useMakerSpace must be used inside MakerSpaceProvider");
+  return value;
 }

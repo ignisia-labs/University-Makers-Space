@@ -29,7 +29,7 @@ export const Route = createFileRoute("/book")({
 });
 
 function BookPage() {
-  const { projects, profile, addReservation } = useMakerSpace();
+  const { projects, profile, reservations, addReservation, cancelReservation } = useMakerSpace();
   const verified = projects.filter((p) => p.status === "Verified");
   const [projectId, setProjectId] = useState(verified[0]?.id ?? "");
   const project = verified.find((p) => p.id === projectId);
@@ -37,6 +37,7 @@ function BookPage() {
   const [dateId, setDateId] = useState(bookingDates[0]!.id);
   const [slotId, setSlotId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const selectedDate = bookingDates.find((d) => d.id === dateId)!;
   const selectedSlot = timeSlots.find((s) => s.id === slotId);
@@ -61,6 +62,38 @@ function BookPage() {
   return (
     <AppShell title="Book a slot" subtitle="Capacity-aware reservation">
       <div className="space-y-6">
+        {reservations
+          .filter((reservation) => reservation.status === "Active")
+          .map((reservation) => (
+            <section key={reservation.id} className="card-surface border-warning/40 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold">Upcoming booking</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {reservation.projectName} · {reservation.date} · {reservation.slot}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    cancelReservation(reservation.id, cancelReason || "Cancelled by team leader")
+                  }
+                  className="min-h-11 rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive hover:bg-destructive/10"
+                >
+                  Cancel booking
+                </button>
+              </div>
+              <input
+                value={cancelReason}
+                onChange={(event) => setCancelReason(event.target.value)}
+                placeholder="Cancellation reason (optional)"
+                className="mt-4 h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Cancelling releases reserved capacity and keeps the booking in history.
+              </p>
+            </section>
+          ))}
         <Step index={1} title="Select verified project">
           <ul className="grid gap-3 sm:grid-cols-2">
             {verified.map((p) => (
@@ -221,10 +254,12 @@ function BookPage() {
         projectResources={project?.resources ?? []}
         onConfirm={(resources) => {
           addReservation({
+            projectId: project?.id ?? "",
             projectName: project?.name ?? "",
             date: `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`,
             slot: selectedSlot?.label ?? "",
             attendees: capacityUsed,
+            participantIds: attending,
             status: "Active",
             resources,
           });

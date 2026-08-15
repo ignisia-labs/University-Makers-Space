@@ -75,6 +75,7 @@ function VisitsPage() {
                 hour12: false,
               }),
               exit: null,
+              status: "Requested",
             });
             setPurpose(null);
             toast.success("Quick visit requested. Show your PRN at the desk.");

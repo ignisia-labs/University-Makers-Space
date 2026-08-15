@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Plus, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -74,6 +74,13 @@ function ProjectsPage() {
             <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
               <Users className="size-4" /> {project.members.length + 1} members
             </p>
+            <Link
+              to="/projects/$projectId"
+              params={{ projectId: project.id }}
+              className="mt-4 block text-sm font-semibold text-primary"
+            >
+              View project details
+            </Link>
           </article>
         ))}
       </div>

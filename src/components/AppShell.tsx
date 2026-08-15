@@ -6,15 +6,20 @@ import {
   LayoutDashboard,
   Menu,
   Footprints,
+  Bell,
+  ChevronDown,
+  LogOut,
+  Settings,
+  UserRound,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useMakerSpace } from "@/lib/makerspace-context";
 
-const nav = [
-  { to: "/dashboard", label: "Home", icon: LayoutDashboard },
+const studentNav = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/projects", label: "Projects", icon: FolderKanban },
-  { to: "/book", label: "Book", icon: CalendarClock },
+  { to: "/book", label: "Slots", icon: CalendarClock },
   { to: "/visits", label: "Visits", icon: Footprints },
   { to: "/equipment", label: "Equipment", icon: Boxes },
 ] as const;
@@ -29,7 +34,8 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { profile } = useMakerSpace();
+  const { profile, role, setRole, notifications } = useMakerSpace();
+  const [roleOpen, setRoleOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const initials = profile.fullName
     .split(" ")
@@ -37,6 +43,29 @@ export function AppShell({
     .join("")
     .slice(0, 2);
 
+  const nav =
+    role === "Student"
+      ? studentNav
+      : ([
+          {
+            to:
+              role === "Faculty Mentor"
+                ? "/faculty"
+                : role === "Lab Assistant"
+                  ? "/operations"
+                  : role === "Admin"
+                    ? "/admin"
+                    : "/super-admin",
+            label:
+              role === "Faculty Mentor"
+                ? "Faculty"
+                : role === "Lab Assistant"
+                  ? "Operations"
+                  : role,
+            icon: LayoutDashboard,
+          },
+        ] as const);
+  const unread = notifications.filter((item) => !item.read).length;
   return (
     <div className="min-h-screen bg-background">
       <aside
@@ -82,6 +111,34 @@ export function AppShell({
           })}
         </nav>
         <div className="border-t border-sidebar-border p-3">
+          {expanded && (
+            <div className="mb-3 flex gap-1">
+              <Link
+                to="/notifications"
+                className="tap relative grid place-items-center rounded-xl px-2 hover:bg-sidebar-accent"
+                aria-label="Notifications"
+              >
+                <Bell className="size-4" />
+                {unread > 0 && (
+                  <span className="absolute right-1 top-1 size-2 rounded-full bg-destructive" />
+                )}
+              </Link>
+              <Link
+                to="/profile"
+                className="tap grid place-items-center rounded-xl px-2 hover:bg-sidebar-accent"
+                aria-label="Profile"
+              >
+                <UserRound className="size-4" />
+              </Link>
+              <Link
+                to="/settings"
+                className="tap grid place-items-center rounded-xl px-2 hover:bg-sidebar-accent"
+                aria-label="Settings"
+              >
+                <Settings className="size-4" />
+              </Link>
+            </div>
+          )}
           <div className="flex min-w-0 items-center gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
               {initials}
@@ -93,6 +150,37 @@ export function AppShell({
               </div>
             )}
           </div>
+          {expanded && (
+            <div className="relative mt-3">
+              <button
+                type="button"
+                onClick={() => setRoleOpen((value) => !value)}
+                className="flex min-h-10 w-full items-center justify-between rounded-lg bg-muted px-3 text-xs font-semibold"
+              >
+                Prototype role: {role}
+                <ChevronDown className="size-3" />
+              </button>
+              {roleOpen && (
+                <div className="absolute bottom-11 z-40 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
+                  {(
+                    ["Student", "Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"] as const
+                  ).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setRole(item);
+                        setRoleOpen(false);
+                      }}
+                      className="block min-h-9 w-full rounded-lg px-2 text-left text-xs hover:bg-accent"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -106,6 +194,16 @@ export function AppShell({
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground md:hidden">
               {initials}
             </span>
+            <Link
+              to="/notifications"
+              aria-label="Notifications"
+              className="relative hidden size-10 place-items-center rounded-full bg-accent text-accent-foreground md:grid"
+            >
+              <Bell className="size-4" />
+              {unread > 0 && (
+                <span className="absolute right-1 top-1 size-2 rounded-full bg-destructive" />
+              )}
+            </Link>
           </div>
         </header>
 
