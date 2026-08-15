@@ -3,9 +3,12 @@ import { Boxes, CalendarClock, Check, Footprints, Plus, CalendarDays, Users } fr
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { requireRoles } from "@/lib/auth-guards";
+import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
+  beforeLoad: requireRoles("STUDENT"),
   head: () => ({
     meta: [
       { title: "Student dashboard — MIT-WPU MakerSpace" },
@@ -34,15 +37,21 @@ const actions = [
 ] as const;
 
 function Dashboard() {
-  const { profile, projects, reservations } = useMakerSpace();
+  const { projects, reservations } = useMakerSpace();
+  const { user } = useAuth();
+  const studentProfile = user?.studentProfile;
   const upcoming = reservations.find((r) => r.status === "Active");
   const verified = projects.some((p) => p.status === "Verified");
   const currentStep = upcoming ? 3 : verified ? 2 : projects.length ? 1 : 0;
 
   return (
     <AppShell
-      title={`Hi, ${profile.fullName.split(" ")[0]}`}
-      subtitle={`${profile.programme} · ${profile.academicYear} · ${profile.department}`}
+      title={`Hi, ${user?.name.split(" ")[0] ?? "Maker"}`}
+      subtitle={
+        studentProfile
+          ? `${studentProfile.programme?.name ?? "Programme"} · Year ${studentProfile.academicYear} · ${studentProfile.department?.name ?? "Department"}`
+          : "Your MakerSpace workspace"
+      }
     >
       <div className="space-y-6">
         <section className="card-surface p-5 sm:p-6">

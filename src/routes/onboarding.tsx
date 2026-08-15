@@ -1,5 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Input } from "@/components/ui/input";
@@ -11,10 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useMakerSpace } from "@/lib/makerspace-context";
-import { academicYears, departments, programmes } from "@/lib/makerspace-data";
+import { useAuth } from "@/lib/auth-context";
+import { requireOnboarding } from "@/lib/auth-guards";
+import { ApiClientError } from "@/lib/api-client";
+
+type Department = { id: string; code: string; name: string };
+type Programme = { id: string; departmentId: string; code: string; name: string };
+type AcademicYear = { id: string; value: number; label: string };
 
 export const Route = createFileRoute("/onboarding")({
+  beforeLoad: requireOnboarding,
   validateSearch: z.object({ invite: z.string().optional() }),
   head: () => ({
     meta: [
@@ -24,24 +32,65 @@ export const Route = createFileRoute("/onboarding")({
         content:
           "Set up your MakerSpace student profile with PRN, department, programme and academic year.",
       },
-      { property: "og:title", content: "Student onboarding — MIT-WPU MakerSpace" },
-      {
-        property: "og:description",
-        content: "One-step profile setup for MIT-WPU MakerSpace students.",
-      },
     ],
   }),
   component: Onboarding,
 });
 
 function Onboarding() {
-  const { profile, completeOnboarding, acceptProjectInvitation } = useMakerSpace();
+  const { client, user } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState(profile);
-  const { invite: invitationProjectId } = Route.useSearch();
+  const { invite } = Route.useSearch();
+  const [fullName, setFullName] = useState(user?.name ?? "");
+  const [prn, setPrn] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [programmeId, setProgrammeId] = useState("");
+  const [academicYear, setAcademicYear] = useState("");
+  const [division, setDivision] = useState("");
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const set = (key: keyof typeof form) => (value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  useEffect(() => {
+    if (!fullName && user?.name) setFullName(user.name);
+  }, [fullName, user?.name]);
+
+  const departments = useQuery({
+    queryKey: ["reference-data", "departments"],
+    queryFn: () => client.api.request<Department[]>("/reference-data/departments"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const academicYears = useQuery({
+    queryKey: ["reference-data", "academic-years"],
+    queryFn: () => client.api.request<AcademicYear[]>("/reference-data/academic-years"),
+    staleTime: 5 * 60 * 1000,
+  });
+  const programmes = useQuery({
+    queryKey: ["reference-data", "programmes", departmentId],
+    queryFn: () =>
+      client.api.request<Programme[]>(
+        `/reference-data/programmes?departmentId=${encodeURIComponent(departmentId)}`,
+      ),
+    enabled: Boolean(departmentId),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const referenceError = departments.error ?? academicYears.error ?? programmes.error;
+  const loadingReferences = departments.isLoading || academicYears.isLoading;
+  const canSubmit = useMemo(
+    () =>
+      fullName.trim().length >= 2 &&
+      /^\d{10}$/.test(prn) &&
+      Boolean(departmentId && programmeId && academicYear) &&
+      !submitting,
+    [academicYear, departmentId, fullName, prn, programmeId, submitting],
+  );
+
+  const retryReferences = () => {
+    void departments.refetch();
+    void academicYears.refetch();
+    if (departmentId) void programmes.refetch();
+  };
 
   return (
     <div className="min-h-screen bg-background px-4 py-10 sm:px-6">
@@ -49,26 +98,46 @@ function Onboarding() {
         <p className="text-sm font-semibold text-primary">Step 1 of 1</p>
         <h1 className="mt-1 text-3xl font-bold">Complete your student profile</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          We use these details to verify your project registrations and MakerSpace visits.
+          We use these details to verify project registrations and MakerSpace visits.
         </p>
 
         <form
           className="card-surface mt-6 space-y-5 p-5 sm:p-6"
-          onSubmit={(e) => {
-            e.preventDefault();
-            completeOnboarding(form);
-            if (invitationProjectId) {
-              acceptProjectInvitation(invitationProjectId, form);
-              toast.success("Profile completed. You have joined the project team.");
-            } else {
-              toast.success("Profile completed. Welcome to the MakerSpace!");
-            }
-            navigate({ to: "/dashboard" });
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canSubmit) return;
+            setSubmitting(true);
+            setSubmitError(null);
+            void client
+              .completeOnboarding({
+                fullName: fullName.trim(),
+                prn,
+                departmentId,
+                programmeId,
+                academicYear: Number(academicYear),
+                ...(division.trim() ? { division: division.trim() } : {}),
+                ...(phone.trim() ? { phone: phone.trim() } : {}),
+              })
+              .then(() => {
+                toast.success("Profile completed. Welcome to the MakerSpace!");
+                if (invite) {
+                  toast.info("Project invitation responses will be enabled in the next phase.");
+                }
+                return navigate({ to: "/dashboard" });
+              })
+              .catch((error: unknown) => {
+                const message =
+                  error instanceof ApiClientError
+                    ? fieldAwareMessage(error)
+                    : "Your profile could not be saved. Please try again.";
+                setSubmitError(message);
+              })
+              .finally(() => setSubmitting(false));
           }}
         >
           <div className="space-y-2">
             <Label htmlFor="email">Institutional email</Label>
-            <Input id="email" value={form.email} readOnly className="h-12 bg-muted" />
+            <Input id="email" value={user?.email ?? ""} readOnly className="h-12 bg-muted" />
           </div>
 
           <div className="space-y-2">
@@ -76,9 +145,10 @@ function Onboarding() {
             <Input
               id="name"
               required
+              autoComplete="name"
               className="h-12"
-              value={form.fullName}
-              onChange={(e) => set("fullName")(e.target.value)}
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
             />
           </div>
 
@@ -88,40 +158,114 @@ function Onboarding() {
               id="prn"
               required
               inputMode="numeric"
+              autoComplete="off"
+              maxLength={10}
               className="h-12"
               placeholder="10 digit PRN"
-              value={form.prn}
-              onChange={(e) => set("prn")(e.target.value)}
+              value={prn}
+              onChange={(event) => setPrn(event.target.value.replace(/\D/g, "").slice(0, 10))}
+              aria-describedby="prn-help"
             />
+            <p id="prn-help" className="text-xs text-muted-foreground">
+              Enter the 10-digit PRN issued by MIT-WPU.
+            </p>
           </div>
 
-          <FieldSelect
-            id="department"
-            label="Department"
-            value={form.department}
-            options={departments}
-            onChange={set("department")}
-          />
-          <FieldSelect
-            id="programme"
-            label="Programme"
-            value={form.programme}
-            options={programmes}
-            onChange={set("programme")}
-          />
-          <FieldSelect
-            id="year"
-            label="Academic year"
-            value={form.academicYear}
-            options={academicYears}
-            onChange={set("academicYear")}
-          />
+          {loadingReferences && (
+            <div className="flex min-h-24 items-center justify-center gap-2 rounded-xl bg-muted text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+              Loading university options…
+            </div>
+          )}
+
+          {referenceError && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+              <p className="text-sm text-destructive">University options could not be loaded.</p>
+              <button
+                type="button"
+                onClick={retryReferences}
+                className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary"
+              >
+                <RefreshCw className="size-4" aria-hidden="true" /> Retry
+              </button>
+            </div>
+          )}
+
+          {!loadingReferences && !referenceError && (
+            <>
+              <FieldSelect
+                id="department"
+                label="Department"
+                value={departmentId}
+                options={(departments.data ?? []).map((item) => ({
+                  value: item.id,
+                  label: `${item.name} (${item.code})`,
+                }))}
+                onChange={(value) => {
+                  setDepartmentId(value);
+                  setProgrammeId("");
+                }}
+              />
+              <FieldSelect
+                id="programme"
+                label="Programme"
+                value={programmeId}
+                disabled={!departmentId || programmes.isLoading}
+                options={(programmes.data ?? []).map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                }))}
+                onChange={setProgrammeId}
+              />
+              <FieldSelect
+                id="year"
+                label="Academic year"
+                value={academicYear}
+                options={(academicYears.data ?? []).map((item) => ({
+                  value: String(item.value),
+                  label: item.label,
+                }))}
+                onChange={setAcademicYear}
+              />
+            </>
+          )}
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="division">Division (optional)</Label>
+              <Input
+                id="division"
+                className="h-12"
+                value={division}
+                onChange={(event) => setDivision(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone (optional)</Label>
+              <Input
+                id="phone"
+                type="tel"
+                autoComplete="tel"
+                className="h-12"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+              />
+            </div>
+          </div>
+
+          {submitError && (
+            <p role="alert" className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+              {submitError}
+            </p>
+          )}
 
           <button
             type="submit"
-            className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+            disabled={!canSubmit}
+            className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Complete Onboarding
+            {submitting && <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />}
+            {submitting ? "Saving profile…" : "Complete onboarding"}
           </button>
         </form>
       </div>
@@ -135,28 +279,35 @@ function FieldSelect({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   id: string;
   label: string;
   value: string;
-  options: string[];
+  options: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger id={id} className="h-12 w-full">
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option} value={option} className="min-h-11">
-              {option}
+            <SelectItem key={option.value} value={option.value} className="min-h-11">
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
     </div>
   );
+}
+
+function fieldAwareMessage(error: ApiClientError) {
+  if (error.code === "CONFLICT") return "That PRN is already connected to another account.";
+  return error.details[0]?.message ?? error.message;
 }
