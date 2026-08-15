@@ -23,6 +23,7 @@ import { equipmentRoutes } from "./modules/equipment/equipment-routes.js";
 import { eventRoutes } from "./modules/events/event-routes.js";
 import { notificationRoutes } from "./modules/notifications/notification-routes.js";
 import { projectRoutes } from "./modules/projects/project-routes.js";
+import { referenceDataRoutes } from "./modules/reference-data/reference-data-routes.js";
 import { uploadRoutes } from "./modules/uploads/upload-routes.js";
 import { userRoutes } from "./modules/users/user-routes.js";
 
@@ -37,19 +38,23 @@ export function createApp() {
   app.use(requestId);
   app.use(pinoHttp({ logger, customProps: (req) => ({ requestId: req.id }) }));
   app.use(helmet());
-  app.use(cors({
-    origin: [env.FRONTEND_URL],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }));
+  app.use(
+    cors({
+      origin: [env.FRONTEND_URL],
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  );
   app.use(compression());
   app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
   app.use(hpp());
   app.use(sanitizeRequest);
 
-  app.get("/health", (_req, res) => res.status(200).json({ success: true, message: "OK", data: { status: "ok" } }));
+  app.get("/health", (_req, res) =>
+    res.status(200).json({ success: true, message: "OK", data: { status: "ok" } }),
+  );
   if (!isProduction) app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApi));
 
   const api = express.Router();
@@ -59,11 +64,23 @@ export function createApp() {
   api.use("/equipment", equipmentRoutes);
   api.use("/bookings", bookingRoutes);
   api.use("/projects", projectRoutes);
+  api.use("/reference-data", referenceDataRoutes);
   api.use("/events", eventRoutes);
   api.use("/notifications", notificationRoutes);
-  api.use("/uploads", authenticate, rateLimit({ prefix: "uploads", windowSeconds: 3600, max: 20 }), uploadRoutes);
+  api.use(
+    "/uploads",
+    authenticate,
+    rateLimit({ prefix: "uploads", windowSeconds: 3600, max: 20 }),
+    uploadRoutes,
+  );
   app.use("/api/v1", api);
-  app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found", error: { code: "NOT_FOUND", details: [] } }));
+  app.use((_req, res) =>
+    res.status(404).json({
+      success: false,
+      message: "Route not found",
+      error: { code: "NOT_FOUND", details: [] },
+    }),
+  );
   app.use(errorHandler);
   return app;
 }
