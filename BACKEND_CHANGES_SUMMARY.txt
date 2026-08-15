@@ -1,0 +1,189 @@
+University Makers Space Backend - Changes Summary
+Generated: 2026-08-15
+
+Overview
+I added a complete production-oriented backend service in the new backend/ folder.
+The existing Lovable/TanStack frontend was left untouched.
+
+Main Backend Additions
+- Added a standalone Express + TypeScript backend package under backend/.
+- Added Prisma/PostgreSQL database schema with UUID primary keys.
+- Added core entities:
+  - User
+  - Equipment
+  - Booking
+  - Project
+  - ProjectMember
+  - Event
+  - EventRegistration
+  - Notification
+  - Upload
+- Added soft-delete fields and timestamps where required.
+- Added indexes for foreign keys, filter fields, status fields, and created dates.
+
+Authentication And Security
+- Added JWT access token support.
+- Added refresh token support using httpOnly cookies.
+- Added refresh-token rotation.
+- Added tokenVersion checks for session invalidation.
+- Added bcrypt password hashing with minimum 12 rounds.
+- Added authentication middleware.
+- Added reusable role-based authorization middleware.
+- Added roles:
+  - student
+  - admin
+  - moderator
+  - staff
+- Added Helmet security headers.
+- Disabled X-Powered-By.
+- Added HTTPS enforcement in production.
+- Added request sanitization for dangerous keys.
+- Added HPP middleware for HTTP parameter pollution protection.
+- Added CORS configuration with credentials enabled.
+
+API Structure
+- All API routes are prefixed with /api/v1.
+- Added standard success/error response envelopes.
+- Added request validation with Zod.
+- Added global error handler.
+- Added async route handler wrapper.
+- Added request ID middleware using X-Request-ID.
+- Added structured logging with Pino.
+
+Implemented API Modules
+- Auth:
+  - POST /api/v1/auth/register
+  - POST /api/v1/auth/login
+  - POST /api/v1/auth/refresh
+  - POST /api/v1/auth/logout
+  - GET /api/v1/auth/me
+- Users:
+  - GET /api/v1/users
+  - GET /api/v1/users/:id
+  - PATCH /api/v1/users/:id
+  - DELETE /api/v1/users/:id
+- Equipment:
+  - GET /api/v1/equipment
+  - GET /api/v1/equipment/:id
+  - POST /api/v1/equipment
+  - PATCH /api/v1/equipment/:id
+  - DELETE /api/v1/equipment/:id
+- Bookings:
+  - GET /api/v1/bookings
+  - GET /api/v1/bookings/:id
+  - POST /api/v1/bookings
+  - PATCH /api/v1/bookings/:id/status
+- Projects:
+  - GET /api/v1/projects
+  - GET /api/v1/projects/:id
+  - POST /api/v1/projects
+  - PATCH /api/v1/projects/:id
+  - POST /api/v1/projects/:id/members
+  - DELETE /api/v1/projects/:id
+- Events:
+  - GET /api/v1/events
+  - GET /api/v1/events/:id
+  - POST /api/v1/events
+  - PATCH /api/v1/events/:id
+  - POST /api/v1/events/:id/registrations
+  - DELETE /api/v1/events/:id
+- Notifications:
+  - GET /api/v1/notifications
+  - POST /api/v1/notifications
+  - PATCH /api/v1/notifications/:id/read
+- Uploads:
+  - POST /api/v1/uploads
+  - DELETE /api/v1/uploads/:id
+
+Pagination, Search, Sorting, And Filtering
+- Added pagination helpers.
+- List endpoints support page and limit.
+- Relevant list endpoints support search, status/category filtering, sortBy, and order.
+- Paginated responses return a meta object.
+- Empty lists return 200 with an empty array.
+
+Caching, Rate Limits, And Jobs
+- Added Redis connection setup.
+- Added Redis-backed sliding-window rate limiter.
+- Added cache helper utilities.
+- Added equipment list cache with invalidation.
+- Added event list cache with invalidation.
+- Added BullMQ notification queue setup.
+
+File Uploads
+- Added Multer v2 memory upload handling.
+- Added Cloudinary configuration.
+- Added MIME type and extension validation.
+- Allowed file types:
+  - jpeg
+  - png
+  - webp
+  - pdf
+- Added image size limit of 5MB.
+- Added overall upload limit of 20MB.
+- Files are uploaded to Cloudinary, not stored on the server disk.
+- Upload metadata is stored in the database.
+
+Documentation
+- Added API contract document:
+  backend/docs/api-contract.md
+- Added OpenAPI 3 YAML document:
+  backend/docs/openapi.yaml
+- Swagger UI is served in development at:
+  /api/docs
+
+Environment And Config
+- Added environment validation with Zod.
+- Added safe example environment file:
+  backend/.env.example
+- Updated .gitignore to ignore .env files and backend coverage/dev artifacts.
+
+Testing
+- Added Jest configuration.
+- Added Supertest integration test for auth response envelope.
+- Added unit tests for validation behavior.
+
+Verification Commands Run Successfully
+- npm install
+- npm install multer@^2.0.2
+- npm run prisma:generate
+- npm run build
+- npm test
+- npm audit --audit-level=high
+
+Verification Result
+- TypeScript build passed.
+- Jest tests passed.
+- npm audit reported 0 high-severity vulnerabilities.
+
+Important Notes
+- The backend server was not started because it needs real environment variables,
+  PostgreSQL, Redis, and Cloudinary credentials.
+- To run locally:
+  1. cd backend
+  2. copy .env.example to .env
+  3. fill in real DATABASE_URL, REDIS_URL, JWT secrets, Cloudinary credentials, and FRONTEND_URL
+  4. run npm run prisma:migrate
+  5. run npm run prisma:seed
+  6. run npm run dev
+
+Files/Folders Added Or Updated
+- .gitignore
+- backend/package.json
+- backend/package-lock.json
+- backend/tsconfig.json
+- backend/jest.config.cjs
+- backend/.env.example
+- backend/prisma/schema.prisma
+- backend/prisma/seed.ts
+- backend/docs/api-contract.md
+- backend/docs/openapi.yaml
+- backend/src/app.ts
+- backend/src/server.ts
+- backend/src/config/*
+- backend/src/middleware/*
+- backend/src/modules/*
+- backend/src/utils/*
+- backend/src/jobs/queues.ts
+- backend/tests/unit/validation.test.ts
+- backend/tests/integration/auth.test.ts

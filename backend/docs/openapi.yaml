@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: University Makers Space API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Envelope:
+      type: object
+      required: [success, message, data]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        data: {}
+        meta:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+            hasNext: { type: boolean }
+            hasPrev: { type: boolean }
+    ErrorEnvelope:
+      type: object
+      required: [success, message, error]
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            details: { type: array, items: {} }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        roles: { type: array, items: { type: string, enum: [student, admin, moderator, staff] } }
+        avatarUrl: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Equipment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        status: { type: string }
+        imageUrl: { type: string, nullable: true }
+        totalQuantity: { type: integer }
+        availableQuantity: { type: integer }
+        specs: { type: array, items: { type: string } }
+        visible: { type: boolean }
+paths:
+  /auth/register:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "400": { description: Validation error, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+  /auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Login, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+        "401": { description: Invalid credentials, content: { application/json: { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+  /auth/refresh:
+    post:
+      security: []
+      responses:
+        "200": { description: Access token refreshed, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+  /auth/logout:
+    post:
+      responses:
+        "204": { description: Logged out }
+  /auth/me:
+    get:
+      responses:
+        "200": { description: Current user, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+  /users:
+    get:
+      responses:
+        "200": { description: Users, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+  /users/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+    delete:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Deleted }
+  /equipment:
+    get:
+      responses:
+        "200": { description: Equipment, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+    post:
+      responses:
+        "201": { description: Created equipment, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+  /equipment/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Equipment, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Updated equipment, content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } } }
+    delete:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "204": { description: Deleted }
+  /bookings:
+    get: { responses: { "200": { description: Bookings } } }
+    post: { responses: { "201": { description: Created booking } } }
+  /bookings/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Booking } }
+  /bookings/{id}/status:
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated booking } }
+  /projects:
+    get: { responses: { "200": { description: Projects } } }
+    post: { responses: { "201": { description: Created project } } }
+  /projects/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Project } }
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated project } }
+    delete:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "204": { description: Deleted } }
+  /events:
+    get: { responses: { "200": { description: Events } } }
+    post: { responses: { "201": { description: Created event } } }
+  /events/{id}:
+    get:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Event } }
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated event } }
+    delete:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "204": { description: Deleted } }
+  /events/{id}/registrations:
+    post:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "201": { description: Registered } }
+  /notifications:
+    get: { responses: { "200": { description: Notifications } } }
+    post: { responses: { "201": { description: Created notification } } }
+  /notifications/{id}/read:
+    patch:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: Updated notification } }
+  /uploads:
+    post: { responses: { "201": { description: Uploaded file } } }
+  /uploads/{id}:
+    delete:
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "204": { description: Deleted upload } }

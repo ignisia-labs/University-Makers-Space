@@ -1,0 +1,9 @@
+{
+  "name": "MIT-WPU MakerSpace",
+  "short_name": "MakerSpace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4338ca",
+  "icons": [{ "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon" }]
+}
