@@ -20,7 +20,11 @@ export async function update(req: Request, res: Response) {
 }
 
 export async function register(req: Request, res: Response) {
-  return created(res, "Event registration created", await service.register(req.params.id!, req.user!.id));
+  return created(
+    res,
+    "Event registration created",
+    await service.register(req.params.id!, req.user!.id),
+  );
 }
 
 export async function remove(req: Request, res: Response) {
