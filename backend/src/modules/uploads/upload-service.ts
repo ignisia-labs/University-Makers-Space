@@ -23,14 +23,23 @@ export async function upload(ownerId: string, file: Express.Multer.File | undefi
   }
   const publicId = `ums/${crypto.randomUUID()}`;
   const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream({ public_id: publicId, resource_type: "auto" }, (err, value) => {
-      if (err || !value) reject(err);
-      else resolve(value);
-    });
+    const stream = cloudinary.uploader.upload_stream(
+      { public_id: publicId, resource_type: "auto" },
+      (err, value) => {
+        if (err || !value) reject(err);
+        else resolve(value);
+      },
+    );
     stream.end(file.buffer);
   });
   return prisma.upload.create({
-    data: { ownerId, url: result.secure_url, publicId: result.public_id, mimeType: file.mimetype, bytes: file.size },
+    data: {
+      ownerId,
+      url: result.secure_url,
+      publicId: result.public_id,
+      mimeType: file.mimetype,
+      bytes: file.size,
+    },
     select: { id: true, url: true, mimeType: true, bytes: true, createdAt: true },
   });
 }

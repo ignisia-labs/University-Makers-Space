@@ -12,5 +12,9 @@ export async function create(req: Request, res: Response) {
 }
 
 export async function markRead(req: Request, res: Response) {
-  return ok(res, "Notification updated", await service.markRead(req.params.id!, req.user!.id, req.body.isRead));
+  return ok(
+    res,
+    "Notification updated",
+    await service.markRead(req.params.id!, req.user!.id, req.body.isRead),
+  );
 }

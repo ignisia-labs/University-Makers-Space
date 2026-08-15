@@ -13,11 +13,7 @@ export async function get(req: Request, res: Response) {
 }
 
 export async function update(req: Request, res: Response) {
-  return ok(
-    res,
-    "User updated",
-    await service.update(req.params.id!, req.body, req.user!.id),
-  );
+  return ok(res, "User updated", await service.update(req.params.id!, req.body, req.user!.id));
 }
 
 export async function updateRoles(req: Request, res: Response) {

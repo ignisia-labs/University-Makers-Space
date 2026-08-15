@@ -15,7 +15,12 @@ export async function list(query: Record<string, unknown>, userId: string) {
   };
   const [total, rows] = await prisma.$transaction([
     prisma.notification.count({ where }),
-    prisma.notification.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
   ]);
   return { data: rows.map(notificationDto), meta: meta(page, limit, total) };
 }
@@ -25,7 +30,14 @@ export async function create(data: Prisma.NotificationUncheckedCreateInput) {
 }
 
 export async function markRead(id: string, userId: string, isRead: boolean) {
-  const notification = await prisma.notification.findFirst({ where: { id, userId, deletedAt: null } });
+  const notification = await prisma.notification.findFirst({
+    where: { id, userId, deletedAt: null },
+  });
   if (!notification) throw new ApiError(404, "NOT_FOUND", "Notification not found");
-  return notificationDto(await prisma.notification.update({ where: { id }, data: { isRead } }));
+  return notificationDto(
+    await prisma.notification.update({
+      where: { id },
+      data: { isRead, readAt: isRead ? new Date() : null },
+    }),
+  );
 }

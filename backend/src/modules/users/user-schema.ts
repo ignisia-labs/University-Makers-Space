@@ -14,7 +14,9 @@ const institutionalEmail = z
   });
 
 export const listUsersSchema = z.object({
-  query: listQuery.extend({ role: role.optional(), isActive: z.coerce.boolean().optional() }).strict(),
+  query: listQuery
+    .extend({ role: role.optional(), isActive: z.coerce.boolean().optional() })
+    .strict(),
 });
 
 export const updateUserSchema = z.object({
