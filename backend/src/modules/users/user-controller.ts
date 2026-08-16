@@ -49,3 +49,16 @@ export async function updateProvisioning(req: Request, res: Response) {
     await service.updateProvisioning(req.params.id!, req.body, req.user!.id),
   );
 }
+
+export async function searchFacultyMentors(req: Request, res: Response) {
+  const result = await service.searchFacultyMentors(req.query, req.user!.id);
+  return ok(res, "Faculty Mentor search results", result.data, result.meta);
+}
+
+export async function updateOwnStudentProfile(req: Request, res: Response) {
+  return ok(
+    res,
+    "Student profile updated",
+    await service.updateOwnStudentProfile(req.user!.id, req.body),
+  );
+}

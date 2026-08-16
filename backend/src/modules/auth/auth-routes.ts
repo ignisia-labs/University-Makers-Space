@@ -16,6 +16,7 @@ authRoutes.use((_req, res, next) => {
 });
 
 authRoutes.get("/google/config", controller.googleConfig);
+authRoutes.get("/student-profile/config", authenticate, controller.studentProfileConfig);
 authRoutes.get("/google/csrf", authLimiter, controller.loginCsrf);
 authRoutes.post(
   "/google",

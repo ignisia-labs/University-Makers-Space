@@ -1,21 +1,42 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
 import { authorize } from "../../middleware/authorize.js";
+import { rateLimit } from "../../middleware/rate-limit.js";
 import { validate } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as controller from "./user-controller.js";
 import {
   listUsersSchema,
+  directorySearchSchema,
   provisioningSchema,
   updateProvisioningSchema,
   updateRolesSchema,
   updateUserSchema,
+  updateOwnStudentProfileSchema,
   userIdSchema,
 } from "./user-schema.js";
 
 export const userRoutes = Router();
+const directorySearchLimiter = rateLimit({
+  prefix: "directory-search",
+  windowSeconds: 60,
+  max: 60,
+});
 
 userRoutes.use(authenticate);
+userRoutes.get(
+  "/search/faculty-mentors",
+  authorize("project.create"),
+  directorySearchLimiter,
+  validate(directorySearchSchema),
+  asyncHandler(controller.searchFacultyMentors),
+);
+userRoutes.patch(
+  "/me/student-profile",
+  authorize("profile.complete"),
+  validate(updateOwnStudentProfileSchema),
+  asyncHandler(controller.updateOwnStudentProfile),
+);
 userRoutes.get(
   "/provisioning",
   authorize("user.roles.manage"),

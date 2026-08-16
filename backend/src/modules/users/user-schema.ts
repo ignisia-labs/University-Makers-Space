@@ -2,6 +2,7 @@ import { UserRole } from "@prisma/client";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { idParam, listQuery } from "../shared/schemas.js";
+import { prnSchema } from "./prn-policy.js";
 
 const role = z.nativeEnum(UserRole);
 const institutionalEmail = z
@@ -56,3 +57,29 @@ export const updateProvisioningSchema = z.object({
 });
 
 export const userIdSchema = z.object({ params: idParam });
+
+export const directorySearchSchema = z.object({
+  query: listQuery
+    .pick({ page: true, limit: true, search: true })
+    .extend({ search: z.string().trim().min(2).max(100) })
+    .strict(),
+});
+
+export const updateOwnStudentProfileSchema = z.object({
+  body: z
+    .object({
+      fullName: z.string().trim().min(2).max(100),
+      prn: prnSchema,
+      departmentId: z.string().uuid(),
+      programmeId: z.string().uuid(),
+      academicYear: z.number().int().positive(),
+      division: z.string().trim().min(1).max(30).nullable().optional(),
+      phone: z
+        .string()
+        .trim()
+        .regex(/^\+?[0-9]{10,15}$/)
+        .nullable()
+        .optional(),
+    })
+    .strict(),
+});

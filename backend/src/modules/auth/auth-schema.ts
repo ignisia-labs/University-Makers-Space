@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { prnSchema } from "../users/prn-policy.js";
 
 export const googleSignInSchema = z.object({
   body: z
@@ -13,7 +14,7 @@ export const onboardingSchema = z.object({
   body: z
     .object({
       fullName: z.string().trim().min(2).max(100),
-      prn: z.string().regex(/^\d{10}$/, "PRN must contain exactly 10 digits"),
+      prn: prnSchema,
       departmentId: z.string().uuid(),
       programmeId: z.string().uuid(),
       academicYear: z.number().int().positive(),

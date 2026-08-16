@@ -4,12 +4,17 @@ import { permissionsFor } from "../../config/permissions.js";
 import { created, noContent, ok } from "../../utils/api-response.js";
 import { userDto } from "../../utils/serializers.js";
 import * as service from "./auth-service.js";
+import { prnPolicy } from "../users/prn-policy.js";
 
 export function googleConfig(_req: Request, res: Response) {
   return ok(res, "Google identity configuration", {
     clientId: env.GOOGLE_CLIENT_ID,
     hostedDomain: env.GOOGLE_HOSTED_DOMAIN,
   });
+}
+
+export function studentProfileConfig(_req: Request, res: Response) {
+  return ok(res, "Student profile policy", { prn: prnPolicy });
 }
 
 export function loginCsrf(_req: Request, res: Response) {

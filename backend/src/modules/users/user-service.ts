@@ -1,4 +1,5 @@
 import type { Prisma, UserRole } from "@prisma/client";
+import { UserRole as Role } from "@prisma/client";
 import { prisma } from "../../config/db.js";
 import { ApiError } from "../../utils/api-error.js";
 import { meta } from "../../utils/pagination.js";
@@ -197,5 +198,126 @@ export async function updateProvisioning(
       },
     });
     return provision;
+  });
+}
+
+export async function searchFacultyMentors(query: Record<string, unknown>, viewerId: string) {
+  const page = Number(query.page ?? 1);
+  const limit = Math.min(Number(query.limit ?? 10), 20);
+  const search = String(query.search).trim();
+  const where: Prisma.UserWhereInput = {
+    id: { not: viewerId },
+    isActive: true,
+    deletedAt: null,
+    roles: { has: Role.FACULTY_MENTOR },
+    OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+    ],
+  };
+  const [total, rows] = await prisma.$transaction([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        studentProfile: {
+          select: { department: { select: { id: true, code: true, name: true } } },
+        },
+      },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+  return {
+    data: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      department: row.studentProfile?.department ?? null,
+    })),
+    meta: meta(page, limit, total),
+  };
+}
+
+export async function updateOwnStudentProfile(
+  userId: string,
+  data: {
+    fullName: string;
+    prn: string;
+    departmentId: string;
+    programmeId: string;
+    academicYear: number;
+    division?: string | null;
+    phone?: string | null;
+  },
+) {
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findFirst({
+      where: { id: userId, isActive: true, deletedAt: null, roles: { has: Role.STUDENT } },
+    });
+    if (!user) throw new ApiError(404, "NOT_FOUND", "Student account not found");
+
+    const [programme, academicYear] = await Promise.all([
+      tx.programme.findFirst({
+        where: {
+          id: data.programmeId,
+          departmentId: data.departmentId,
+          isActive: true,
+          department: { isActive: true },
+        },
+      }),
+      tx.academicYearOption.findFirst({
+        where: { value: data.academicYear, isActive: true },
+      }),
+    ]);
+    if (!programme) {
+      throw new ApiError(
+        400,
+        "INVALID_ACADEMIC_SELECTION",
+        "Programme does not belong to the selected active department",
+      );
+    }
+    if (!academicYear) {
+      throw new ApiError(400, "INVALID_ACADEMIC_YEAR", "Academic year is not active");
+    }
+
+    await tx.studentProfile.upsert({
+      where: { userId },
+      update: {
+        prn: data.prn,
+        departmentId: data.departmentId,
+        programmeId: data.programmeId,
+        academicYear: data.academicYear,
+        division: data.division ?? null,
+        phone: data.phone ?? null,
+      },
+      create: {
+        userId,
+        prn: data.prn,
+        departmentId: data.departmentId,
+        programmeId: data.programmeId,
+        academicYear: data.academicYear,
+        division: data.division ?? null,
+        phone: data.phone ?? null,
+      },
+    });
+    const updated = await tx.user.update({
+      where: { id: userId },
+      data: { name: data.fullName, profileComplete: true },
+      include: { studentProfile: { include: { department: true, programme: true } } },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: userId,
+        action: "profile.student_updated",
+        entityType: "StudentProfile",
+        entityId: userId,
+      },
+    });
+    return userDto(updated);
   });
 }
