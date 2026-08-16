@@ -116,6 +116,11 @@ export class AuthClient {
     return this.snapshot.user!;
   };
 
+  refreshCurrentUser = async () => {
+    await this.loadCurrentUser();
+    return this.snapshot.user!;
+  };
+
   logout = async () => {
     try {
       if (this.api.getAccessToken()) {

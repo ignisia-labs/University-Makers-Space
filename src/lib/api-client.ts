@@ -5,6 +5,16 @@ type ApiEnvelope<T> = {
   message: string;
   data: T;
   error?: { code?: string; details?: ApiErrorDetail[] };
+  meta?: ApiPaginationMeta;
+};
+
+export type ApiPaginationMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
 };
 
 type RefreshResult = { accessToken: string };
@@ -51,6 +61,11 @@ export class ApiClient {
     return this.send<T>(path, init, true, true);
   }
 
+  async requestPage<T>(path: string, init?: RequestInit) {
+    const payload = await this.sendEnvelope<T>(path, init, true, true);
+    return { data: payload.data, meta: payload.meta! };
+  }
+
   refreshAccessToken() {
     if (!this.refreshPromise) {
       this.refreshPromise = this.performRefresh().finally(() => {
@@ -83,6 +98,15 @@ export class ApiClient {
     authenticated: boolean,
     retryAfterRefresh: boolean,
   ): Promise<T> {
+    return (await this.sendEnvelope<T>(path, init, authenticated, retryAfterRefresh)).data;
+  }
+
+  private async sendEnvelope<T>(
+    path: string,
+    init: RequestInit | undefined,
+    authenticated: boolean,
+    retryAfterRefresh: boolean,
+  ): Promise<ApiEnvelope<T>> {
     let response: Response;
     try {
       response = await fetch(`${apiBaseUrl}${path}`, {
@@ -108,11 +132,13 @@ export class ApiClient {
 
     if (response.status === 401 && authenticated && retryAfterRefresh) {
       const refreshed = await this.refreshAccessToken();
-      if (refreshed) return this.send<T>(path, init, true, false);
+      if (refreshed) return this.sendEnvelope<T>(path, init, true, false);
       this.onAuthenticationLost?.();
     }
 
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204) {
+      return { success: true, message: "No content", data: undefined as T };
+    }
 
     const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
     if (!response.ok || !payload?.success) {
@@ -124,6 +150,6 @@ export class ApiClient {
         response.headers.get("x-request-id"),
       );
     }
-    return payload.data;
+    return payload;
   }
 }
