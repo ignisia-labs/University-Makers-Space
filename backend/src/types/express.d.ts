@@ -6,6 +6,7 @@ declare global {
       requestId: string;
       user?: {
         id: string;
+        name: string;
         email: string;
         roles: UserRole[];
         profileComplete: boolean;

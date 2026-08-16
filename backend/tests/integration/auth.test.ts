@@ -45,6 +45,8 @@ jest.mock("../../src/config/db", () => {
       create: jest.fn(async () => user),
       update: jest.fn(async () => user),
     },
+    projectMember: { findMany: jest.fn(async () => []), updateMany: jest.fn() },
+    notification: { createMany: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   return {

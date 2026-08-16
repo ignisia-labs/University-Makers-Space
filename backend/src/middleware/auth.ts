@@ -29,6 +29,7 @@ async function authenticateRequest(req: Request) {
         user: {
           select: {
             id: true,
+            name: true,
             email: true,
             roles: true,
             profileComplete: true,
@@ -43,6 +44,7 @@ async function authenticateRequest(req: Request) {
     }
     req.user = {
       id: session.user.id,
+      name: session.user.name,
       email: session.user.email,
       roles: session.user.roles,
       profileComplete: session.user.profileComplete,

@@ -82,6 +82,34 @@ export async function googleSignIn(
         data: { claimedById: nextUser.id, claimedAt: new Date() },
       });
     }
+    if (nextUser.roles.includes(UserRole.STUDENT)) {
+      const pendingInvitations = await tx.projectMember.findMany({
+        where: {
+          email: nextUser.email,
+          userId: null,
+          status: "PENDING",
+          removedAt: null,
+        },
+        include: {
+          project: { select: { id: true, title: true, creator: { select: { name: true } } } },
+        },
+      });
+      if (pendingInvitations.length) {
+        await tx.projectMember.updateMany({
+          where: { id: { in: pendingInvitations.map((invitation) => invitation.id) } },
+          data: { userId: nextUser.id },
+        });
+        await tx.notification.createMany({
+          data: pendingInvitations.map((invitation) => ({
+            userId: nextUser.id,
+            type: "PROJECT_INVITATION",
+            title: `Invitation to join ${invitation.project.title}`,
+            body: `${invitation.project.creator.name} invited you to join their MakerSpace project.`,
+            href: `/invitations/${invitation.project.id}`,
+          })),
+        });
+      }
+    }
     await tx.auditLog.create({
       data: {
         actorUserId: nextUser.id,
