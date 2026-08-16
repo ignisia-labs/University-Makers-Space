@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Boxes, CalendarClock, Check, Footprints, Plus, CalendarDays, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { requireRoles } from "@/lib/auth-guards";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import type { ProjectSummary } from "@/lib/project-types";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: requireRoles("STUDENT"),
@@ -37,12 +39,23 @@ const actions = [
 ] as const;
 
 function Dashboard() {
-  const { projects, reservations } = useMakerSpace();
-  const { user } = useAuth();
+  const { reservations } = useMakerSpace();
+  const { user, client } = useAuth();
+  const projectsQuery = useQuery({
+    queryKey: ["projects", "student", "dashboard"],
+    queryFn: () => client.api.requestPage<ProjectSummary[]>("/projects?limit=20&order=desc"),
+  });
+  const projects = projectsQuery.data?.data ?? [];
   const studentProfile = user?.studentProfile;
   const upcoming = reservations.find((r) => r.status === "Active");
   const verified = projects.some((p) => p.status === "Verified");
   const currentStep = upcoming ? 3 : verified ? 2 : projects.length ? 1 : 0;
+  const pendingInvitation = projects.find(
+    (project) => project.creatorId !== user?.id && project.pendingMemberCount > 0,
+  );
+  const pendingMentor = projects.find(
+    (project) => project.creatorId === user?.id && project.status === "MENTOR_APPROVAL_PENDING",
+  );
 
   return (
     <AppShell
@@ -54,6 +67,43 @@ function Dashboard() {
       }
     >
       <div className="space-y-6">
+        {pendingInvitation && (
+          <section className="card-surface border-primary/30 bg-primary/5 p-5 sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">
+              Team invitation
+            </p>
+            <h2 className="mt-2 text-lg font-semibold">You have a project invitation to review</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pendingInvitation.title} · led by {pendingInvitation.leader.name}
+            </p>
+            <Link
+              to="/projects/$projectId"
+              params={{ projectId: pendingInvitation.id }}
+              className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              Review invitation
+            </Link>
+          </section>
+        )}
+        {pendingMentor && (
+          <section className="card-surface p-5 sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">
+              Verification in progress
+            </p>
+            <h2 className="mt-2 text-lg font-semibold">Waiting for your Faculty Mentor</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {pendingMentor.title} has been sent to{" "}
+              {pendingMentor.mentor?.name ?? "your selected mentor"}.
+            </p>
+            <Link
+              to="/projects/$projectId"
+              params={{ projectId: pendingMentor.id }}
+              className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-primary"
+            >
+              View project status
+            </Link>
+          </section>
+        )}
         <section className="card-surface p-5 sm:p-6">
           <h2 className="text-base font-semibold">Your MakerSpace journey</h2>
           <ol className="mt-5 grid gap-4 sm:grid-cols-4">

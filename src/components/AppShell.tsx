@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Boxes,
   CalendarClock,
@@ -44,12 +45,18 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { notifications, role, setRole } = useMakerSpace();
+  const { role, setRole } = useMakerSpace();
   const { client, user } = useAuth();
   const navigate = useNavigate();
   const [roleOpen, setRoleOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const displayName = user?.name ?? "MakerSpace user";
+  const unreadNotifications = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: () => client.api.requestPage<unknown[]>("/notifications?isRead=false&limit=1"),
+    enabled: Boolean(user),
+    staleTime: 15_000,
+  });
   const initials = displayName
     .split(" ")
     .map((p) => p[0])
@@ -99,7 +106,7 @@ export function AppShell({
             icon: LayoutDashboard,
           },
         ] as const);
-  const unread = notifications.filter((item) => !item.read).length;
+  const unread = unreadNotifications.data?.meta.total ?? 0;
   return (
     <div className="min-h-screen bg-background">
       <aside
