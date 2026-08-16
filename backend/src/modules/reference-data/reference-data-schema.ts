@@ -7,3 +7,7 @@ export const programmesQuerySchema = z.object({
 export const equipmentCategoriesQuerySchema = z.object({
   query: z.object({ labId: z.string().uuid().optional() }).strict(),
 });
+
+export const projectResourcesQuerySchema = z.object({
+  query: z.object({ labId: z.string().uuid() }).strict(),
+});

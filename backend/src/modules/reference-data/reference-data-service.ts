@@ -52,3 +52,36 @@ export function listEquipmentCategories(labId?: string) {
     orderBy: { name: "asc" },
   });
 }
+
+export async function listProjectResources(labId: string) {
+  const lab = await prisma.lab.findFirst({
+    where: { id: labId, isActive: true },
+    select: { id: true },
+  });
+  if (!lab) return { equipment: [], consumables: [] };
+  const [equipment, consumables] = await Promise.all([
+    prisma.equipment.findMany({
+      where: { labId, visible: true, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
+    }),
+    prisma.consumable.findMany({
+      where: { labId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        description: true,
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: [{ category: { name: "asc" } }, { name: "asc" }],
+    }),
+  ]);
+  return { equipment, consumables };
+}

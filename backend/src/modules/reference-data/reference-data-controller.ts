@@ -29,3 +29,11 @@ export async function equipmentCategories(req: Request, res: Response) {
     await service.listEquipmentCategories(req.query.labId as string | undefined),
   );
 }
+
+export async function projectResources(req: Request, res: Response) {
+  return ok(
+    res,
+    "Configured project resources",
+    await service.listProjectResources(String(req.query.labId)),
+  );
+}

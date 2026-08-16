@@ -3,7 +3,11 @@ import { authenticate } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as controller from "./reference-data-controller.js";
-import { equipmentCategoriesQuerySchema, programmesQuerySchema } from "./reference-data-schema.js";
+import {
+  equipmentCategoriesQuerySchema,
+  programmesQuerySchema,
+  projectResourcesQuerySchema,
+} from "./reference-data-schema.js";
 
 export const referenceDataRoutes = Router();
 
@@ -13,6 +17,11 @@ referenceDataRoutes.get(
   "/programmes",
   validate(programmesQuerySchema),
   asyncHandler(controller.programmes),
+);
+referenceDataRoutes.get(
+  "/project-resources",
+  validate(projectResourcesQuerySchema),
+  asyncHandler(controller.projectResources),
 );
 referenceDataRoutes.get("/academic-years", asyncHandler(controller.academicYears));
 referenceDataRoutes.get("/labs", asyncHandler(controller.labs));
