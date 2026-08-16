@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { created, noContent, ok } from "../../utils/api-response.js";
-import { projectDto } from "../../utils/serializers.js";
 import * as service from "./project-service.js";
 
 export async function list(req: Request, res: Response) {
@@ -9,11 +8,11 @@ export async function list(req: Request, res: Response) {
 }
 
 export async function get(req: Request, res: Response) {
-  return ok(res, "Project found", projectDto(await service.get(req.params.id!, req.user!)));
+  return ok(res, "Project found", await service.get(req.params.id!, req.user!));
 }
 
 export async function create(req: Request, res: Response) {
-  return created(res, "Project created", await service.create(req.user!.id, req.body));
+  return created(res, "Project submitted", await service.create(req.user!, req.body));
 }
 
 export async function update(req: Request, res: Response) {
@@ -25,6 +24,22 @@ export async function addMember(req: Request, res: Response) {
     res,
     "Project member invited",
     await service.inviteMember(req.params.id!, req.body.email, req.user!),
+  );
+}
+
+export async function respondToInvitation(req: Request, res: Response) {
+  return ok(
+    res,
+    "Invitation response recorded",
+    await service.respondToInvitation(req.params.id!, req.body.decision, req.user!),
+  );
+}
+
+export async function removeMember(req: Request, res: Response) {
+  return ok(
+    res,
+    "Project team updated",
+    await service.cancelOrRemoveMember(req.params.id!, req.params.memberId!, req.user!),
   );
 }
 

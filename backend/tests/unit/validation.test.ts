@@ -10,14 +10,20 @@ process.env.CLOUDINARY_API_KEY = "test";
 process.env.CLOUDINARY_API_SECRET = "test";
 process.env.FRONTEND_URL = "http://localhost:5173";
 
-import { EquipmentStatus, UserRole } from "@prisma/client";
+import { EquipmentStatus, MentorRequestStatus, ProjectStatus, UserRole } from "@prisma/client";
 import { hasPermission } from "../../src/config/permissions.js";
 import { onboardingSchema } from "../../src/modules/auth/auth-schema.js";
 import { createBookingSchema } from "../../src/modules/bookings/booking-schema.js";
 import { updateEquipmentAvailabilitySchema } from "../../src/modules/equipment/equipment-schema.js";
+import {
+  createProjectSchema,
+  invitationDecisionSchema,
+} from "../../src/modules/projects/project-schema.js";
+import { deriveProjectStatus } from "../../src/modules/projects/project-service.js";
+import { normalizePrn } from "../../src/modules/users/prn-policy.js";
 
 describe("validators", () => {
-  it("rejects a non-10-digit PRN", () => {
+  it("rejects a PRN that does not satisfy the configured institutional policy", () => {
     const parsed = onboardingSchema.safeParse({
       body: {
         fullName: "Aarav Deshmukh",
@@ -28,6 +34,52 @@ describe("validators", () => {
       },
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it("normalizes a valid PRN before persistence", () => {
+    expect(normalizePrn(" mit-12ab34 ")).toBe("MIT-12AB34");
+  });
+
+  it("requires the complete atomic project submission payload", () => {
+    const parsed = createProjectSchema.safeParse({
+      body: {
+        idempotencyKey: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        labId: "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        title: "Solar tracker",
+        description: "A two-axis solar tracking prototype.",
+        teamMemberEmails: ["teammate@mitwpu.edu.in"],
+        mentorId: "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        equipmentIds: [],
+        consumableIds: [],
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts only explicit invitation decisions", () => {
+    expect(
+      invitationDecisionSchema.safeParse({
+        params: { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" },
+        body: { decision: "ACCEPTED" },
+      }).success,
+    ).toBe(true);
+    expect(
+      invitationDecisionSchema.safeParse({
+        params: { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" },
+        body: { decision: "MAYBE" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("verifies a project only when team and mentor conditions are both satisfied", () => {
+    expect(deriveProjectStatus(1, MentorRequestStatus.APPROVED)).toBe(
+      ProjectStatus.TEAM_ACCEPTANCE_PENDING,
+    );
+    expect(deriveProjectStatus(0, MentorRequestStatus.PENDING)).toBe(
+      ProjectStatus.MENTOR_APPROVAL_PENDING,
+    );
+    expect(deriveProjectStatus(0, MentorRequestStatus.APPROVED)).toBe(ProjectStatus.VERIFIED);
+    expect(deriveProjectStatus(0, MentorRequestStatus.REJECTED)).toBe(ProjectStatus.REJECTED);
   });
 
   it("rejects duplicate booking participants", () => {

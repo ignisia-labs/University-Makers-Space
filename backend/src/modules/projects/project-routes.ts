@@ -6,11 +6,13 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import * as controller from "./project-controller.js";
 import {
   createProjectSchema,
+  invitationDecisionSchema,
   listProjectsSchema,
   memberSchema,
   mentorDecisionSchema,
   mentorRequestSchema,
   projectIdSchema,
+  projectMemberIdSchema,
   updateProjectSchema,
 } from "./project-schema.js";
 
@@ -24,6 +26,18 @@ projectRoutes.post(
   authorize("project.create"),
   validate(createProjectSchema),
   asyncHandler(controller.create),
+);
+projectRoutes.post(
+  "/:id/invitations/respond",
+  authenticate,
+  validate(invitationDecisionSchema),
+  asyncHandler(controller.respondToInvitation),
+);
+projectRoutes.delete(
+  "/:id/members/:memberId",
+  authenticate,
+  validate(projectMemberIdSchema),
+  asyncHandler(controller.removeMember),
 );
 projectRoutes.patch(
   "/:id",
