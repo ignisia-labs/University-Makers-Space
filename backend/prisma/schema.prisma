@@ -30,10 +30,11 @@ enum ProjectMemberRole {
 }
 
 enum ProjectMemberStatus {
-  INVITED
+  PENDING
   ACCEPTED
   DECLINED
-  REMOVED
+  CANCELLED
+  EXPIRED
 }
 
 enum MentorRequestStatus {
@@ -216,7 +217,7 @@ model AcademicYearOption {
 
 model StudentProfile {
   userId       String     @id @map("user_id") @db.Uuid
-  prn          String     @unique @db.VarChar(10)
+  prn          String     @unique @db.VarChar(24)
   departmentId String     @map("department_id") @db.Uuid
   programmeId  String     @map("programme_id") @db.Uuid
   academicYear Int        @map("academic_year")
@@ -397,6 +398,8 @@ model Project {
   status                 ProjectStatus                  @default(DRAFT)
   tags                   String[]                       @default([])
   rejectionReason        String?                        @map("rejection_reason")
+  idempotencyKey         String?                        @map("idempotency_key") @db.Uuid
+  submittedAt            DateTime?                      @map("submitted_at")
   createdAt              DateTime                       @default(now()) @map("created_at")
   updatedAt              DateTime                       @updatedAt @map("updated_at")
   deletedAt              DateTime?                      @map("deleted_at")
@@ -409,6 +412,7 @@ model Project {
   consumableRequirements ProjectConsumableRequirement[]
   bookings               Booking[]
 
+  @@unique([creatorId, idempotencyKey])
   @@index([creatorId, status])
   @@index([currentMentorId, status])
   @@index([labId, status, createdAt])
@@ -416,25 +420,30 @@ model Project {
 }
 
 model ProjectMember {
-  id                  String              @id @default(uuid()) @db.Uuid
-  projectId           String              @map("project_id") @db.Uuid
-  userId              String?             @map("user_id") @db.Uuid
-  email               String
-  role                ProjectMemberRole   @default(MEMBER)
-  status              ProjectMemberStatus @default(INVITED)
-  invitationTokenHash String?             @unique @map("invitation_token_hash")
-  invitationExpiresAt DateTime?           @map("invitation_expires_at")
-  acceptedAt          DateTime?           @map("accepted_at")
-  removedAt           DateTime?           @map("removed_at")
-  createdAt           DateTime            @default(now()) @map("created_at")
-  updatedAt           DateTime            @updatedAt @map("updated_at")
-  project             Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user                User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id                      String              @id @default(uuid()) @db.Uuid
+  projectId               String              @map("project_id") @db.Uuid
+  userId                  String?             @map("user_id") @db.Uuid
+  email                   String
+  role                    ProjectMemberRole   @default(MEMBER)
+  status                  ProjectMemberStatus @default(PENDING)
+  invitationTokenHash     String?             @unique @map("invitation_token_hash")
+  invitationExpiresAt     DateTime?           @map("invitation_expires_at")
+  invitationEmailStatus   DeliveryStatus?     @map("invitation_email_status")
+  invitationEmailAttempts Int                 @default(0) @map("invitation_email_attempts")
+  invitationEmailSentAt   DateTime?           @map("invitation_email_sent_at")
+  acceptedAt              DateTime?           @map("accepted_at")
+  respondedAt             DateTime?           @map("responded_at")
+  removedAt               DateTime?           @map("removed_at")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+  project                 Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                    User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, email])
   @@unique([projectId, userId])
   @@index([userId, status])
   @@index([email, status])
+  @@index([invitationEmailStatus, createdAt])
   @@map("project_members")
 }
 

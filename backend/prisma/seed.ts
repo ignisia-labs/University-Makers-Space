@@ -70,6 +70,37 @@ async function main() {
     },
   });
 
+  const materialCategory = await prisma.consumableCategory.upsert({
+    where: { labId_name: { labId: lab.id, name: "Prototyping Materials" } },
+    update: { isActive: true },
+    create: { labId: lab.id, name: "Prototyping Materials" },
+  });
+  await prisma.consumable.upsert({
+    where: { labId_name: { labId: lab.id, name: "PLA Filament" } },
+    update: { isActive: true },
+    create: {
+      labId: lab.id,
+      categoryId: materialCategory.id,
+      name: "PLA Filament",
+      unit: "gram",
+      description: "Expected project requirement only; no stock is reserved.",
+    },
+  });
+
+  const facultyMentorEmail = process.env.SEED_FACULTY_MENTOR_EMAIL?.trim().toLowerCase();
+  if (facultyMentorEmail) {
+    await prisma.user.upsert({
+      where: { email: facultyMentorEmail },
+      update: { roles: [UserRole.FACULTY_MENTOR], isActive: true, profileComplete: true },
+      create: {
+        email: facultyMentorEmail,
+        name: process.env.SEED_FACULTY_MENTOR_NAME?.trim() || "Faculty Mentor",
+        roles: [UserRole.FACULTY_MENTOR],
+        profileComplete: true,
+      },
+    });
+  }
+
   const superAdminEmail = process.env.SEED_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
   if (superAdminEmail) {
     await prisma.userProvisioning.upsert({
