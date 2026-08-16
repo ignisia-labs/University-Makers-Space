@@ -2,7 +2,7 @@
 
 **Project:** MIT-WPU University Maker's Space (UMS)  
 **Baseline branch:** `backend-harsh`  
-**Roadmap version:** 1.1 — RFP-conformance correction
+**Roadmap version:** 1.2 — Phase 2 implementation
 
 **Last updated:** 2026-08-16 (Asia/Kolkata)  
 **Source requirements:** `MakerSpace PRD.docx`  
@@ -52,16 +52,17 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Session restoration after browser refresh through `/auth/refresh` and `/auth/me`.
 - Authenticated route guards, onboarding redirects, account-derived identity, and logout.
 - New-student onboarding persisted to PostgreSQL.
-- The current implementation enforces a fixed 10-digit PRN based on earlier stakeholder context. The RFP instead requires the institution's defined, normalized, preferably unique PRN rule; this must be confirmed and corrected/configured in Phase 2 rather than represented as an RFP requirement.
+- Student PRNs are normalized, unique, and validated through a configurable institutional pattern/hint rather than a hardcoded digit count. MIT-WPU must set and accept the final production pattern.
 - Database-backed active departments, department-filtered programmes, and academic-year options.
 - Real signed-in name, email, PRN/profile information on the shell, dashboard, and profile page.
 - Tab-scoped **Prototype view** switch for Student, Faculty Mentor, Lab Assistant, Admin, and Super Admin mock workspaces.
+- Database-backed Student profile editing, scoped/paginated project lists and details, atomic project submission, email-first teammate invitations, Faculty Mentor search, invitation decisions, mentor decisions, expected-resource editing, and in-app notification links.
 
 ### Backend foundations that work through the API
 
 - Permission-based authorization and deny-by-default privileged-role provisioning.
 - User/session revocation behavior for account and role changes.
-- Scoped project CRUD, member invitation creation, mentor request, and mentor decision foundations.
+- Complete scoped project/team/mentor workflow with idempotent aggregate submission, re-verification rules, audit records, and pending email-delivery records.
 - Serializable, idempotent booking creation with slot locking and attendee-capacity checks. The current service also blocks/reserves equipment and consumables; that behavior conflicts with the RFP's advisory-only Version 1 equipment model and must be corrected in Phase 4.
 - Booking cancellation and controlled operational status transitions.
 - Equipment catalogue endpoints and audited Lab Assistant availability updates.
@@ -77,21 +78,18 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Backend TypeScript build passes.
 - Frontend production build passes.
 - Backend and frontend lint complete without errors. Existing UI-library Fast Refresh warnings remain.
-- Ten backend unit/integration-style tests pass.
-- Prisma schema validates and both migrations apply successfully to local PostgreSQL.
+- Fourteen backend unit/integration-style tests pass.
+- Prisma schema validates and all five migrations apply successfully to local PostgreSQL.
 - Live local health, CORS, Google configuration, and authenticated reference-data smoke tests pass.
 
 ## 3. What is still mock or incomplete
 
-- Student project list/detail/create UI still uses in-memory data.
-- Invitation accept/decline and safe student/faculty search are missing.
-- Atomic project submission including team, mentor, requirements, notifications, and retry handling is missing.
-- Faculty approval UI is not connected end to end.
+- The project/profile/Faculty Mentor workflows are connected; only the explicitly labelled Prototype view uses mock project data when previewing a role the signed-in account does not actually hold.
 - Lab schedules, closures, slot generation, and availability APIs/UI are missing.
 - Booking screens are not connected to real slot/project/booking APIs.
 - Quick Visits, manual Lab Assistant check-in/out, live occupancy, late arrival, overstay, and no-show workflows are missing.
-- Consumable requirement selection and most Admin configuration/reporting UI are missing; consumable inventory is not part of Version 1.
-- Workflow notifications, transactional email delivery, and near-real-time updates are missing.
+- Admin catalogue/configuration/reporting UI is missing; consumable inventory is not part of Version 1.
+- Project workflow notifications and pending email-delivery records exist. The asynchronous email worker/provider, retries, templates, and near-real-time updates remain Phase 7.
 - Service worker/offline UX, route splitting, accessibility/performance acceptance, CI/CD, staging, monitoring, backup/restore, load testing, and security acceptance are missing.
 - No RFP launch gate has yet been proven against a production-like environment.
 
@@ -139,7 +137,7 @@ Useful URLs:
 2. Sign in with a verified `@mitwpu.edu.in` Workspace account. A non-institutional account must be rejected by the backend.
 3. For an incomplete Student account, verify redirection to onboarding.
 4. Verify departments and academic years load from the API; selecting a department must filter programmes.
-5. Verify invalid PRNs are rejected by the current validation, while recording that the exact MIT-WPU PRN rule still requires institutional confirmation under the RFP.
+5. Verify invalid PRNs are rejected by the configured policy and valid PRNs are normalized; record MIT-WPU acceptance of the production pattern.
 6. Complete onboarding and confirm redirection to the dashboard with the real name and PRN.
 7. Refresh the browser. The session should restore without another Google prompt.
 8. Open Profile and Settings and verify persisted identity plus logout.
@@ -166,6 +164,21 @@ npx prisma migrate status
 
 Swagger can exercise implemented backend foundations, but successful privileged operations require a genuinely provisioned account and correct persisted state. The Prototype view switch does not grant API permissions. Booking APIs require valid configured slots, a verified project, accepted participants, and attendee capacity. Current equipment/consumable blocking and QR behavior are known RFP deviations scheduled for correction in Phase 4.
 
+### Manual Phase 2 acceptance checklist
+
+Before testing, ensure at least one actual Faculty Mentor is provisioned. For local development, set `SEED_FACULTY_MENTOR_EMAIL` and `SEED_FACULTY_MENTOR_NAME` in `backend/.env`, then run `npm run prisma:seed`.
+
+1. Sign in as an onboarded Student, open Profile, edit permitted fields, save, refresh, and confirm the persisted values remain.
+2. Open Projects, test search and the empty/list state, then create a solo project using a configured Faculty Mentor and optional equipment/consumables.
+3. Confirm the project shows “Waiting for Faculty Mentor approval,” the Team Leader is accepted, and resources are described as expectations rather than reservations.
+4. Enter the MIT-WPU email of a Student who has never used the app. Open the invitation link as that Student, sign in with the matching verified Google account, complete onboarding, and confirm the invitation reopens so it can be accepted or declined exactly once.
+5. As Team Leader, cancel a pending/declined invitation or remove an accepted member. Confirm the human-readable status and re-verification behavior.
+6. Sign in with the pre-provisioned Faculty Mentor account. Confirm Pending, Active, and History tabs, review the full submission, approve it, and reject another project with a required reason.
+7. Confirm a project becomes Verified only when every retained invitation is accepted and the Faculty Mentor has approved.
+8. Edit major details or change the Faculty Mentor on a verified project and confirm it returns to the correct pending state. Confirm resource-only changes remain advisory and do not invalidate approval.
+9. Open Notifications for each account and confirm invitation, team-response, mentor-decision, and verification records link to the relevant project.
+10. Repeat create/invitation/decision requests through the UI or API and confirm idempotent behavior without duplicate projects or memberships.
+
 ## 5. The agreed eight phases
 
 ### Phase 1 — Integration and identity foundation
@@ -191,19 +204,21 @@ Exit gate:
 
 ### Phase 2 — Projects, teams, and mentor verification
 
+**Status:** Implemented on `backend-harsh`; real multi-account/manual acceptance and the final MIT-WPU PRN pattern remain environment/client acceptance items.
+
 **Goal:** Make the complete pre-booking project journey real and remove project-related in-memory state.
 
 Deliverables:
 
 - Student profile view/edit behavior for the Student's own permitted fields, including replacement of the fixed 10-digit assumption with the client-confirmed normalized/unique MIT-WPU PRN validation rule.
-- Indexed, server-side, debounced, minimum-length, paginated teammate and authorized Faculty Mentor search that never downloads the university directory. Display only the identification fields required by the RFP.
+- Email-first teammate invitations that do not require a supplied Student database or a pre-existing account. The Student enters teammate MIT-WPU addresses directly; only authorized Faculty Mentors are selected from the bounded, indexed, server-side directory supplied by the university.
 - Project list/search and detail for projects where the Student is Team Leader or Member. Each result shows Project Name, Team Leader, member count, Faculty Mentor, verification status, and next booking when applicable.
 - Project Detail sections for header/status, overview/description, Team Leader and member acceptance, Faculty Mentor/approval, expected equipment, expected consumables, and role-appropriate actions; its bookings section is connected in Phase 4.
 - Required Project Name and Project Description. Domain/Category remains optional and is shown only when configured; it must not block Version 1 project creation.
 - Explicit states: Draft, Team Acceptance Pending, Mentor Approval Pending, Verified, Rejected, and Archived. UI uses human-readable status messages rather than enum names.
 - Atomic/idempotent project creation: create the project, accepted Team Leader membership, invitations, Faculty Mentor request, equipment/consumable requirement links, audit/domain events, and asynchronous notification jobs as one consistent operation.
 - Configured equipment and consumables are expected project requirements only; selecting them does not reserve stock, quantities, machines, or time.
-- Invitation records and Pending, Accepted, Declined, Cancelled, and—if expiration is enabled—Expired behavior. Email/deep links return the authenticated user to the relevant invitation; repeated responses are idempotent.
+- Invitation records and Pending, Accepted, Declined, Cancelled, and—if expiration is enabled—Expired behavior. A teammate may be invited before registration; the matching verified Google identity is linked on first sign-in, incomplete Students complete onboarding, and the email/deep link then returns them to the relevant invitation. Repeated responses are idempotent.
 - A project becomes Verified only after all required invited members accept and the assigned Faculty Mentor approves. Declined invitations and pending conditions remain visible in human language.
 - Faculty Dashboard and project lists for Pending Approval, Active Projects, and Historical Projects. The decision view includes project name/description, leader, team, expected equipment/consumables, and submission date. Reject requires a reason.
 - Pre-verification Team Leader editing, invitation cancellation, accepted-member removal, Faculty Mentor changes, and post-verification major edits with the RFP-defined re-verification effects. Faculty change revokes the previous approval and returns the project to Mentor Approval Pending; resource-change approval effects remain policy-configurable.
@@ -215,7 +230,7 @@ Exit gate:
 - A Student can manage their profile, create a solo or team project, complete invitations, declare expected requirements, request an authorized Faculty Mentor, and receive an approval/rejection using only persisted data.
 - Project lists, details, dashboard states, Faculty queues, edits, member removal, mentor changes, and re-verification rules match the RFP.
 - Only a verified project led by the signed-in Team Leader can proceed to booking.
-- Phase 2 must create the correct notification/outbox records and deep-link targets; the RFP's actual asynchronous email-delivery acceptance remains open until Phase 7.
+- Phase 2 must create the correct notification/email-queue records and deep-link targets for both unregistered Students and provisioned Faculty. Actual asynchronous provider delivery remains open until Phase 7 because production mail credentials have not been supplied.
 
 ### Phase 3 — Lab configuration, schedules, and slot availability
 

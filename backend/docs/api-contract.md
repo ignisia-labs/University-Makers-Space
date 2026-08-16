@@ -4,15 +4,16 @@ All endpoints are prefixed with `/api/v1`, return JSON envelopes, and validate b
 
 ## Identity and sessions
 
-| Method | Path                  | Access               | Purpose                                                                                                                             |
-| ------ | --------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/auth/google/config` | Public               | Public Google client ID and hosted domain                                                                                           |
-| GET    | `/auth/google/csrf`   | Public, rate-limited | Creates the double-submit login CSRF cookie/token pair                                                                              |
-| POST   | `/auth/google`        | Public, rate-limited | Verifies `{ credential, csrfToken }`, creates/rotates a server session, and returns user, permissions, access token, and next route |
-| POST   | `/auth/refresh`       | Refresh cookie       | Atomically rotates the refresh token and returns a new access token                                                                 |
-| POST   | `/auth/logout`        | Authenticated        | Revokes the current session and clears cookies                                                                                      |
-| GET    | `/auth/me`            | Authenticated        | Current persisted user and effective permissions                                                                                    |
-| POST   | `/auth/onboarding`    | Student              | Completes `{ fullName, prn, departmentId, programmeId, academicYear, division?, phone? }`                                           |
+| Method | Path                           | Access               | Purpose                                                                                                                             |
+| ------ | ------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/auth/google/config`          | Public               | Public Google client ID and hosted domain                                                                                           |
+| GET    | `/auth/google/csrf`            | Public, rate-limited | Creates the double-submit login CSRF cookie/token pair                                                                              |
+| POST   | `/auth/google`                 | Public, rate-limited | Verifies `{ credential, csrfToken }`, creates/rotates a server session, and returns user, permissions, access token, and next route |
+| POST   | `/auth/refresh`                | Refresh cookie       | Atomically rotates the refresh token and returns a new access token                                                                 |
+| POST   | `/auth/logout`                 | Authenticated        | Revokes the current session and clears cookies                                                                                      |
+| GET    | `/auth/me`                     | Authenticated        | Current persisted user and effective permissions                                                                                    |
+| GET    | `/auth/student-profile/config` | Authenticated        | Configured PRN validation pattern and user-facing hint                                                                              |
+| POST   | `/auth/onboarding`             | Student              | Completes `{ fullName, prn, departmentId, programmeId, academicYear, division?, phone? }`                                           |
 
 The backend checks Google signature, audience, issuer, expiry, `email_verified`, and the signed Workspace `hd` claim. New eligible users receive only `STUDENT`. Privileged roles are assigned from Super-Admin-managed pre-provisioning records. Password registration and password login do not exist.
 
@@ -22,13 +23,14 @@ Authentication responses are marked `Cache-Control: no-store`. The frontend keep
 
 All reference-data endpoints require an authenticated session and return active records only.
 
-| Method | Path                                          | Purpose                                              |
-| ------ | --------------------------------------------- | ---------------------------------------------------- |
-| GET    | `/reference-data/departments`                 | Student-onboarding department choices                |
-| GET    | `/reference-data/programmes?departmentId=`    | Programme choices, optionally filtered by department |
-| GET    | `/reference-data/academic-years`              | Configured academic-year choices                     |
-| GET    | `/reference-data/labs`                        | Active labs and booking policy summaries             |
-| GET    | `/reference-data/equipment-categories?labId=` | Active categories, optionally filtered by lab        |
+| Method | Path                                          | Purpose                                                       |
+| ------ | --------------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/reference-data/departments`                 | Student-onboarding department choices                         |
+| GET    | `/reference-data/programmes?departmentId=`    | Programme choices, optionally filtered by department          |
+| GET    | `/reference-data/academic-years`              | Configured academic-year choices                              |
+| GET    | `/reference-data/labs`                        | Active labs and booking policy summaries                      |
+| GET    | `/reference-data/equipment-categories?labId=` | Active categories, optionally filtered by lab                 |
+| GET    | `/reference-data/project-resources?labId=`    | Configured equipment and consumables for project requirements |
 
 ## Roles and authorization
 
@@ -46,10 +48,14 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 
 ## Important workflow endpoints
 
-- `POST /projects` creates a project and accepted leader membership.
+- `POST /projects` idempotently creates the complete project aggregate: leader, invitations, mentor request, requirements, audit, in-app notifications, and pending email-delivery records.
 - `POST /projects/:id/members` invites an existing eligible student.
+- `POST /projects/:id/invitations/respond` idempotently accepts or declines the signed-in Student's invitation.
+- `DELETE /projects/:id/members/:memberId` cancels an invitation or removes an accepted member with re-verification when required.
 - `POST /projects/:id/mentor-requests` requests faculty verification.
-- `PATCH /projects/:id/mentor-request` lets the requested faculty approve or reject.
+- `POST /projects/:id/mentor-decision` lets the assigned Faculty Mentor approve or reject; rejection requires a reason.
+- `GET /users/search/faculty-mentors` provides minimum-length, paginated, role-filtered search over the university-provided Faculty directory. Teammates are invited directly by institutional email and do not need to exist before invitation.
+- `PATCH /users/me/student-profile` updates the signed-in Student's permitted profile fields.
 - `POST /bookings` accepts `labSlotId`, `projectId`, selected `participantIds`, requested equipment/consumables, and a UUID `idempotencyKey`.
 - `POST /bookings/:id/cancel` cancels without deleting history.
 - `PATCH /bookings/:id/status` applies the controlled operational transition table.

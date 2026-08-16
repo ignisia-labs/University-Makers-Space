@@ -295,7 +295,7 @@ paths:
       }
     post:
       {
-        summary: Create a student project and leader membership,
+        summary: Atomically submit a complete idempotent project aggregate,
         responses: { "201": { description: Project created } },
       }
   /projects/{id}:
@@ -313,13 +313,21 @@ paths:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
       summary: Invite an eligible existing student
       responses: { "201": { description: Invitation created } }
+  /projects/{id}/members/{memberId}:
+    delete:
+      summary: Cancel an invitation or remove an accepted member
+      responses: { "200": { description: Project team updated } }
+  /projects/{id}/invitations/respond:
+    post:
+      summary: Idempotently accept or decline the signed-in student's invitation
+      responses: { "200": { description: Invitation response recorded } }
   /projects/{id}/mentor-requests:
     post:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
       summary: Request verification from a faculty mentor
       responses: { "201": { description: Mentor request created } }
-  /projects/{id}/mentor-request:
-    patch:
+  /projects/{id}/mentor-decision:
+    post:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
       summary: Approve or reject the pending mentor request
       responses: { "200": { description: Decision recorded } }

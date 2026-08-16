@@ -10,22 +10,22 @@
 
 ## 1. Module inventory
 
-| Module       | Purpose                                        | Current source                               | Status                                       |
-| ------------ | ---------------------------------------------- | -------------------------------------------- | -------------------------------------------- |
-| MOD-AUTH     | Google identity and sessions                   | `backend/src/modules/auth`, `src/lib/auth-*` | Connected core                               |
-| MOD-USER     | Profiles, users, provisioning, roles           | `backend/src/modules/users`                  | Partial                                      |
-| MOD-PROJECT  | Projects, teams, mentor decisions              | `backend/src/modules/projects`               | Partial                                      |
-| MOD-SLOT     | Lab schedule, closures, generated availability | Prisma schema only                           | Gap                                          |
-| MOD-BOOKING  | Capacity-safe reservations/cancellation        | `backend/src/modules/bookings`               | Backend core implemented                     |
-| MOD-VISIT    | Quick Visits, entry, exit, occupancy           | Prisma schema plus mock screens              | Gap                                          |
-| MOD-RESOURCE | Equipment/categories/consumables               | Equipment API plus schema                    | Partial                                      |
-| MOD-NOTIFY   | In-app and email delivery                      | Notification API and queue declaration       | Partial/gap                                  |
-| MOD-ADMIN    | Lab configuration, audit, reporting            | Schema plus mock screens                     | Gap                                          |
-| MOD-FRONTEND | Responsive role experiences                    | `src/routes`, `src/components`               | Auth/onboarding connected; workflows partial |
-| MOD-PWA      | Installability/offline shell                   | Manifest only                                | Gap                                          |
-| MOD-PLATFORM | CI/CD, monitoring, backups, deployment         | No deployment assets                         | Gap                                          |
-| MOD-EVENT    | Future workshops/events                        | `backend/src/modules/events`                 | Implemented ahead of V1 priority             |
-| MOD-UPLOAD   | Future file upload                             | `backend/src/modules/uploads`                | Partial future scope                         |
+| Module       | Purpose                                        | Current source                               | Status                                                      |
+| ------------ | ---------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| MOD-AUTH     | Google identity and sessions                   | `backend/src/modules/auth`, `src/lib/auth-*` | Connected core                                              |
+| MOD-USER     | Profiles, users, provisioning, roles           | `backend/src/modules/users`                  | Profile/search connected; administration partial            |
+| MOD-PROJECT  | Projects, teams, mentor decisions              | `backend/src/modules/projects`               | Phase 2 connected core                                      |
+| MOD-SLOT     | Lab schedule, closures, generated availability | Prisma schema only                           | Gap                                                         |
+| MOD-BOOKING  | Capacity-safe reservations/cancellation        | `backend/src/modules/bookings`               | Backend core implemented                                    |
+| MOD-VISIT    | Quick Visits, entry, exit, occupancy           | Prisma schema plus mock screens              | Gap                                                         |
+| MOD-RESOURCE | Equipment/categories/consumables               | Equipment API plus schema                    | Partial                                                     |
+| MOD-NOTIFY   | In-app and email delivery                      | Notification API and queue declaration       | Partial/gap                                                 |
+| MOD-ADMIN    | Lab configuration, audit, reporting            | Schema plus mock screens                     | Gap                                                         |
+| MOD-FRONTEND | Responsive role experiences                    | `src/routes`, `src/components`               | Auth/onboarding/projects connected; later workflows partial |
+| MOD-PWA      | Installability/offline shell                   | Manifest only                                | Gap                                                         |
+| MOD-PLATFORM | CI/CD, monitoring, backups, deployment         | No deployment assets                         | Gap                                                         |
+| MOD-EVENT    | Future workshops/events                        | `backend/src/modules/events`                 | Implemented ahead of V1 priority                            |
+| MOD-UPLOAD   | Future file upload                             | `backend/src/modules/uploads`                | Partial future scope                                        |
 
 ## 2. Authentication and sessions
 
@@ -88,7 +88,7 @@ _Source: `backend/src/modules/auth/auth-service.ts:144`_
 The system SHALL validate the institution's defined normalized and preferably unique PRN rule, active department/programme consistency, configured academic year, and policy-required division/section or phone fields, then atomically persist the profile and mark it complete. The RFP does not define a fixed digit length.
 
 **Current endpoint:** `POST /auth/onboarding`  
-**Status:** Partial. Authenticated reference APIs expose active departments, filtered programmes and configured academic years; the connected form persists onboarding. ⚠️ GAP: the current fixed 10-digit PRN rule requires institutional confirmation/replacement, and Admin editing plus production acceptance remain.
+**Status:** Implemented core. Authenticated reference APIs expose active departments, filtered programmes and configured academic years; onboarding and own-profile editing persist normalized unique PRNs using an environment-configurable institutional pattern. MIT-WPU must still approve the final production pattern.
 
 ### FR-USER-003 — Provision privileged identities
 
@@ -101,9 +101,9 @@ Only a user with `user.roles.manage` SHALL create or alter email-based privilege
 
 ### FR-USER-004 — Safe university search
 
-The system SHALL provide paginated, minimum-length, role-filtered endpoints for teammate, faculty, and administrative search without exposing the complete directory.
+The system SHALL accept teammate invitations by institutional email without requiring a supplied Student directory. Faculty and administrative search SHALL remain paginated, minimum-length, and role-filtered without exposing the complete directory.
 
-**Status:** Partial. Admin-only user listing exists; student teammate and faculty search do not.
+**Status:** Implemented for Phase 2. Student and authorized Faculty Mentor searches require at least two characters, are role-filtered, paginated, rate-limited, trigram-indexed, and return only necessary identification fields. Administrative search remains a Phase 6 UI concern.
 
 ## 4. Projects, teams, and mentorship
 
@@ -111,7 +111,7 @@ The system SHALL provide paginated, minimum-length, role-filtered endpoints for 
 
 The system SHALL use an idempotent transaction to create the project, accepted leader membership, invited-member records, mentor request, equipment/consumable requirements, audit record, and notification outbox jobs.
 
-**Status:** Missing. Current `POST /projects` creates only the project and leader at `project-service.ts:72`.
+**Status:** Implemented. `POST /projects` uses a creator-scoped idempotency key and one database transaction for the complete aggregate plus audit, in-app notifications, deep links, and pending email delivery records.
 
 ### FR-PROJECT-002 — Invite a member
 
@@ -120,13 +120,13 @@ _Source: `backend/src/modules/projects/project-service.ts:136`_
 The system SHALL allow the project leader to create a time-limited hashed invitation for an institutional email and set the project to team-acceptance pending.
 
 **Current endpoint:** `POST /projects/:id/members`  
-**Status:** Partial. Invitation creation exists; delivery and response do not.
+**Status:** Implemented. Invitation creation/re-invitation persists a hashed expiring token, creates in-app/email-outbox records, and is connected to the Team Leader UI.
 
 ### FR-PROJECT-003 — Accept or decline invitation
 
 The invited user SHALL accept or decline using the intended email identity. Repeated requests SHALL be idempotent, expired/cancelled invitations SHALL fail safely, and project state SHALL be recalculated.
 
-**Status:** Missing; there are no invitation response routes.
+**Status:** Implemented at `POST /projects/:id/invitations/respond`; repeated identical responses are idempotent and cancelled/expired/resolved invitations fail safely.
 
 ### FR-PROJECT-004 — Request a faculty mentor
 
@@ -135,7 +135,7 @@ _Source: `backend/src/modules/projects/project-service.ts:168`_
 The project leader SHALL select an active Faculty Mentor as part of project creation/submission. The system SHALL create the request consistently with the project aggregate and allow at most one pending request. Mentor approval alone SHALL NOT verify the project while required team invitations remain unaccepted.
 
 **Current endpoint:** `POST /projects/:id/mentor-requests`  
-**Status:** Partial. The current backend creates the request only after invitations resolve, rather than as part of the RFP's atomic project submission; it is also not connected to notifications/UI.
+**Status:** Implemented. The mentor request is created within project submission even while team responses are pending; later mentor changes cancel the previous pending request, revoke approval, notify the new mentor, and recompute state.
 
 ### FR-PROJECT-005 — Decide a mentor request
 
@@ -144,27 +144,27 @@ _Source: `backend/src/modules/projects/project-service.ts:208`_
 The assigned faculty member SHALL approve or reject a pending request. Rejection SHALL require a reason; approval SHALL verify the project.
 
 **Current endpoint:** `POST /projects/:id/mentor-decision`  
-**Status:** Partial. Core transaction exists; notifications, idempotent repeated-decision behavior, connected UI, and concurrency tests are absent.
+**Status:** Implemented core. Assigned Faculty Mentors use the connected review queue; rejection requires a reason, identical repeated decisions are idempotent, notifications/audit records are transactional, and approval verifies only after team conditions are met.
 
 ### FR-PROJECT-006 — Maintain project requirements
 
 The leader SHALL select configured equipment and consumables as expected requirements without creating reservations.
 
-**Status:** Schema only. No API writes the requirement join tables.
+**Status:** Implemented. Configured equipment and consumables are selected during submission and may be edited later as advisory expectations without creating reservations or invalidating mentor approval.
 
 ### Project state transition
 
-| Action                      | Required current state  | New state               | Current implementation                                     |
-| --------------------------- | ----------------------- | ----------------------- | ---------------------------------------------------------- |
-| Create project              | —                       | DRAFT                   | Yes                                                        |
-| Invite members              | DRAFT/eligible          | TEAM_ACCEPTANCE_PENDING | Partial                                                    |
-| All invitations resolved    | TEAM_ACCEPTANCE_PENDING | MENTOR_APPROVAL_PENDING | Missing automatic transition                               |
-| Mentor approves             | MENTOR_APPROVAL_PENDING | VERIFIED                | Yes                                                        |
-| Mentor rejects              | MENTOR_APPROVAL_PENDING | REJECTED                | Yes                                                        |
-| Major verified-project edit | VERIFIED                | Relevant pending state  | Missing                                                    |
-| Remove accepted member      | Eligible                | Reverification required | Missing                                                    |
-| Change mentor               | Any eligible            | MENTOR_APPROVAL_PENDING | Partial request behavior; explicit verified flow undefined |
-| Archive                     | Owned/manageable        | ARCHIVED                | Yes                                                        |
+| Action                      | Required current state   | New state               | Current implementation                     |
+| --------------------------- | ------------------------ | ----------------------- | ------------------------------------------ |
+| Create and submit project   | —                        | Team or mentor pending  | Implemented atomically                     |
+| Invite members              | Eligible                 | TEAM_ACCEPTANCE_PENDING | Implemented                                |
+| All invitations resolved    | TEAM_ACCEPTANCE_PENDING  | Mentor pending/verified | Implemented automatic transition           |
+| Mentor approves             | Assigned pending request | Pending/VERIFIED        | Implemented; team conditions are rechecked |
+| Mentor rejects              | Assigned pending request | REJECTED                | Implemented with required reason           |
+| Major verified-project edit | VERIFIED                 | Relevant pending state  | Implemented                                |
+| Remove accepted member      | Eligible                 | Reverification required | Implemented and audited                    |
+| Change mentor               | Any eligible             | Relevant pending state  | Implemented; previous approval revoked     |
+| Archive                     | Owned/manageable         | ARCHIVED                | Implemented                                |
 
 ## 5. Labs, slots, and bookings
 

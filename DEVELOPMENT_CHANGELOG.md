@@ -90,3 +90,21 @@ This log records product context, implementation decisions, and material changes
 - Corrected the target population to 20,000+ Students and approximately 2,000+ Faculty/Lab Assistant/Admin users, and removed the unsupported separate Quick Visit capacity commitment.
 - Expanded the eight phases to cover previously implicit RFP requirements including initial configurable hours/capacity, project re-verification rules, advisory equipment availability, manual individual/team attendance, overstay, dashboards/search, design/UX/accessibility, PWA cache safety, retention, connection pooling, 99.9% availability, browser support, security threats, ten critical end-to-end scenarios, and all launch gates.
 - Updated the reusable contributor prompt and SRS/FRS traceability so Future Scope cannot be counted toward Version 1 completion and code deviations must be recorded and corrected rather than normalized into the roadmap.
+
+## 2026-08-16 — Phase 2 projects, teams, and mentor verification
+
+- Replaced the fixed 10-digit PRN assumption with normalized, unique, environment-configurable institutional validation and connected Student profile editing.
+- Added minimum-length, rate-limited, paginated Student and authorized Faculty Mentor search without downloading the university directory.
+- Implemented atomic/idempotent project submission covering the project, accepted Team Leader, team invitations, Faculty Mentor request, equipment/consumable requirement links, audit record, in-app notifications, deep links, and pending asynchronous email-delivery records.
+- Implemented invitation accept/decline/cancel/expire behavior, accepted-member removal, Faculty Mentor changes, approve/reject with required rejection reason, and the rule that verification requires all retained members plus mentor approval.
+- Implemented RFP-aligned re-verification: major detail, member, or Faculty Mentor changes return verified projects to the appropriate pending state; advisory resource-only changes do not invalidate approval.
+- Connected responsive Student project list/create/detail/edit screens, dashboard invitation/mentor states, invitation deep links, persisted notification centre, and actual Faculty Pending/Active/History queues. Retained a clearly labelled frontend-only Faculty preview for the Phase 8 mock role switch without granting backend authority.
+- Added the Phase 2 Prisma migration, trigram search indexes, a configurable development Faculty Mentor seed option, and a configured consumable example for local resource-flow testing.
+- Applied all four migrations and seed to local PostgreSQL. Verified Prisma schema, backend/frontend builds, backend/frontend lint (frontend retains ten existing warnings), 14 backend tests, backend health, Google config, and a live frontend HTTP response.
+
+## 2026-08-16 — Email-first Student invitation flow correction
+
+- Corrected Phase 2 so teammates do not need a pre-existing account or a university-supplied Student database. Team Leaders now enter verified MIT-WPU email addresses directly, while Faculty Mentors continue to come only from privileged university provisioning.
+- Confirmed that any first-time verified MIT-WPU Google user defaults to Student unless their email has a privileged provisioning record. Student profile data is collected through onboarding rather than imported.
+- Linked pending invitations to the matching Student account on first Google sign-in, created the in-app invitation at claim time, and preserved the project deep link through sign-in and onboarding.
+- Added explicit pending invitation-email delivery state and a fifth migration so the asynchronous mail worker can deliver to Students who do not yet have application accounts without creating placeholder users.
