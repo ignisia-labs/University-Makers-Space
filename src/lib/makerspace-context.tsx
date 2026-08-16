@@ -3,6 +3,7 @@ import {
   defaultProfile,
   equipmentCatalogue,
   initialConfig,
+  initialConsumables,
   initialNotifications,
   initialProjects,
   initialReservations,
@@ -13,6 +14,7 @@ import {
   type AuditEvent,
   type Equipment,
   type LabConfig,
+  type Consumable,
   type Notification,
   type Project,
   type Reservation,
@@ -29,6 +31,7 @@ type State = {
   reservations: Reservation[];
   visits: Visit[];
   equipment: Equipment[];
+  consumables: Consumable[];
   notifications: Notification[];
   users: AppUser[];
   auditLogs: AuditEvent[];
@@ -40,15 +43,25 @@ type State = {
   updateProject: (id: string, patch: Partial<Project>) => void;
   addReservation: (r: Omit<Reservation, "id">) => void;
   cancelReservation: (id: string, reason: string) => void;
-  markReservationNoShow: (id: string) => void;
+  markReservationNoShow: (id: string, reason: string) => void;
+  setBookingAttendance: (
+    id: string,
+    participantIds: string[],
+    status: "Expected" | "Entered" | "Exited",
+  ) => void;
   addVisit: (v: Omit<Visit, "id">) => void;
   updateVisit: (id: string, patch: Partial<Visit>) => void;
   acceptProjectInvitation: (id: string, s: StudentProfile) => void;
   updateEquipment: (id: string, patch: Partial<Equipment>) => void;
   addEquipment: (e: Omit<Equipment, "id">) => void;
   removeEquipment: (id: string) => void;
+  addConsumable: (item: Omit<Consumable, "id">) => void;
+  updateConsumable: (id: string, patch: Partial<Consumable>) => void;
+  removeConsumable: (id: string) => void;
   saveConfig: (c: LabConfig) => void;
   updateUserRole: (id: string, role: AppRole) => void;
+  provisionUser: (user: Omit<AppUser, "id">) => void;
+  updateUserActive: (id: string, active: boolean) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 };
@@ -64,6 +77,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [reservations, setReservations] = useState(initialReservations);
   const [visits, setVisits] = useState(initialVisits);
   const [equipment, setEquipment] = useState(equipmentCatalogue);
+  const [consumables, setConsumables] = useState(initialConsumables);
   const [notifications, setNotifications] = useState(initialNotifications);
   const [users, setUsers] = useState(initialUsers);
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
@@ -83,6 +97,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       reservations,
       visits,
       equipment,
+      consumables,
       notifications,
       users,
       auditLogs,
@@ -123,9 +138,29 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         );
         audit("Cancelled booking", id);
       },
-      markReservationNoShow(id) {
-        setReservations((prev) => prev.map((r) => (r.id === id ? { ...r, status: "No Show" } : r)));
+      markReservationNoShow(id, reason) {
+        setReservations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, status: "No Show", noShowReason: reason } : r)),
+        );
         audit("Marked booking no-show", id);
+      },
+      setBookingAttendance(id, participantIds, status) {
+        setReservations((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  attendance: {
+                    ...r.attendance,
+                    ...Object.fromEntries(
+                      participantIds.map((participantId) => [participantId, status]),
+                    ),
+                  },
+                }
+              : r,
+          ),
+        );
+        audit(`Marked attendees ${status.toLowerCase()}`, id);
       },
       addVisit(v) {
         setVisits((prev) => [{ ...v, id: uid() }, ...prev]);
@@ -140,9 +175,15 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
           prev.map((p) => {
             if (p.id !== id || !p.invitedEmails.includes(student.email)) return p;
             const invitations = p.invitedEmails.filter((email) => email !== student.email);
+            const updatedTeamInvitations = p.teamInvitations?.map((invitation) =>
+              invitation.email.toLowerCase() === student.email.toLowerCase()
+                ? { ...invitation, status: "Accepted" as const }
+                : invitation,
+            );
             return {
               ...p,
               invitedEmails: invitations,
+              ...(updatedTeamInvitations ? { teamInvitations: updatedTeamInvitations } : {}),
               members: [
                 ...p.members,
                 {
@@ -170,6 +211,20 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         setEquipment((prev) => prev.filter((e) => e.id !== id));
         audit("Removed equipment", id);
       },
+      addConsumable(item) {
+        setConsumables((prev) => [{ ...item, id: uid() }, ...prev]);
+        audit("Added consumable", item.name);
+      },
+      updateConsumable(id, patch) {
+        setConsumables((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+        );
+        audit("Updated consumable", id);
+      },
+      removeConsumable(id) {
+        setConsumables((prev) => prev.filter((item) => item.id !== id));
+        audit("Removed consumable", id);
+      },
       saveConfig(c) {
         setConfig(c);
         audit("Updated lab configuration", c.labName);
@@ -177,6 +232,14 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       updateUserRole(id, nextRole) {
         setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: nextRole } : u)));
         audit("Changed user role", id);
+      },
+      provisionUser(user) {
+        setUsers((prev) => [{ ...user, id: uid() }, ...prev]);
+        audit("Pre-provisioned user", user.email);
+      },
+      updateUserActive(id, active) {
+        setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, active } : user)));
+        audit(active ? "Activated user" : "Disabled user", id);
       },
       markNotificationRead(id) {
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -194,6 +257,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       reservations,
       visits,
       equipment,
+      consumables,
       notifications,
       users,
       auditLogs,

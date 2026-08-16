@@ -12,6 +12,7 @@ export type ProjectStatus =
   | "Verified"
   | "Rejected"
   | "Archived";
+export type InvitationStatus = "Pending" | "Accepted" | "Declined" | "Cancelled" | "Expired";
 export type BookingStatus = "Active" | "Completed" | "Cancelled" | "No Show";
 export type EquipmentStatus =
   | "Available"
@@ -40,9 +41,16 @@ export type Project = {
   mentor: string;
   status: ProjectStatus;
   resources: string[];
+  consumables?: string[];
   invitedEmails: string[];
+  teamInvitations?: ProjectInvitation[];
   rejectionReason?: string;
   createdAt: string;
+};
+export type ProjectInvitation = {
+  email: string;
+  name: string;
+  status: InvitationStatus;
 };
 export type Reservation = {
   id: string;
@@ -55,6 +63,8 @@ export type Reservation = {
   status: BookingStatus;
   resources: string[];
   cancelledReason?: string;
+  noShowReason?: string;
+  attendance?: Record<string, "Expected" | "Entered" | "Exited">;
 };
 export type Visit = {
   id: string;
@@ -78,6 +88,17 @@ export type Equipment = {
   totalQuantity: number;
   availableQuantity: number;
   visible: boolean;
+  bookingVisible?: boolean;
+  notes?: string;
+  availabilityReason?: string;
+};
+export type Consumable = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  unit: string;
+  active: boolean;
 };
 export type StudentProfile = {
   email: string;
@@ -95,7 +116,14 @@ export type Notification = {
   read: boolean;
   createdAt: string;
 };
-export type AppUser = { id: string; name: string; email: string; role: AppRole; active: boolean };
+export type AppUser = {
+  id: string;
+  name: string;
+  email: string;
+  prn?: string;
+  role: AppRole;
+  active: boolean;
+};
 export type AuditEvent = {
   id: string;
   action: string;
@@ -112,6 +140,9 @@ export type LabConfig = {
   bookingHorizon: number;
   cancellationWindow: number;
   closureDates: string[];
+  availableDays: string[];
+  quickVisitRules: string;
+  projectVerificationRequirements: string;
 };
 
 export const defaultProfile: StudentProfile = {
@@ -193,6 +224,7 @@ export const initialProjects: Project[] = [
     mentor: "Prof. Amit Shirke — Robotics",
     status: "Verified",
     resources: ["Robotic Arm", "CAD Workstation", "Jumper Wires"],
+    consumables: ["Jumper Wires"],
     invitedEmails: [],
     createdAt: "12 Aug 2026",
   },
@@ -205,7 +237,11 @@ export const initialProjects: Project[] = [
     mentor: "Prof. Rohan Bhide — E&TC",
     status: "Mentor Approval Pending",
     resources: ["Soldering Station", "PCB Blanks", "Oscilloscope"],
+    consumables: ["PCB Blanks"],
     invitedEmails: [],
+    teamInvitations: [
+      { email: "rehan.shaikh@mitwpu.edu.in", name: "Rehan Shaikh", status: "Accepted" },
+    ],
     createdAt: "13 Aug 2026",
   },
   {
@@ -215,10 +251,27 @@ export const initialProjects: Project[] = [
     leader: "Aarav Deshmukh",
     members: [directoryStudents[2]!],
     mentor: "Dr. Sanjana Rao — Mechanical",
-    status: "Draft",
+    status: "Team Acceptance Pending",
     resources: ["FDM 3D Printer", "PLA Filament"],
-    invitedEmails: [],
+    consumables: ["PLA Filament"],
+    invitedEmails: ["tanvi.kulkarni@mitwpu.edu.in"],
+    teamInvitations: [
+      { email: "tanvi.kulkarni@mitwpu.edu.in", name: "Tanvi Kulkarni", status: "Pending" },
+    ],
     createdAt: "14 Aug 2026",
+  },
+  {
+    id: "p4",
+    name: "Smart Greenhouse Controller",
+    description: "A sensor-driven prototype that regulates a compact campus greenhouse.",
+    leader: "Simran Kaur",
+    members: [directoryStudents[0]!, directoryStudents[1]!],
+    mentor: "Prof. Rohan Bhide — E&TC",
+    status: "Mentor Approval Pending",
+    resources: ["ESP32 Kit", "Ultrasonic Sensor", "Soldering Station"],
+    consumables: ["Jumper Wires", "PCB Blanks"],
+    invitedEmails: [],
+    createdAt: "15 Aug 2026",
   },
 ];
 export const initialReservations: Reservation[] = [
@@ -232,6 +285,19 @@ export const initialReservations: Reservation[] = [
     participantIds: ["leader", "s2", "s5"],
     status: "Active",
     resources: ["Robotic Arm", "CAD Workstation"],
+    attendance: { leader: "Expected", s2: "Expected", s5: "Expected" },
+  },
+  {
+    id: "r2",
+    projectId: "p1",
+    projectName: "Autonomous Campus Rover",
+    date: "Tue, 18 Aug",
+    slot: "14:30 – 15:30",
+    attendees: 2,
+    participantIds: ["leader", "s2"],
+    status: "Active",
+    resources: ["Robotic Arm", "CAD Workstation"],
+    attendance: { leader: "Expected", s2: "Expected" },
   },
 ];
 export const initialVisits: Visit[] = [
@@ -316,6 +382,32 @@ export const equipmentCatalogue: Equipment[] = [
     visible: true,
   },
 ];
+export const initialConsumables: Consumable[] = [
+  {
+    id: "c1",
+    name: "PLA Filament",
+    category: "3D Printing",
+    description: "1.75 mm PLA filament for approved FDM projects.",
+    unit: "Spool",
+    active: true,
+  },
+  {
+    id: "c2",
+    name: "PCB Blanks",
+    category: "Electronics",
+    description: "FR-4 boards for approved circuit prototypes.",
+    unit: "Board",
+    active: true,
+  },
+  {
+    id: "c3",
+    name: "Jumper Wires",
+    category: "Electronics",
+    description: "Breadboard jumper wires for prototyping.",
+    unit: "Pack",
+    active: true,
+  },
+];
 export const bookingDates = [
   { id: "d1", day: "Mon", date: "17", month: "Aug" },
   { id: "d2", day: "Tue", date: "18", month: "Aug" },
@@ -388,11 +480,19 @@ export const initialNotifications: Notification[] = [
   },
 ];
 export const initialUsers: AppUser[] = [
-  { id: "u1", name: "Aarav Deshmukh", email: defaultProfile.email, role: "Student", active: true },
+  {
+    id: "u1",
+    name: "Aarav Deshmukh",
+    email: defaultProfile.email,
+    prn: defaultProfile.prn,
+    role: "Student",
+    active: true,
+  },
   {
     id: "u2",
     name: "Prof. Rohan Bhide",
     email: "rohan.bhide@mitwpu.edu.in",
+    prn: "FAC-2041",
     role: "Faculty Mentor",
     active: true,
   },
@@ -400,6 +500,7 @@ export const initialUsers: AppUser[] = [
     id: "u3",
     name: "Nisha Patil",
     email: "nisha.patil@mitwpu.edu.in",
+    prn: "STAFF-103",
     role: "Lab Assistant",
     active: true,
   },
@@ -407,6 +508,7 @@ export const initialUsers: AppUser[] = [
     id: "u4",
     name: "Anil Jadhav",
     email: "anil.jadhav@mitwpu.edu.in",
+    prn: "ADM-009",
     role: "Admin",
     active: true,
   },
@@ -420,4 +522,8 @@ export const initialConfig: LabConfig = {
   bookingHorizon: 14,
   cancellationWindow: 2,
   closureDates: [],
+  availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  quickVisitRules: "Quick visits require a valid purpose and are subject to live lab availability.",
+  projectVerificationRequirements:
+    "A project description, team details, faculty mentor, and expected resources are required.",
 };

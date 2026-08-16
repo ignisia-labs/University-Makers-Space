@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { CheckCircle2, LoaderCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Input } from "@/components/ui/input";
@@ -34,14 +35,61 @@ export const Route = createFileRoute("/onboarding")({
   component: Onboarding,
 });
 
+type FormErrors = Partial<
+  Record<"fullName" | "prn" | "department" | "programme" | "academicYear", string>
+>;
+
 function Onboarding() {
   const { profile, completeOnboarding, acceptProjectInvitation } = useMakerSpace();
   const navigate = useNavigate();
   const [form, setForm] = useState(profile);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
   const { invite: invitationProjectId } = Route.useSearch();
 
-  const set = (key: keyof typeof form) => (value: string) =>
+  useEffect(() => {
+    if (!isComplete) return;
+    const timer = window.setTimeout(() => navigate({ to: "/dashboard" }), 900);
+    return () => window.clearTimeout(timer);
+  }, [isComplete, navigate]);
+
+  const set = (key: keyof typeof form) => (value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const validate = () => {
+    const next: FormErrors = {};
+    if (!form.fullName.trim()) next.fullName = "Enter your full name.";
+    if (!form.prn.trim()) next.prn = "Enter your PRN.";
+    if (!form.department) next.department = "Select your department.";
+    if (!form.programme) next.programme = "Select your programme.";
+    if (!form.academicYear) next.academicYear = "Select your academic year.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  if (isComplete) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
+        <section className="card-surface w-full max-w-md p-6 text-center sm:p-8">
+          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-success/10 text-success">
+            <CheckCircle2 className="size-6" />
+          </span>
+          <h1 className="mt-5 text-2xl font-bold">Your profile is complete</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {invitationProjectId
+              ? "You have joined the project team. Taking you to your dashboard…"
+              : "You are ready to start your MakerSpace journey. Taking you to your dashboard…"}
+          </p>
+          <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-primary">
+            <LoaderCircle className="size-4 animate-spin" /> Preparing your dashboard
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background px-4 py-10 sm:px-6">
@@ -53,17 +101,23 @@ function Onboarding() {
         </p>
 
         <form
+          noValidate
           className="card-surface mt-6 space-y-5 p-5 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();
-            completeOnboarding(form);
-            if (invitationProjectId) {
-              acceptProjectInvitation(invitationProjectId, form);
-              toast.success("Profile completed. You have joined the project team.");
-            } else {
-              toast.success("Profile completed. Welcome to the MakerSpace!");
-            }
-            navigate({ to: "/dashboard" });
+            if (!validate()) return;
+            setIsSaving(true);
+            window.setTimeout(() => {
+              completeOnboarding(form);
+              if (invitationProjectId) {
+                acceptProjectInvitation(invitationProjectId, form);
+                toast.success("Profile completed. You have joined the project team.");
+              } else {
+                toast.success("Profile completed. Welcome to the MakerSpace!");
+              }
+              setIsSaving(false);
+              setIsComplete(true);
+            }, 450);
           }}
         >
           <div className="space-y-2">
@@ -71,35 +125,27 @@ function Onboarding() {
             <Input id="email" value={form.email} readOnly className="h-12 bg-muted" />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="name">Full name</Label>
-            <Input
-              id="name"
-              required
-              className="h-12"
-              value={form.fullName}
-              onChange={(e) => set("fullName")(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="prn">PRN</Label>
-            <Input
-              id="prn"
-              required
-              inputMode="numeric"
-              className="h-12"
-              placeholder="10 digit PRN"
-              value={form.prn}
-              onChange={(e) => set("prn")(e.target.value)}
-            />
-          </div>
-
+          <TextField
+            id="name"
+            label="Full name"
+            value={form.fullName}
+            error={errors.fullName}
+            onChange={set("fullName")}
+          />
+          <TextField
+            id="prn"
+            label="PRN"
+            value={form.prn}
+            error={errors.prn}
+            placeholder="Enter your PRN"
+            onChange={set("prn")}
+          />
           <FieldSelect
             id="department"
             label="Department"
             value={form.department}
             options={departments}
+            error={errors.department}
             onChange={set("department")}
           />
           <FieldSelect
@@ -107,6 +153,7 @@ function Onboarding() {
             label="Programme"
             value={form.programme}
             options={programmes}
+            error={errors.programme}
             onChange={set("programme")}
           />
           <FieldSelect
@@ -114,17 +161,62 @@ function Onboarding() {
             label="Academic year"
             value={form.academicYear}
             options={academicYears}
+            error={errors.academicYear}
             onChange={set("academicYear")}
           />
 
           <button
             type="submit"
-            className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+            disabled={isSaving}
+            className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-80"
           >
-            Complete Onboarding
+            {isSaving ? (
+              <>
+                <LoaderCircle className="size-5 animate-spin" /> Saving your profile…
+              </>
+            ) : (
+              "Complete Onboarding"
+            )}
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function TextField({
+  id,
+  label,
+  value,
+  placeholder,
+  error,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder?: string;
+  error: string | undefined;
+  onChange: (value: string) => void;
+}) {
+  const errorId = `${id}-error`;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        value={value}
+        placeholder={placeholder}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        className="h-12"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {error && (
+        <p id={errorId} className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -134,19 +226,27 @@ function FieldSelect({
   label,
   value,
   options,
+  error,
   onChange,
 }: {
   id: string;
   label: string;
   value: string;
   options: string[];
+  error: string | undefined;
   onChange: (value: string) => void;
 }) {
+  const errorId = `${id}-error`;
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={id} className="h-12 w-full">
+        <SelectTrigger
+          id={id}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+          className="h-12 w-full"
+        >
           <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent>
@@ -157,6 +257,11 @@ function FieldSelect({
           ))}
         </SelectContent>
       </Select>
+      {error && (
+        <p id={errorId} className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -31,7 +31,7 @@ export function MentorSelect({
             type="button"
             aria-labelledby="p-mentor-label"
             aria-expanded={open}
-            className="flex h-12 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 text-left text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="flex h-12 w-full items-center justify-between rounded-xl border border-input bg-transparent px-3 text-left text-sm shadow-xs outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary/20"
           >
             <span className={cn("truncate", !value && "text-muted-foreground")}>
               {value || "Search faculty mentors"}

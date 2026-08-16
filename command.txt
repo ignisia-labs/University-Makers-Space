@@ -1,0 +1,12 @@
+# Run the frontend from a temporary apostrophe-free path. TanStack's route
+# compiler cannot currently compile the apostrophe in this workspace folder name.
+
+rm -rf /tmp/mitwpu-makerspace-runtime
+mkdir -p /tmp/mitwpu-makerspace-runtime
+rsync -a --exclude '.git' --exclude 'node_modules' --exclude 'dist' --exclude '.output' "/Users/apple/Desktop/Maker's Space/" /tmp/mitwpu-makerspace-runtime/
+ln -s "/Users/apple/Desktop/Maker's Space/node_modules" /tmp/mitwpu-makerspace-runtime/node_modules
+cd /tmp/mitwpu-makerspace-runtime
+npm run dev -- --host 127.0.0.1 --port 5173
+
+# Open http://127.0.0.1:5173/ in your browser.
+# Stop the frontend by pressing Ctrl+C in this Terminal window.
