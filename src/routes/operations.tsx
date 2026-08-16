@@ -1,32 +1,52 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, DoorClosed, DoorOpen, MonitorCog, UsersRound } from "lucide-react";
+import { DoorClosed, DoorOpen, Search, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import type { Equipment, EquipmentStatus, Reservation } from "@/lib/makerspace-data";
+import {
+  directoryStudents,
+  type Equipment,
+  type EquipmentStatus,
+  type Reservation,
+} from "@/lib/makerspace-data";
 
 export const Route = createFileRoute("/operations")({ component: Operations });
 
 const equipmentStatuses: EquipmentStatus[] = [
   "Available",
+  "Partially Available",
+  "In Use",
+  "Reserved",
+  "Unavailable",
   "Under Maintenance",
   "Damaged",
   "Out of Service",
+];
+type OperationsView = "live" | "bookings" | "visits" | "equipment" | "projects";
+const operationsViews: { id: OperationsView; label: string }[] = [
+  { id: "live", label: "Live" },
+  { id: "bookings", label: "Bookings" },
+  { id: "visits", label: "Visits" },
+  { id: "equipment", label: "Equipment" },
+  { id: "projects", label: "Projects" },
 ];
 
 function Operations() {
   const {
     reservations,
     projects,
+    visits,
     equipment,
     config,
     setBookingAttendance,
+    addBookingParticipant,
     markReservationNoShow,
     cancelReservation,
     updateEquipment,
   } = useMakerSpace();
+  const [view, setView] = useState<OperationsView>("live");
   const [action, setAction] = useState<{ booking: Reservation; type: "no-show" | "cancel" } | null>(
     null,
   );
@@ -35,23 +55,33 @@ function Operations() {
   const [equipmentItem, setEquipmentItem] = useState<Equipment | null>(null);
   const [equipmentStatus, setEquipmentStatus] = useState<EquipmentStatus>("Available");
   const [equipmentReason, setEquipmentReason] = useState("");
+  const [equipmentReasonCategory, setEquipmentReasonCategory] = useState<
+    "Maintenance" | "Damage" | "Temporary Issue" | "Other"
+  >("Maintenance");
 
   const active = reservations.filter((booking) => booking.status === "Active");
   const entered = active.reduce(
     (total, booking) =>
       total +
-      Object.values(booking.attendance ?? {}).filter((status) => status === "Entered").length,
+      Object.values(booking.attendance ?? {}).filter((record) => record.status === "Entered")
+        .length,
     0,
   );
   const expected = active.reduce((total, booking) => total + booking.attendees, 0);
   const participantsFor = (booking: Reservation) => {
     const project = projects.find((item) => item.id === booking.projectId);
-    const people = project
+    const projectPeople = project
       ? [
           { id: "leader", name: project.leader },
           ...project.members.map((member) => ({ id: member.id, name: member.name })),
         ]
       : [];
+    const people = [
+      ...projectPeople,
+      ...directoryStudents
+        .filter((student) => !projectPeople.some((person) => person.id === student.id))
+        .map((student) => ({ id: student.id, name: student.name })),
+    ];
     return people.filter((person) => booking.participantIds.includes(person.id));
   };
   const openEquipment = (item: Equipment) => {
@@ -65,6 +95,7 @@ function Operations() {
         : item.status,
     );
     setEquipmentReason(item.availabilityReason ?? "");
+    setEquipmentReasonCategory(item.availabilityReasonCategory ?? "Maintenance");
   };
   function confirmBookingAction() {
     if (!action) return;
@@ -83,6 +114,7 @@ function Operations() {
     const patch: Partial<Equipment> = {
       status: equipmentStatus,
       availableQuantity: equipmentStatus === "Available" ? equipmentItem.totalQuantity : 0,
+      availabilityReasonCategory: equipmentReasonCategory,
     };
     if (equipmentReason.trim()) patch.availabilityReason = equipmentReason.trim();
     updateEquipment(equipmentItem.id, patch);
@@ -91,89 +123,203 @@ function Operations() {
 
   return (
     <AppShell title="Live operations" subtitle="Lab Assistant console">
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Live laboratory occupancy">
-        <Metric
-          value={`${entered} / ${config.capacity}`}
-          label="Present now"
-          note={`${expected} expected across current slots`}
-        />
-        <Metric value={active.length} label="Active slot bookings" note="Expected teams today" />
-        <Metric
-          value={equipment.filter((item) => item.status !== "Available").length}
-          label="Equipment alerts"
-          note="Items needing attention"
-        />
-      </section>
+      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Lab Assistant workspace">
+        {operationsViews.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setView(item.id)}
+            className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-semibold ${
+              view === item.id
+                ? "bg-primary text-primary-foreground"
+                : "border bg-card text-muted-foreground"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
-      <section className="mt-6">
-        <div className="flex items-end justify-between gap-4">
+      {view === "live" && (
+        <>
+          <section className="grid gap-3 sm:grid-cols-3" aria-label="Live laboratory occupancy">
+            <Metric
+              value={`${entered} / ${config.capacity}`}
+              label="Present now"
+              note={`${expected} expected across current slots`}
+            />
+            <Metric
+              value={active.length}
+              label="Active slot bookings"
+              note="Expected teams today"
+            />
+            <Metric
+              value={equipment.filter((item) => item.status !== "Available").length}
+              label="Equipment alerts"
+              note="Items needing attention"
+            />
+          </section>
+
+          <section className="mt-6">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h2 className="font-semibold">Current slot operations</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Mark individual attendance, then record exceptions with an accountable reason.
+                </p>
+              </div>
+              <span className="hidden text-sm text-muted-foreground sm:block">
+                Live capacity: {entered}/{config.capacity}
+              </span>
+            </div>
+            <div className="mt-3 space-y-4">
+              {active.length ? (
+                active.map((booking) => (
+                  <BookingOperations
+                    key={booking.id}
+                    booking={booking}
+                    participants={participantsFor(booking)}
+                    onAttendance={setBookingAttendance}
+                    onAddParticipant={addBookingParticipant}
+                    onException={(type) => {
+                      setAction({ booking, type });
+                      setReason("");
+                      setReasonError("");
+                    }}
+                  />
+                ))
+              ) : (
+                <EmptyOperations />
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
+      {view === "equipment" && (
+        <section>
           <div>
-            <h2 className="font-semibold">Current slot operations</h2>
+            <h2 className="font-semibold">Equipment health</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Mark individual attendance, then record exceptions with an accountable reason.
+              Fast operational updates immediately change equipment availability in this prototype.
             </p>
           </div>
-          <span className="hidden text-sm text-muted-foreground sm:block">
-            Live capacity: {entered}/{config.capacity}
-          </span>
-        </div>
-        <div className="mt-3 space-y-4">
-          {active.length ? (
-            active.map((booking) => (
-              <BookingOperations
-                key={booking.id}
-                booking={booking}
-                participants={participantsFor(booking)}
-                onAttendance={setBookingAttendance}
-                onException={(type) => {
-                  setAction({ booking, type });
-                  setReason("");
-                  setReasonError("");
-                }}
-              />
-            ))
-          ) : (
-            <EmptyOperations />
-          )}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <div>
-          <h2 className="font-semibold">Equipment health</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Fast operational updates immediately change equipment availability in this prototype.
-          </p>
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {equipment.map((item) => (
-            <article
-              key={item.id}
-              className="card-surface flex items-center justify-between gap-3 p-4"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-semibold">{item.name}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {item.availableQuantity}/{item.totalQuantity} available
-                </p>
-                <div className="mt-2">
-                  <StatusBadge label={item.status} />
-                </div>
-                {item.availabilityReason && (
-                  <p className="mt-2 text-xs text-warning-foreground">{item.availabilityReason}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => openEquipment(item)}
-                className="min-h-10 shrink-0 rounded-xl border px-3 text-xs font-semibold"
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {equipment.map((item) => (
+              <article
+                key={item.id}
+                className="card-surface flex items-center justify-between gap-3 p-4"
               >
-                Update health
-              </button>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{item.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {item.availableQuantity}/{item.totalQuantity} available
+                  </p>
+                  <div className="mt-2">
+                    <StatusBadge label={item.status} />
+                  </div>
+                  {item.availabilityReason && (
+                    <p className="mt-2 text-xs text-warning-foreground">
+                      {item.availabilityReason}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openEquipment(item)}
+                  className="min-h-10 shrink-0 rounded-xl border px-3 text-xs font-semibold"
+                >
+                  Update health
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {view === "bookings" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-semibold">Booking operations</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Current, cancelled and no-show booking records.
+            </p>
+          </div>
+          {reservations.map((booking) => (
+            <article key={booking.id} className="card-surface p-5">
+              <div className="flex flex-wrap justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{booking.projectName}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {booking.date} · {booking.slot} · {booking.attendees} expected
+                  </p>
+                </div>
+                <StatusBadge label={booking.status} />
+              </div>
+              {(booking.cancelledReason || booking.noShowReason) && (
+                <p className="mt-3 rounded-xl bg-muted p-3 text-sm">
+                  <strong>Operational record:</strong>{" "}
+                  {booking.cancelledReason ?? booking.noShowReason}
+                  <span className="block mt-1 text-xs text-muted-foreground">
+                    {booking.handledBy} · {booking.cancelledAt ?? booking.noShowAt}
+                  </span>
+                </p>
+              )}
             </article>
           ))}
-        </div>
-      </section>
+        </section>
+      )}
+
+      {view === "visits" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-semibold">Operational visits</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Project-slot and quick-visit attendance records.
+            </p>
+          </div>
+          {visits.map((visit) => (
+            <article
+              key={visit.id}
+              className="card-surface flex flex-wrap items-center justify-between gap-3 p-4"
+            >
+              <div>
+                <p className="font-semibold">{visit.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {visit.type} · {visit.date} · Entry {visit.entry}
+                  {visit.exit ? ` · Exit ${visit.exit}` : ""}
+                </p>
+              </div>
+              <StatusBadge label={visit.status} />
+            </article>
+          ))}
+        </section>
+      )}
+
+      {view === "projects" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-semibold">Project directory</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Operational context for teams using MakerSpace.
+            </p>
+          </div>
+          {projects.map((project) => (
+            <article key={project.id} className="card-surface p-5">
+              <div className="flex flex-wrap justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">{project.name}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Team Leader: {project.leader} · {project.members.length + 1} members
+                  </p>
+                </div>
+                <StatusBadge label={project.status} />
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">{project.resources.join(", ")}</p>
+            </article>
+          ))}
+        </section>
+      )}
 
       <ResponsiveModal
         open={!!action}
@@ -231,6 +377,21 @@ function Operations() {
           <label htmlFor="equipment-reason" className="block text-sm font-medium">
             Operational note {equipmentStatus !== "Available" ? "(required)" : "(optional)"}
           </label>
+          <select
+            aria-label="Availability reason category"
+            value={equipmentReasonCategory}
+            onChange={(event) =>
+              setEquipmentReasonCategory(
+                event.target.value as "Maintenance" | "Damage" | "Temporary Issue" | "Other",
+              )
+            }
+            className="form-input"
+          >
+            <option>Maintenance</option>
+            <option>Damage</option>
+            <option>Temporary Issue</option>
+            <option>Other</option>
+          </select>
           <textarea
             id="equipment-reason"
             value={equipmentReason}
@@ -256,17 +417,29 @@ function BookingOperations({
   booking,
   participants,
   onAttendance,
+  onAddParticipant,
   onException,
 }: {
   booking: Reservation;
   participants: { id: string; name: string }[];
   onAttendance: (id: string, people: string[], status: "Expected" | "Entered" | "Exited") => void;
+  onAddParticipant: (bookingId: string, participantId: string) => void;
   onException: (type: "no-show" | "cancel") => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
   const entered = participants.filter(
-    (person) => booking.attendance?.[person.id] === "Entered",
+    (person) => booking.attendance?.[person.id]?.status === "Entered",
   ).length;
+  const fallbackResults = search.trim()
+    ? directoryStudents.filter(
+        (student) =>
+          !booking.participantIds.includes(student.id) &&
+          `${student.name} ${student.email ?? ""} ${student.prn}`
+            .toLowerCase()
+            .includes(search.toLowerCase()),
+      )
+    : [];
   const toggle = (personId: string) =>
     setSelected((current) =>
       current.includes(personId) ? current.filter((id) => id !== personId) : [...current, personId],
@@ -290,7 +463,8 @@ function BookingOperations({
       </div>
       <div className="mt-4 divide-y rounded-xl border">
         {participants.map((person) => {
-          const status = booking.attendance?.[person.id] ?? "Expected";
+          const record = booking.attendance?.[person.id];
+          const status = record?.status ?? "Expected";
           return (
             <label
               key={person.id}
@@ -304,7 +478,16 @@ function BookingOperations({
                   className="size-4 accent-primary"
                   aria-label={`Select ${person.name}`}
                 />
-                <span className="text-sm font-medium">{person.name}</span>
+                <span>
+                  <span className="block text-sm font-medium">{person.name}</span>
+                  {(record?.enteredAt || record?.exitedAt) && (
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {record.enteredAt ? `Entered ${record.enteredAt}` : ""}
+                      {record.exitedAt ? ` · Exited ${record.exitedAt}` : ""}
+                      {record.markedBy ? ` · ${record.markedBy}` : ""}
+                    </span>
+                  )}
+                </span>
               </span>
               <StatusBadge label={status} />
             </label>
@@ -339,6 +522,13 @@ function BookingOperations({
         </button>
         <button
           type="button"
+          onClick={() => apply("Exited", true)}
+          className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
+        >
+          Check out team
+        </button>
+        <button
+          type="button"
           onClick={() => onException("no-show")}
           className="min-h-11 rounded-xl border border-warning/50 px-3 text-sm font-semibold text-warning-foreground"
         >
@@ -352,6 +542,47 @@ function BookingOperations({
           Cancel booking
         </button>
       </div>
+      <details className="mt-4 border-t border-border pt-4">
+        <summary className="cursor-pointer text-sm font-semibold text-primary">
+          Find another student
+        </summary>
+        <label className="relative mt-3 block">
+          <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name, email or PRN"
+            className="form-input pl-10"
+          />
+        </label>
+        {fallbackResults.length > 0 && (
+          <div className="mt-2 divide-y rounded-xl border">
+            {fallbackResults.slice(0, 4).map((student) => (
+              <div
+                key={student.id}
+                className="flex min-h-12 items-center justify-between gap-3 px-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{student.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {student.prn} · {student.email}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddParticipant(booking.id, student.id);
+                    setSearch("");
+                  }}
+                  className="min-h-10 rounded-lg border px-3 text-xs font-semibold"
+                >
+                  Add to roster
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
     </article>
   );
 }

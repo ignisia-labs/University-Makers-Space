@@ -9,6 +9,7 @@ import {
   initialReservations,
   initialUsers,
   initialVisits,
+  directoryStudents,
   type AppRole,
   type AppUser,
   type AuditEvent,
@@ -35,9 +36,10 @@ type State = {
   notifications: Notification[];
   users: AppUser[];
   auditLogs: AuditEvent[];
+  equipmentCategories: string[];
   config: LabConfig;
   completeOnboarding: (p: StudentProfile) => void;
-  beginPrototypeSession: () => void;
+  beginPrototypeSession: (role?: AppRole) => void;
   signOut: () => void;
   addProject: (p: Omit<Project, "id" | "createdAt">) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
@@ -49,12 +51,14 @@ type State = {
     participantIds: string[],
     status: "Expected" | "Entered" | "Exited",
   ) => void;
+  addBookingParticipant: (bookingId: string, participantId: string) => void;
   addVisit: (v: Omit<Visit, "id">) => void;
   updateVisit: (id: string, patch: Partial<Visit>) => void;
   acceptProjectInvitation: (id: string, s: StudentProfile) => void;
   updateEquipment: (id: string, patch: Partial<Equipment>) => void;
   addEquipment: (e: Omit<Equipment, "id">) => void;
   removeEquipment: (id: string) => void;
+  addEquipmentCategory: (category: string) => void;
   addConsumable: (item: Omit<Consumable, "id">) => void;
   updateConsumable: (id: string, patch: Partial<Consumable>) => void;
   removeConsumable: (id: string) => void;
@@ -81,10 +85,31 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [users, setUsers] = useState(initialUsers);
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
+  const [equipmentCategories, setEquipmentCategories] = useState(() => [
+    ...new Set(equipmentCatalogue.map((item) => item.category)),
+    "Sensors & Actuators",
+  ]);
   const [config, setConfig] = useState(initialConfig);
-  const audit = (action: string, entity: string) =>
+  const actor =
+    users.find((user) => user.role === role && user.active) ??
+    users.find((user) => user.email === profile.email);
+  const audit = (
+    action: string,
+    entity: string,
+    details: Partial<Omit<AuditEvent, "id" | "action" | "entity" | "timestamp">> = {},
+  ) =>
     setAuditLogs((prev) => [
-      { id: uid(), action, entity, actor: role, timestamp: new Date().toLocaleString("en-IN") },
+      {
+        id: uid(),
+        action,
+        entity,
+        actorId: actor?.id ?? "prototype-user",
+        actorName: actor?.name ?? profile.fullName,
+        actorRole: role,
+        entityType: details.entityType ?? "Record",
+        timestamp: new Date().toLocaleString("en-IN"),
+        ...details,
+      },
       ...prev,
     ]);
   const value = useMemo<State>(
@@ -101,13 +126,14 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       notifications,
       users,
       auditLogs,
+      equipmentCategories,
       config,
       completeOnboarding(p) {
         setProfile(p);
         setOnboarded(true);
       },
-      beginPrototypeSession() {
-        setRole("Student");
+      beginPrototypeSession(nextRole = "Student") {
+        setRole(nextRole);
         setAuthenticated(true);
       },
       signOut() {
@@ -131,20 +157,47 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         audit("Created booking", r.projectName);
       },
       cancelReservation(id, reason) {
+        const timestamp = new Date().toLocaleString("en-IN");
         setReservations((prev) =>
           prev.map((r) =>
-            r.id === id ? { ...r, status: "Cancelled", cancelledReason: reason } : r,
+            r.id === id
+              ? {
+                  ...r,
+                  status: "Cancelled",
+                  cancelledReason: reason,
+                  cancelledAt: timestamp,
+                  handledBy: actor?.name ?? profile.fullName,
+                }
+              : r,
           ),
         );
-        audit("Cancelled booking", id);
+        audit("Cancelled booking", id, { entityType: "Booking", reason });
       },
       markReservationNoShow(id, reason) {
+        const timestamp = new Date().toLocaleString("en-IN");
         setReservations((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: "No Show", noShowReason: reason } : r)),
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  status: "No Show",
+                  noShowReason: reason,
+                  noShowAt: timestamp,
+                  handledBy: actor?.name ?? profile.fullName,
+                }
+              : r,
+          ),
         );
-        audit("Marked booking no-show", id);
+        audit("Marked booking no-show", id, { entityType: "Booking", reason });
       },
       setBookingAttendance(id, participantIds, status) {
+        const timestamp = new Date().toLocaleString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          day: "2-digit",
+          month: "short",
+        });
+        const markedBy = actor?.name ?? profile.fullName;
         setReservations((prev) =>
           prev.map((r) =>
             r.id === id
@@ -153,14 +206,55 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
                   attendance: {
                     ...r.attendance,
                     ...Object.fromEntries(
-                      participantIds.map((participantId) => [participantId, status]),
+                      participantIds.map((participantId) => {
+                        const current = r.attendance?.[participantId];
+                        return [
+                          participantId,
+                          status === "Entered"
+                            ? { status, enteredAt: timestamp, markedBy }
+                            : status === "Exited"
+                              ? {
+                                  status,
+                                  ...(current?.enteredAt ? { enteredAt: current.enteredAt } : {}),
+                                  exitedAt: timestamp,
+                                  markedBy,
+                                }
+                              : { status, markedBy },
+                        ];
+                      }),
                     ),
                   },
                 }
               : r,
           ),
         );
-        audit(`Marked attendees ${status.toLowerCase()}`, id);
+        audit(`Marked attendees ${status.toLowerCase()}`, id, {
+          entityType: "Attendance",
+          metadata: { participantCount: String(participantIds.length) },
+        });
+      },
+      addBookingParticipant(bookingId, participantId) {
+        const student = directoryStudents.find((item) => item.id === participantId);
+        if (!student) return;
+        setReservations((prev) =>
+          prev.map((reservation) =>
+            reservation.id === bookingId && !reservation.participantIds.includes(participantId)
+              ? {
+                  ...reservation,
+                  participantIds: [...reservation.participantIds, participantId],
+                  attendees: reservation.attendees + 1,
+                  attendance: {
+                    ...reservation.attendance,
+                    [participantId]: { status: "Expected" },
+                  },
+                }
+              : reservation,
+          ),
+        );
+        audit("Added attendee through fallback search", bookingId, {
+          entityType: "Attendance",
+          metadata: { student: student.name },
+        });
       },
       addVisit(v) {
         setVisits((prev) => [{ ...v, id: uid() }, ...prev]);
@@ -200,8 +294,18 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         );
       },
       updateEquipment(id, patch) {
-        setEquipment((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-        audit("Updated equipment", id);
+        const previous = equipment.find((item) => item.id === id);
+        setEquipment((prev) =>
+          prev.map((e) =>
+            e.id === id ? { ...e, ...patch, updatedAt: new Date().toLocaleDateString("en-IN") } : e,
+          ),
+        );
+        audit("Updated equipment", id, {
+          entityType: "Equipment",
+          ...(patch.availabilityReason ? { reason: patch.availabilityReason } : {}),
+          ...(previous?.status ? { previousValue: previous.status } : {}),
+          ...(patch.status ? { newValue: patch.status } : {}),
+        });
       },
       addEquipment(e) {
         setEquipment((prev) => [{ ...e, id: uid() }, ...prev]);
@@ -209,7 +313,17 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       },
       removeEquipment(id) {
         setEquipment((prev) => prev.filter((e) => e.id !== id));
-        audit("Removed equipment", id);
+        audit("Removed equipment", id, { entityType: "Equipment" });
+      },
+      addEquipmentCategory(category) {
+        const normalized = category.trim();
+        if (!normalized) return;
+        setEquipmentCategories((prev) =>
+          prev.some((item) => item.toLowerCase() === normalized.toLowerCase())
+            ? prev
+            : [...prev, normalized],
+        );
+        audit("Added equipment category", normalized, { entityType: "Equipment Category" });
       },
       addConsumable(item) {
         setConsumables((prev) => [{ ...item, id: uid() }, ...prev]);
@@ -226,20 +340,49 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         audit("Removed consumable", id);
       },
       saveConfig(c) {
+        const previous = JSON.stringify(config);
+        const next = JSON.stringify(c);
         setConfig(c);
-        audit("Updated lab configuration", c.labName);
+        if (previous === next) {
+          audit("Reviewed lab configuration", c.labName, {
+            entityType: "Lab Configuration",
+            metadata: { result: "No configuration values changed" },
+          });
+          return;
+        }
+        audit("Updated lab configuration", c.labName, {
+          entityType: "Lab Configuration",
+          previousValue: previous,
+          newValue: next,
+        });
       },
       updateUserRole(id, nextRole) {
+        const previousRole = users.find((user) => user.id === id)?.role;
         setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role: nextRole } : u)));
-        audit("Changed user role", id);
+        audit("Changed user role", id, {
+          entityType: "User",
+          ...(previousRole ? { previousValue: previousRole } : {}),
+          newValue: nextRole,
+          metadata: { sessionAction: "Re-evaluate on next request" },
+        });
       },
       provisionUser(user) {
-        setUsers((prev) => [{ ...user, id: uid() }, ...prev]);
-        audit("Pre-provisioned user", user.email);
+        setUsers((prev) => [
+          { ...user, id: uid(), provisionedAt: new Date().toLocaleString("en-IN") },
+          ...prev,
+        ]);
+        audit("Pre-provisioned user", user.email, {
+          entityType: "User",
+          newValue: user.role,
+        });
       },
       updateUserActive(id, active) {
         setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, active } : user)));
-        audit(active ? "Activated user" : "Disabled user", id);
+        audit(active ? "Activated user" : "Disabled user", id, {
+          entityType: "User",
+          newValue: active ? "Active" : "Inactive",
+          metadata: { sessionAction: "Invalidate active sessions" },
+        });
       },
       markNotificationRead(id) {
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -261,6 +404,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       notifications,
       users,
       auditLogs,
+      equipmentCategories,
       config,
     ],
   );

@@ -3,6 +3,7 @@ import { ArrowRight, CircleAlert, LoaderCircle, ShieldCheck } from "lucide-react
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import type { AppRole } from "@/lib/makerspace-data";
 
 const loginErrors = {
   "unauthorized-domain": {
@@ -38,11 +39,20 @@ const roleHomes = {
   "Super Admin": "/super-admin",
 } as const;
 
+const prototypeRoles: AppRole[] = [
+  "Student",
+  "Faculty Mentor",
+  "Lab Assistant",
+  "Admin",
+  "Super Admin",
+];
+
 function Login() {
   const navigate = useNavigate();
   const { authenticated, role, beginPrototypeSession } = useMakerSpace();
   const { error } = Route.useSearch();
   const [isChecking, setIsChecking] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const message = error ? loginErrors[error] : null;
 
   useEffect(() => {
@@ -61,6 +71,15 @@ function Login() {
     }
 
     window.location.assign("/api/auth/google");
+  };
+
+  const previewWorkspace = (previewRole: AppRole) => {
+    if (!import.meta.env.DEV) return;
+    setIsChecking(true);
+    window.setTimeout(() => {
+      beginPrototypeSession(previewRole);
+      navigate({ to: roleHomes[previewRole] });
+    }, 200);
   };
 
   return (
@@ -112,6 +131,40 @@ function Login() {
           <p className="mt-3 text-center text-xs text-muted-foreground">
             Only verified @mitwpu.edu.in accounts are accepted.
           </p>
+
+          {import.meta.env.DEV && (
+            <div className="mt-6 border-t border-border pt-5">
+              <button
+                type="button"
+                onClick={() => setPreviewOpen((open) => !open)}
+                aria-expanded={previewOpen}
+                className="min-h-10 w-full text-center text-xs font-semibold text-muted-foreground hover:text-foreground"
+              >
+                Prototype workspace review
+              </button>
+              {previewOpen && (
+                <>
+                  <p className="mt-3 text-center text-xs leading-5 text-muted-foreground">
+                    Development-only preview. This is not authentication and is excluded from
+                    production.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {prototypeRoles.map((previewRole) => (
+                      <button
+                        key={previewRole}
+                        type="button"
+                        disabled={isChecking}
+                        onClick={() => previewWorkspace(previewRole)}
+                        className="min-h-11 rounded-xl border border-border bg-card px-3 text-left text-xs font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+                      >
+                        Open {previewRole}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </section>
     </main>

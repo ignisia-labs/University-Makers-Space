@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, PackagePlus, Pencil, Search, Trash2 } from "lucide-react";
+import { PackagePlus, Pencil, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -15,14 +15,6 @@ import type {
 
 export const Route = createFileRoute("/admin")({ component: Admin });
 
-const equipmentCategories: EquipmentCategory[] = [
-  "3D Printing",
-  "Laser",
-  "Robotics",
-  "Electronics",
-  "Workstations",
-  "Sensors & Actuators",
-];
 const equipmentStatuses: EquipmentStatus[] = [
   "Available",
   "Partially Available",
@@ -48,6 +40,9 @@ function emptyEquipment(): Omit<Equipment, "id"> {
     visible: true,
     bookingVisible: true,
     notes: "",
+    lab: "Main MakerSpace",
+    createdAt: new Date().toLocaleDateString("en-IN"),
+    updatedAt: new Date().toLocaleDateString("en-IN"),
   };
 }
 function emptyConsumable(): Omit<Consumable, "id"> {
@@ -66,6 +61,12 @@ function Admin() {
     addConsumable,
     updateConsumable,
     removeConsumable,
+    reservations,
+    visits,
+    projects,
+    auditLogs,
+    equipmentCategories,
+    addEquipmentCategory,
   } = useMakerSpace();
   const [draft, setDraft] = useState(config);
   const [catalogue, setCatalogue] = useState<"equipment" | "consumables">("equipment");
@@ -86,6 +87,19 @@ function Admin() {
   } | null>(null);
   const [closureInput, setClosureInput] = useState("");
   const [saved, setSaved] = useState(false);
+  const [categoryInput, setCategoryInput] = useState("");
+  const present = reservations.reduce(
+    (total, booking) =>
+      total +
+      Object.values(booking.attendance ?? {}).filter((record) => record.status === "Entered")
+        .length,
+    0,
+  );
+  const activeBookings = reservations.filter((booking) => booking.status === "Active");
+  const bookedSeats = activeBookings.reduce((total, booking) => total + booking.attendees, 0);
+  const utilization = activeBookings.length
+    ? Math.round((bookedSeats / (activeBookings.length * config.capacity)) * 100)
+    : 0;
 
   const shownEquipment = useMemo(
     () =>
@@ -133,7 +147,58 @@ function Admin() {
 
   return (
     <AppShell title="Administration" subtitle="Lab operating rules and resource catalogue">
-      <section className="card-surface p-5">
+      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Admin workspace">
+        {[
+          ["#admin-overview", "Dashboard"],
+          ["#admin-resources", "Resources"],
+          ["#admin-configuration", "Configuration"],
+          ["#admin-oversight", "Oversight"],
+        ].map(([href, label]) => (
+          <a
+            key={href}
+            href={href}
+            className="min-h-11 shrink-0 rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+
+      <section id="admin-overview">
+        <h2 className="font-semibold">Operational overview</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminMetric
+            label="Current occupancy"
+            value={`${present}/${config.capacity}`}
+            note="Entered and not exited"
+          />
+          <AdminMetric
+            label="Booking utilization"
+            value={`${utilization}%`}
+            note={`${bookedSeats} seats across active slots`}
+          />
+          <AdminMetric
+            label="Unavailable equipment"
+            value={equipment.filter((item) => item.status !== "Available").length}
+            note="Operational attention required"
+          />
+          <AdminMetric
+            label="Upcoming booking volume"
+            value={activeBookings.length}
+            note={`${visits.filter((visit) => visit.status === "Active").length} active visits`}
+          />
+        </div>
+        <div className="card-surface mt-3 p-4">
+          <p className="text-sm font-semibold">Pending operational issues</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {equipment.filter((item) => item.status !== "Available").length} equipment alerts ·{" "}
+            {reservations.filter((item) => item.status === "No Show").length} no-shows ·{" "}
+            {reservations.filter((item) => item.status === "Cancelled").length} cancellations
+          </p>
+        </div>
+      </section>
+
+      <section id="admin-configuration" className="card-surface mt-7 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">Lab operational settings</h2>
@@ -205,6 +270,17 @@ function Admin() {
               min="0"
               value={draft.cancellationWindow}
               onChange={(event) => updateDraft("cancellationWindow", Number(event.target.value))}
+              className="form-input"
+            />
+          </Field>
+          <Field label="Maximum future bookings per project">
+            <input
+              type="number"
+              min="1"
+              value={draft.maximumFutureBookingsPerProject ?? 1}
+              onChange={(event) =>
+                updateDraft("maximumFutureBookingsPerProject", Number(event.target.value))
+              }
               className="form-input"
             />
           </Field>
@@ -299,7 +375,7 @@ function Admin() {
         </button>
       </section>
 
-      <section className="mt-7">
+      <section id="admin-resources" className="mt-7">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-semibold">Resource catalogue</h2>
@@ -363,6 +439,35 @@ function Admin() {
             ))}
           </select>
         </div>
+        <div className="card-surface mt-4 p-4">
+          <p className="text-sm font-semibold">Equipment categories</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {equipmentCategories.map((item) => (
+              <span key={item} className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                {item}
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <input
+              value={categoryInput}
+              onChange={(event) => setCategoryInput(event.target.value)}
+              placeholder="New configured category"
+              className="form-input"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                addEquipmentCategory(categoryInput);
+                setCategoryInput("");
+              }}
+              disabled={!categoryInput.trim()}
+              className="min-h-11 shrink-0 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50"
+            >
+              Add category
+            </button>
+          </div>
+        </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {catalogue === "equipment"
             ? shownEquipment.map((item) => (
@@ -405,6 +510,7 @@ function Admin() {
             item={equipmentModal.item}
             onChange={(item) => setEquipmentModal({ ...equipmentModal, item })}
             onSave={saveEquipment}
+            categories={equipmentCategories}
           />
         )}
       </ResponsiveModal>
@@ -419,6 +525,7 @@ function Admin() {
             item={consumableModal.item}
             onChange={(item) => setConsumableModal({ ...consumableModal, item })}
             onSave={saveConsumable}
+            categories={equipmentCategories}
           />
         )}
       </ResponsiveModal>
@@ -444,6 +551,45 @@ function Admin() {
           </div>
         )}
       </ResponsiveModal>
+
+      <section id="admin-oversight" className="mt-7">
+        <h2 className="font-semibold">Operational oversight</h2>
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          <OversightList
+            title="Projects"
+            items={projects.slice(0, 4).map((item) => `${item.name} · ${item.status}`)}
+          />
+          <OversightList
+            title="Bookings"
+            items={reservations.slice(0, 4).map((item) => `${item.projectName} · ${item.status}`)}
+          />
+          <OversightList
+            title="Visits"
+            items={visits.slice(0, 4).map((item) => `${item.title} · ${item.status}`)}
+          />
+        </div>
+        <div className="card-surface mt-4 p-5">
+          <h3 className="font-semibold">Configuration audit history</h3>
+          <div className="mt-3 space-y-2">
+            {auditLogs.filter((event) => event.entityType === "Lab Configuration").length ? (
+              auditLogs
+                .filter((event) => event.entityType === "Lab Configuration")
+                .map((event) => (
+                  <div key={event.id} className="rounded-xl border p-3 text-sm">
+                    <strong>{event.action}</strong>
+                    <span className="block mt-1 text-xs text-muted-foreground">
+                      {event.actorName} · {event.timestamp}
+                    </span>
+                  </div>
+                ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Configuration changes made during this session will appear here.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
     </AppShell>
   );
 }
@@ -454,6 +600,40 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span>{label}</span>
       <span className="mt-1.5 block">{children}</span>
     </label>
+  );
+}
+function AdminMetric({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string | number;
+  note: string;
+}) {
+  return (
+    <article className="card-surface p-4">
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-sm font-semibold">{label}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    </article>
+  );
+}
+function OversightList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <article className="card-surface p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <div className="mt-3 space-y-2">
+        {items.map((item, index) => (
+          <p
+            key={`${title}-${index}-${item}`}
+            className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
+          >
+            {item}
+          </p>
+        ))}
+      </div>
+    </article>
   );
 }
 function EquipmentCard({
@@ -499,6 +679,9 @@ function EquipmentCard({
       <p className="mt-3 text-xs text-muted-foreground">
         Student: {item.visible ? "Visible" : "Hidden"} · Booking:{" "}
         {item.bookingVisible !== false ? "Allowed" : "Hidden"}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {item.lab} · ID {item.id} · Updated {item.updatedAt}
       </p>
     </article>
   );
@@ -551,10 +734,12 @@ function EquipmentForm({
   item,
   onChange,
   onSave,
+  categories,
 }: {
   item: Omit<Equipment, "id">;
   onChange: (item: Omit<Equipment, "id">) => void;
   onSave: () => void;
+  categories: string[];
 }) {
   const set = <K extends keyof Omit<Equipment, "id">>(key: K, value: Omit<Equipment, "id">[K]) =>
     onChange({ ...item, [key]: value });
@@ -574,7 +759,7 @@ function EquipmentForm({
             onChange={(event) => set("category", event.target.value as EquipmentCategory)}
             className="form-input"
           >
-            {equipmentCategories.map((category) => (
+            {categories.map((category) => (
               <option key={category}>{category}</option>
             ))}
           </select>
@@ -606,6 +791,23 @@ function EquipmentForm({
             max={item.totalQuantity}
             value={item.availableQuantity}
             onChange={(event) => set("availableQuantity", Number(event.target.value))}
+            className="form-input"
+          />
+        </Field>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Lab / zone">
+          <input
+            value={item.lab}
+            onChange={(event) => set("lab", event.target.value)}
+            className="form-input"
+          />
+        </Field>
+        <Field label="Image reference">
+          <input
+            value={item.image}
+            onChange={(event) => set("image", event.target.value)}
+            placeholder="Asset path or image URL"
             className="form-input"
           />
         </Field>
@@ -642,6 +844,9 @@ function EquipmentForm({
           Available in booking
         </label>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Created {item.createdAt} · Updated {item.updatedAt}
+      </p>
       <button
         type="button"
         onClick={onSave}
@@ -657,10 +862,12 @@ function ConsumableForm({
   item,
   onChange,
   onSave,
+  categories,
 }: {
   item: Omit<Consumable, "id">;
   onChange: (item: Omit<Consumable, "id">) => void;
   onSave: () => void;
+  categories: string[];
 }) {
   const set = <K extends keyof Omit<Consumable, "id">>(key: K, value: Omit<Consumable, "id">[K]) =>
     onChange({ ...item, [key]: value });
@@ -680,7 +887,7 @@ function ConsumableForm({
             onChange={(event) => set("category", event.target.value)}
             className="form-input"
           >
-            {equipmentCategories.map((category) => (
+            {categories.map((category) => (
               <option key={category}>{category}</option>
             ))}
           </select>

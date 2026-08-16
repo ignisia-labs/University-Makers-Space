@@ -86,9 +86,6 @@ function Dashboard() {
           </div>
         </div>
 
-        <ProjectFocus
-          projects={data.projects.filter((project) => project.relationship !== "invited")}
-        />
         <QuickActions data={data} />
       </div>
     </AppShell>
@@ -531,59 +528,6 @@ function InvitationsDrawer({ invitations }: { invitations: DashboardProject[] })
   );
 }
 
-function ProjectFocus({ projects }: { projects: DashboardProject[] }) {
-  if (!projects.length) return null;
-  return (
-    <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Your projects</h2>
-        <Link to="/projects" className="text-sm font-semibold text-primary hover:underline">
-          View all
-        </Link>
-      </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {projects.slice(0, 4).map((project) => (
-          <article key={project.id} className="card-surface p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold">{project.name}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {project.relationship === "leader"
-                    ? "You are the Team Leader"
-                    : `Team Leader: ${project.leader}`}
-                </p>
-              </div>
-              <StatusBadge label={project.status} />
-            </div>
-            <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-              <Users className="size-4" /> {project.members.length + 1} team members
-            </p>
-            <InvitationProgress project={project} />
-            {project.status === "Rejected" && project.rejectionReason && (
-              <p className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm leading-5 text-warning-foreground">
-                <span className="font-semibold">Faculty feedback: </span>
-                {project.rejectionReason}
-              </p>
-            )}
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
-              <span className="truncate text-xs text-muted-foreground">
-                Mentor: {project.mentor}
-              </span>
-              <Link
-                to="/projects/$projectId"
-                params={{ projectId: project.id }}
-                className="shrink-0 text-sm font-semibold text-primary hover:underline"
-              >
-                View project
-              </Link>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function QuickActions({ data }: { data: DashboardData }) {
   const actions = [
     { to: "/projects" as const, label: "Create Project", icon: Plus, visible: true },
@@ -679,36 +623,6 @@ function getDashboardData(
       0,
     ),
   };
-}
-
-function InvitationProgress({ project }: { project: DashboardProject }) {
-  if (project.relationship !== "leader") return null;
-  const invitations = getTeamInvitations(project);
-  if (!invitations.length) return null;
-  const counts = invitations.reduce<Record<string, number>>((result, invitation) => {
-    result[invitation.status] = (result[invitation.status] ?? 0) + 1;
-    return result;
-  }, {});
-  return (
-    <div className="mt-4 border-t border-border pt-4">
-      <p className="text-xs font-semibold text-muted-foreground">Team invitations</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {Object.entries(counts).map(([status, count]) => (
-          <span
-            key={status}
-            className="rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground"
-          >
-            {count} {status.toLowerCase()}
-          </span>
-        ))}
-      </div>
-      {invitations.some((invitation) => invitation.status === "Pending") && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Waiting for invited team members to respond.
-        </p>
-      )}
-    </div>
-  );
 }
 
 function getTeamInvitations(project: DashboardProject) {

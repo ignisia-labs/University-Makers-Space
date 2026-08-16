@@ -15,6 +15,7 @@ const tabs: { id: View; label: string; icon: typeof ClipboardCheck }[] = [
   { id: "active", label: "Active projects", icon: CheckCircle2 },
   { id: "history", label: "Project archive", icon: Archive },
 ];
+const prototypeFacultyName = "Prof. Rohan Bhide";
 
 function Faculty() {
   const { projects, updateProject } = useMakerSpace();
@@ -24,13 +25,20 @@ function Faculty() {
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState("");
 
+  const assignedProjects = useMemo(
+    () =>
+      projects.filter((item) =>
+        item.mentor.toLowerCase().includes(prototypeFacultyName.toLowerCase()),
+      ),
+    [projects],
+  );
   const buckets = useMemo(
     () => ({
-      pending: projects.filter((item) => item.status === "Mentor Approval Pending"),
-      active: projects.filter((item) => item.status === "Verified"),
-      history: projects.filter((item) => ["Rejected", "Archived"].includes(item.status)),
+      pending: assignedProjects.filter((item) => item.status === "Mentor Approval Pending"),
+      active: assignedProjects.filter((item) => item.status === "Verified"),
+      history: assignedProjects.filter((item) => ["Rejected", "Archived"].includes(item.status)),
     }),
-    [projects],
+    [assignedProjects],
   );
   const visible = buckets[view];
 
@@ -42,7 +50,11 @@ function Faculty() {
   }
   function approve() {
     if (!project) return;
-    updateProject(project.id, { status: "Verified" });
+    updateProject(project.id, {
+      status: "Verified",
+      reviewedAt: new Date().toLocaleString("en-IN"),
+      reviewedBy: prototypeFacultyName,
+    });
     setProject(null);
   }
   function reject() {
@@ -51,7 +63,12 @@ function Faculty() {
       setReasonError("A reason is required so the team knows what to revise.");
       return;
     }
-    updateProject(project.id, { status: "Rejected", rejectionReason: reason.trim() });
+    updateProject(project.id, {
+      status: "Rejected",
+      rejectionReason: reason.trim(),
+      reviewedAt: new Date().toLocaleString("en-IN"),
+      reviewedBy: prototypeFacultyName,
+    });
     setProject(null);
     setRejecting(false);
   }
@@ -135,6 +152,35 @@ function Faculty() {
         )}
       </section>
 
+      <section className="mt-7">
+        <h2 className="font-semibold">Recent mentorship activity</h2>
+        <div className="mt-3 space-y-2">
+          {assignedProjects.some((item) => item.reviewedAt) ? (
+            assignedProjects
+              .filter((item) => item.reviewedAt)
+              .slice(0, 5)
+              .map((item) => (
+                <article
+                  key={item.id}
+                  className="card-surface flex flex-wrap items-center justify-between gap-3 p-4"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">{item.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Reviewed by {item.reviewedBy ?? prototypeFacultyName} · {item.reviewedAt}
+                    </p>
+                  </div>
+                  <StatusBadge label={item.status} />
+                </article>
+              ))
+          ) : (
+            <div className="card-surface p-5 text-sm text-muted-foreground">
+              Approval and rejection activity will appear here.
+            </div>
+          )}
+        </div>
+      </section>
+
       <ResponsiveModal
         open={!!project}
         onOpenChange={(open) => !open && setProject(null)}
@@ -165,6 +211,12 @@ function Faculty() {
               value={project.consumables?.join(", ") || "None specified"}
             />
             <ReviewDetail label="Submission date" value={project.createdAt} />
+            {project.reviewedAt && (
+              <ReviewDetail
+                label="Latest decision"
+                value={`${project.reviewedAt} · ${project.reviewedBy ?? prototypeFacultyName}`}
+              />
+            )}
             {project.rejectionReason && (
               <ReviewDetail label="Previous review note" value={project.rejectionReason} />
             )}

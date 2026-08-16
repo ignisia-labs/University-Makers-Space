@@ -45,6 +45,8 @@ export type Project = {
   invitedEmails: string[];
   teamInvitations?: ProjectInvitation[];
   rejectionReason?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
   createdAt: string;
 };
 export type ProjectInvitation = {
@@ -63,8 +65,17 @@ export type Reservation = {
   status: BookingStatus;
   resources: string[];
   cancelledReason?: string;
+  cancelledAt?: string;
   noShowReason?: string;
-  attendance?: Record<string, "Expected" | "Entered" | "Exited">;
+  noShowAt?: string;
+  handledBy?: string;
+  attendance?: Record<string, AttendanceRecord>;
+};
+export type AttendanceRecord = {
+  status: "Expected" | "Entered" | "Exited";
+  enteredAt?: string;
+  exitedAt?: string;
+  markedBy?: string;
 };
 export type Visit = {
   id: string;
@@ -75,8 +86,7 @@ export type Visit = {
   exit: string | null;
   status: "Requested" | "Active" | "Completed";
 };
-export type EquipmentCategory =
-  "3D Printing" | "Laser" | "Robotics" | "Electronics" | "Workstations" | "Sensors & Actuators";
+export type EquipmentCategory = string;
 export type Equipment = {
   id: string;
   name: string;
@@ -91,6 +101,10 @@ export type Equipment = {
   bookingVisible?: boolean;
   notes?: string;
   availabilityReason?: string;
+  availabilityReasonCategory?: "Maintenance" | "Damage" | "Temporary Issue" | "Other";
+  lab: string;
+  createdAt: string;
+  updatedAt: string;
 };
 export type Consumable = {
   id: string;
@@ -123,13 +137,22 @@ export type AppUser = {
   prn?: string;
   role: AppRole;
   active: boolean;
+  provisionedAt?: string;
+  firstSignInAt?: string;
 };
 export type AuditEvent = {
   id: string;
   action: string;
-  actor: string;
+  actorId: string;
+  actorName: string;
+  actorRole: AppRole;
+  entityType: string;
   entity: string;
   timestamp: string;
+  reason?: string;
+  previousValue?: string;
+  newValue?: string;
+  metadata?: Record<string, string>;
 };
 export type LabConfig = {
   labName: string;
@@ -143,6 +166,7 @@ export type LabConfig = {
   availableDays: string[];
   quickVisitRules: string;
   projectVerificationRequirements: string;
+  maximumFutureBookingsPerProject?: number;
 };
 
 export const defaultProfile: StudentProfile = {
@@ -273,6 +297,36 @@ export const initialProjects: Project[] = [
     invitedEmails: [],
     createdAt: "15 Aug 2026",
   },
+  {
+    id: "p5",
+    name: "Accessible Navigation Beacon",
+    description: "A BLE-assisted indoor navigation prototype for accessible campus movement.",
+    leader: "Maya Shah",
+    members: [directoryStudents[2]!],
+    mentor: "Prof. Rohan Bhide — E&TC",
+    status: "Verified",
+    resources: ["ESP32 Kit", "Electronics Bench 02"],
+    consumables: ["Jumper Wires"],
+    invitedEmails: [],
+    reviewedAt: "14 Aug 2026, 4:20 pm",
+    reviewedBy: "Prof. Rohan Bhide",
+    createdAt: "11 Aug 2026",
+  },
+  {
+    id: "p6",
+    name: "Solar Irrigation Monitor",
+    description: "A completed sensor prototype for monitoring irrigation flow and solar charging.",
+    leader: "Kabir Menon",
+    members: [directoryStudents[0]!],
+    mentor: "Prof. Rohan Bhide — E&TC",
+    status: "Archived",
+    resources: ["ESP32 Kit", "Oscilloscope"],
+    consumables: ["PCB Blanks"],
+    invitedEmails: [],
+    reviewedAt: "08 Aug 2026, 11:15 am",
+    reviewedBy: "Prof. Rohan Bhide",
+    createdAt: "02 Aug 2026",
+  },
 ];
 export const initialReservations: Reservation[] = [
   {
@@ -285,7 +339,11 @@ export const initialReservations: Reservation[] = [
     participantIds: ["leader", "s2", "s5"],
     status: "Active",
     resources: ["Robotic Arm", "CAD Workstation"],
-    attendance: { leader: "Expected", s2: "Expected", s5: "Expected" },
+    attendance: {
+      leader: { status: "Expected" },
+      s2: { status: "Expected" },
+      s5: { status: "Expected" },
+    },
   },
   {
     id: "r2",
@@ -297,7 +355,7 @@ export const initialReservations: Reservation[] = [
     participantIds: ["leader", "s2"],
     status: "Active",
     resources: ["Robotic Arm", "CAD Workstation"],
-    attendance: { leader: "Expected", s2: "Expected" },
+    attendance: { leader: { status: "Expected" }, s2: { status: "Expected" } },
   },
 ];
 export const initialVisits: Visit[] = [
@@ -332,6 +390,9 @@ export const equipmentCatalogue: Equipment[] = [
     totalQuantity: 4,
     availableQuantity: 3,
     visible: true,
+    lab: "Main MakerSpace",
+    createdAt: "01 Aug 2026",
+    updatedAt: "15 Aug 2026",
   },
   {
     id: "e2",
@@ -344,6 +405,11 @@ export const equipmentCatalogue: Equipment[] = [
     totalQuantity: 1,
     availableQuantity: 0,
     visible: true,
+    availabilityReason: "Scheduled optics inspection",
+    availabilityReasonCategory: "Maintenance",
+    lab: "Main MakerSpace",
+    createdAt: "01 Aug 2026",
+    updatedAt: "15 Aug 2026",
   },
   {
     id: "e3",
@@ -356,6 +422,9 @@ export const equipmentCatalogue: Equipment[] = [
     totalQuantity: 8,
     availableQuantity: 6,
     visible: true,
+    lab: "Electronics Zone",
+    createdAt: "01 Aug 2026",
+    updatedAt: "14 Aug 2026",
   },
   {
     id: "e4",
@@ -368,6 +437,9 @@ export const equipmentCatalogue: Equipment[] = [
     totalQuantity: 2,
     availableQuantity: 1,
     visible: true,
+    lab: "Robotics Zone",
+    createdAt: "02 Aug 2026",
+    updatedAt: "15 Aug 2026",
   },
   {
     id: "e5",
@@ -380,6 +452,9 @@ export const equipmentCatalogue: Equipment[] = [
     totalQuantity: 8,
     availableQuantity: 8,
     visible: true,
+    lab: "CAD Studio",
+    createdAt: "02 Aug 2026",
+    updatedAt: "12 Aug 2026",
   },
 ];
 export const initialConsumables: Consumable[] = [
@@ -487,6 +562,7 @@ export const initialUsers: AppUser[] = [
     prn: defaultProfile.prn,
     role: "Student",
     active: true,
+    firstSignInAt: "12 Aug 2026",
   },
   {
     id: "u2",
@@ -495,6 +571,8 @@ export const initialUsers: AppUser[] = [
     prn: "FAC-2041",
     role: "Faculty Mentor",
     active: true,
+    provisionedAt: "01 Aug 2026",
+    firstSignInAt: "03 Aug 2026",
   },
   {
     id: "u3",
@@ -503,6 +581,8 @@ export const initialUsers: AppUser[] = [
     prn: "STAFF-103",
     role: "Lab Assistant",
     active: true,
+    provisionedAt: "01 Aug 2026",
+    firstSignInAt: "02 Aug 2026",
   },
   {
     id: "u4",
@@ -511,6 +591,8 @@ export const initialUsers: AppUser[] = [
     prn: "ADM-009",
     role: "Admin",
     active: true,
+    provisionedAt: "01 Aug 2026",
+    firstSignInAt: "02 Aug 2026",
   },
 ];
 export const initialConfig: LabConfig = {
@@ -526,4 +608,5 @@ export const initialConfig: LabConfig = {
   quickVisitRules: "Quick visits require a valid purpose and are subject to live lab availability.",
   projectVerificationRequirements:
     "A project description, team details, faculty mentor, and expected resources are required.",
+  maximumFutureBookingsPerProject: 3,
 };

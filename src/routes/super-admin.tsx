@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import type { AppRole, AppUser } from "@/lib/makerspace-data";
+import type { AppRole, AppUser, AuditEvent } from "@/lib/makerspace-data";
 
 export const Route = createFileRoute("/super-admin")({ component: SuperAdmin });
 
@@ -20,7 +20,16 @@ const blankUser: Omit<AppUser, "id"> = {
 };
 
 function SuperAdmin() {
-  const { users, updateUserRole, provisionUser, updateUserActive, auditLogs } = useMakerSpace();
+  const {
+    users,
+    updateUserRole,
+    provisionUser,
+    updateUserActive,
+    auditLogs,
+    config,
+    equipment,
+    reservations,
+  } = useMakerSpace();
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"All" | AppRole>("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive">("All");
@@ -31,6 +40,8 @@ function SuperAdmin() {
   const [newRole, setNewRole] = useState<AppRole>("Student");
   const [activeTarget, setActiveTarget] = useState<AppUser | null>(null);
   const [auditQuery, setAuditQuery] = useState("");
+  const [reviewingProvision, setReviewingProvision] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState("");
   const filteredUsers = useMemo(
     () =>
       users.filter(
@@ -46,13 +57,13 @@ function SuperAdmin() {
   const filteredAudit = useMemo(
     () =>
       auditLogs.filter((event) =>
-        `${event.action} ${event.actor} ${event.entity} ${event.timestamp}`
+        `${event.action} ${event.actorName} ${event.actorRole} ${event.entityType} ${event.entity} ${event.timestamp} ${event.reason ?? ""}`
           .toLowerCase()
           .includes(auditQuery.toLowerCase()),
       ),
     [auditLogs, auditQuery],
   );
-  function provision() {
+  function reviewProvision() {
     const email = draft.email.trim().toLowerCase();
     if (!draft.name.trim() || !email.endsWith("@mitwpu.edu.in")) {
       setDraftError("Enter a name and a valid @mitwpu.edu.in email address.");
@@ -62,9 +73,14 @@ function SuperAdmin() {
       setDraftError("That institutional email is already provisioned.");
       return;
     }
-    const user: Omit<AppUser, "id"> = { ...draft, name: draft.name.trim(), email };
-    if (draft.prn?.trim()) user.prn = draft.prn.trim();
+    setDraft({ ...draft, name: draft.name.trim(), email });
+    setReviewingProvision(true);
+  }
+  function confirmProvision() {
+    const user: Omit<AppUser, "id"> = { ...draft };
+    if (!draft.prn?.trim()) delete user.prn;
     provisionUser(user);
+    setReviewingProvision(false);
     setProvisioning(false);
     setDraft(blankUser);
     setDraftError("");
@@ -74,7 +90,71 @@ function SuperAdmin() {
       title="Super Admin"
       subtitle="Institutional access, privileged roles and immutable audit history"
     >
-      <section className="card-surface p-5">
+      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Super Admin workspace">
+        {[
+          ["#platform-overview", "Dashboard"],
+          ["#institutional-users", "Users"],
+          ["#system-audit", "Audit Log"],
+          ["#platform-configuration", "Platform Configuration"],
+        ].map(([href, label]) => (
+          <a
+            key={href}
+            href={href}
+            className="min-h-11 shrink-0 rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground"
+          >
+            {label}
+          </a>
+        ))}
+      </nav>
+
+      <section id="platform-overview">
+        <h2 className="font-semibold">Platform overview</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <OverviewMetric
+            label="Privileged accounts"
+            value={users.filter((user) => user.role !== "Student").length}
+            note={`${users.filter((user) => user.role !== "Student" && user.active).length} active`}
+          />
+          <OverviewMetric
+            label="Awaiting first sign-in"
+            value={users.filter((user) => user.role !== "Student" && !user.firstSignInAt).length}
+            note="Pre-provisioned identities"
+          />
+          <OverviewMetric
+            label="Platform health"
+            value="Operational"
+            note="Frontend prototype services"
+          />
+          <OverviewMetric
+            label="Active bookings"
+            value={reservations.filter((booking) => booking.status === "Active").length}
+            note={`${equipment.filter((item) => item.status !== "Available").length} equipment alerts`}
+          />
+        </div>
+        {sessionNotice && (
+          <div className="mt-3 rounded-xl border border-info/30 bg-info/10 p-3 text-sm text-info">
+            {sessionNotice}
+          </div>
+        )}
+      </section>
+
+      <section id="platform-configuration" className="card-surface mt-7 p-5">
+        <h2 className="font-semibold">Lab configuration summary</h2>
+        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryValue label="Lab" value={config.labName} />
+          <SummaryValue
+            label="Operating hours"
+            value={`${config.openingTime}–${config.closingTime}`}
+          />
+          <SummaryValue label="Slot capacity" value={String(config.capacity)} />
+          <SummaryValue label="Booking horizon" value={`${config.bookingHorizon} days`} />
+        </div>
+        <p className="mt-4 text-xs text-muted-foreground">
+          Future multi-lab access will extend this summary when additional labs are configured.
+        </p>
+      </section>
+
+      <section id="institutional-users" className="card-surface mt-7 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold">Institutional user directory</h2>
@@ -143,6 +223,11 @@ function SuperAdmin() {
                       <StatusBadge label={user.role} />
                       <StatusBadge label={user.active ? "Active" : "Inactive"} />
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {user.firstSignInAt
+                        ? `First sign-in: ${user.firstSignInAt}`
+                        : `Pre-provisioned${user.provisionedAt ? `: ${user.provisionedAt}` : " · awaiting first sign-in"}`}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -179,12 +264,13 @@ function SuperAdmin() {
           )}
         </div>
       </section>
-      <section className="mt-7 card-surface p-5">
+      <section id="system-audit" className="mt-7 card-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">System audit log</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Audit events are view-only in the interface.
+              Visible to Super Admins. Admins see only lab-configuration history in their workspace.
+              Audit records are view-only.
             </p>
           </div>
           <ShieldCheck className="size-6 text-primary" />
@@ -205,8 +291,13 @@ function SuperAdmin() {
                 <strong>{event.action}</strong>
                 <span className="mx-2 text-muted-foreground">{event.entity}</span>
                 <span className="block mt-1 text-xs text-muted-foreground sm:inline sm:mt-0">
-                  {event.actor} · {event.timestamp}
+                  {event.actorName} ({event.actorRole}) · {event.timestamp}
                 </span>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {event.entityType}
+                  {event.reason ? ` · Reason: ${event.reason}` : ""}
+                </p>
+                <AuditChangeSummary event={event} />
               </article>
             ))
           ) : (
@@ -271,10 +362,36 @@ function SuperAdmin() {
           {draftError && <p className="text-sm text-destructive">{draftError}</p>}
           <button
             type="button"
-            onClick={provision}
+            onClick={reviewProvision}
             className="min-h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground"
           >
-            Provision access
+            Review privileged access
+          </button>
+        </div>
+      </ResponsiveModal>
+      <ResponsiveModal
+        open={reviewingProvision}
+        onOpenChange={setReviewingProvision}
+        title="Confirm privileged access"
+        description="Review this sensitive role assignment before provisioning the identity."
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border bg-muted/50 p-4 text-sm">
+            <p className="font-semibold">{draft.name}</p>
+            <p className="mt-1 text-muted-foreground">{draft.email}</p>
+            <p className="mt-3">
+              <strong>Role:</strong> {draft.role}
+            </p>
+            <p className="mt-1">
+              <strong>Status:</strong> Active, awaiting first sign-in
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={confirmProvision}
+            className="min-h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground"
+          >
+            Confirm and provision
           </button>
         </div>
       </ResponsiveModal>
@@ -302,6 +419,9 @@ function SuperAdmin() {
               type="button"
               onClick={() => {
                 updateUserRole(roleTarget.id, newRole);
+                setSessionNotice(
+                  `${roleTarget.name}'s role changed to ${newRole}. Active sessions are marked for re-evaluation.`,
+                );
                 setRoleTarget(null);
               }}
               disabled={newRole === roleTarget.role}
@@ -328,6 +448,9 @@ function SuperAdmin() {
               type="button"
               onClick={() => {
                 updateUserActive(activeTarget.id, !activeTarget.active);
+                setSessionNotice(
+                  `${activeTarget.name}'s access is now ${activeTarget.active ? "disabled" : "active"}. Existing sessions are marked for invalidation.`,
+                );
                 setActiveTarget(null);
               }}
               className={`min-h-12 w-full rounded-xl font-semibold ${activeTarget.active ? "bg-destructive text-destructive-foreground" : "bg-success text-success-foreground"}`}
@@ -341,4 +464,125 @@ function SuperAdmin() {
       </ResponsiveModal>
     </AppShell>
   );
+}
+
+function OverviewMetric({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string | number;
+  note: string;
+}) {
+  return (
+    <article className="card-surface p-4">
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-sm font-semibold">{label}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    </article>
+  );
+}
+
+function SummaryValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-1 font-medium">{value}</p>
+    </div>
+  );
+}
+
+const auditFieldLabels: Record<string, string> = {
+  labName: "Lab name",
+  openingTime: "Opening time",
+  closingTime: "Closing time",
+  slotDuration: "Slot duration",
+  capacity: "Maximum occupancy",
+  bookingHorizon: "Booking horizon",
+  cancellationWindow: "Cancellation window",
+  closureDates: "Closure dates",
+  availableDays: "Operating days",
+  quickVisitRules: "Quick-visit rules",
+  projectVerificationRequirements: "Project verification requirements",
+  maximumFutureBookingsPerProject: "Future bookings allowed per project",
+  participantCount: "Participants",
+  student: "Student",
+  sessionAction: "Session handling",
+  result: "Result",
+};
+
+function AuditChangeSummary({ event }: { event: AuditEvent }) {
+  const previous = parseAuditValue(event.previousValue);
+  const next = parseAuditValue(event.newValue);
+
+  if (event.entityType === "Lab Configuration" && isAuditRecord(previous) && isAuditRecord(next)) {
+    const keys = [...new Set([...Object.keys(previous), ...Object.keys(next)])];
+    const changedKeys = keys.filter(
+      (key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]),
+    );
+
+    if (changedKeys.length) {
+      return (
+        <div className="mt-2 space-y-1 rounded-lg bg-muted px-3 py-2 text-xs">
+          {changedKeys.map((key) => (
+            <p key={key}>
+              <strong>{auditFieldLabels[key] ?? humanizeAuditKey(key)}:</strong>{" "}
+              {formatAuditValue(previous[key])} → {formatAuditValue(next[key])}
+            </p>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  if (event.previousValue || event.newValue) {
+    return (
+      <p className="mt-2 rounded-lg bg-muted px-3 py-2 text-xs">
+        <strong>{event.entityType === "User" ? "Role or status change" : "Change"}:</strong>{" "}
+        {formatAuditValue(previous)} → {formatAuditValue(next)}
+      </p>
+    );
+  }
+
+  if (event.metadata && Object.keys(event.metadata).length) {
+    return (
+      <div className="mt-2 space-y-1 rounded-lg bg-muted px-3 py-2 text-xs">
+        {Object.entries(event.metadata).map(([key, value]) => (
+          <p key={key}>
+            <strong>{auditFieldLabels[key] ?? humanizeAuditKey(key)}:</strong> {value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function parseAuditValue(value?: string): unknown {
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function isAuditRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatAuditValue(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "Not set";
+  if (Array.isArray(value)) return value.length ? value.map(formatAuditValue).join(", ") : "None";
+  if (typeof value === "boolean") return value ? "Enabled" : "Disabled";
+  if (typeof value === "object") return "Details updated";
+  return String(value);
+}
+
+function humanizeAuditKey(key: string) {
+  return key
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/^./, (character) => character.toUpperCase());
 }
