@@ -20,6 +20,7 @@ import { ApiClientError } from "@/lib/api-client";
 type Department = { id: string; code: string; name: string };
 type Programme = { id: string; departmentId: string; code: string; name: string };
 type AcademicYear = { id: string; value: number; label: string };
+type ProfilePolicy = { prn: { pattern: string; hint: string; maxLength: number } };
 
 export const Route = createFileRoute("/onboarding")({
   beforeLoad: requireOnboarding,
@@ -74,16 +75,22 @@ function Onboarding() {
     enabled: Boolean(departmentId),
     staleTime: 5 * 60 * 1000,
   });
+  const profilePolicy = useQuery({
+    queryKey: ["student-profile-policy"],
+    queryFn: () => client.api.request<ProfilePolicy>("/auth/student-profile/config"),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const referenceError = departments.error ?? academicYears.error ?? programmes.error;
   const loadingReferences = departments.isLoading || academicYears.isLoading;
   const canSubmit = useMemo(
     () =>
       fullName.trim().length >= 2 &&
-      /^\d{10}$/.test(prn) &&
+      Boolean(prn) &&
+      (profilePolicy.data ? new RegExp(profilePolicy.data.prn.pattern).test(prn) : true) &&
       Boolean(departmentId && programmeId && academicYear) &&
       !submitting,
-    [academicYear, departmentId, fullName, prn, programmeId, submitting],
+    [academicYear, departmentId, fullName, prn, profilePolicy.data, programmeId, submitting],
   );
 
   const retryReferences = () => {
@@ -120,10 +127,9 @@ function Onboarding() {
               })
               .then(() => {
                 toast.success("Profile completed. Welcome to the MakerSpace!");
-                if (invite) {
-                  toast.info("Project invitation responses will be enabled in the next phase.");
-                }
-                return navigate({ to: "/dashboard" });
+                return invite
+                  ? navigate({ to: "/invitations/$projectId", params: { projectId: invite } })
+                  : navigate({ to: "/dashboard" });
               })
               .catch((error: unknown) => {
                 const message =
@@ -157,17 +163,24 @@ function Onboarding() {
             <Input
               id="prn"
               required
-              inputMode="numeric"
+              inputMode="text"
               autoComplete="off"
-              maxLength={10}
+              maxLength={profilePolicy.data?.prn.maxLength ?? 24}
               className="h-12"
-              placeholder="10 digit PRN"
+              placeholder="MIT-WPU PRN"
               value={prn}
-              onChange={(event) => setPrn(event.target.value.replace(/\D/g, "").slice(0, 10))}
+              onChange={(event) =>
+                setPrn(
+                  event.target.value
+                    .toUpperCase()
+                    .replace(/\s/g, "")
+                    .slice(0, profilePolicy.data?.prn.maxLength ?? 24),
+                )
+              }
               aria-describedby="prn-help"
             />
             <p id="prn-help" className="text-xs text-muted-foreground">
-              Enter the 10-digit PRN issued by MIT-WPU.
+              {profilePolicy.data?.prn.hint ?? "Enter the PRN issued by MIT-WPU."}
             </p>
           </div>
 

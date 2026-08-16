@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Boxes, Cpu, Printer, Wrench } from "lucide-react";
+import { z } from "zod";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import heroImage from "@/assets/hero-makerspace.jpg";
 
 export const Route = createFileRoute("/")({
+  validateSearch: z.object({ invite: z.string().uuid().optional() }),
   head: () => ({
     meta: [
       { title: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
@@ -47,6 +49,7 @@ const capabilities = [
 ];
 
 function Landing() {
+  const { invite } = Route.useSearch();
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
@@ -76,7 +79,7 @@ function Landing() {
             into a fully equipped lab for rapid prototyping, 3D printing, electronics and IoT.
           </p>
           <div className="mt-8">
-            <GoogleSignInButton />
+            <GoogleSignInButton inviteProjectId={invite} />
           </div>
         </div>
 

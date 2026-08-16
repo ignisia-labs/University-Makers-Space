@@ -52,7 +52,7 @@ export async function requireInvitation({ context, params }: GuardArgs) {
   if (typeof window === "undefined") return;
   const session = await context.authClient.ensureSession();
   if (session.status !== "authenticated" || !session.user) {
-    throw redirect({ to: "/" });
+    throw redirect({ to: "/", search: { invite: params?.projectId } });
   }
   if (!session.user.roles.includes("STUDENT")) {
     throw redirect({ to: destinationForUser(session.user) });

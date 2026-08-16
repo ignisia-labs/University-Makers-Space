@@ -44,7 +44,7 @@ function waitForGoogle(signal: AbortSignal) {
   });
 }
 
-export function GoogleSignInButton() {
+export function GoogleSignInButton({ inviteProjectId }: { inviteProjectId?: string }) {
   const navigate = useNavigate();
   const buttonRef = useRef<HTMLDivElement>(null);
   const { client, status: sessionStatus, user } = useAuth();
@@ -59,13 +59,21 @@ export function GoogleSignInButton() {
       try {
         const csrfToken = await client.createLoginCsrf();
         const result = await client.signInWithGoogle(credential, csrfToken);
-        await navigate({ to: destinationForUser(result.user) });
+        if (inviteProjectId && result.user.roles.includes("STUDENT")) {
+          await navigate(
+            result.user.profileComplete
+              ? { to: "/invitations/$projectId", params: { projectId: inviteProjectId } }
+              : { to: "/onboarding", search: { invite: inviteProjectId } },
+          );
+        } else {
+          await navigate({ to: destinationForUser(result.user) });
+        }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Sign-in could not be completed.");
         setStatus("error");
       }
     },
-    [client, navigate],
+    [client, inviteProjectId, navigate],
   );
 
   useEffect(() => {
@@ -115,7 +123,17 @@ export function GoogleSignInButton() {
       <button
         id="institutional-sign-in"
         type="button"
-        onClick={() => void navigate({ to: destinationForUser(user) })}
+        onClick={() => {
+          if (inviteProjectId && user.roles.includes("STUDENT")) {
+            void navigate(
+              user.profileComplete
+                ? { to: "/invitations/$projectId", params: { projectId: inviteProjectId } }
+                : { to: "/onboarding", search: { invite: inviteProjectId } },
+            );
+            return;
+          }
+          void navigate({ to: destinationForUser(user) });
+        }}
         className="inline-flex min-h-12 w-full max-w-[360px] items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
         Continue as {user.name}
