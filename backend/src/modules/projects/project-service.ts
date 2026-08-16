@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import jwt from "jsonwebtoken";
 import {
   DeliveryStatus,
   MentorRequestStatus,
@@ -10,11 +11,17 @@ import {
 } from "@prisma/client";
 import { hasPermission } from "../../config/permissions.js";
 import { prisma } from "../../config/db.js";
+import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/api-error.js";
 import { meta } from "../../utils/pagination.js";
 
 const sortFields = new Set(["title", "status", "createdAt", "updatedAt"]);
 type Viewer = NonNullable<Express.Request["user"]>;
+type MentorEmailActionToken = {
+  type: "mentor_email_action";
+  requestId: string;
+  facultyId: string;
+};
 
 const summaryInclude = {
   creator: { select: { id: true, name: true, email: true } },
@@ -91,6 +98,41 @@ const detailInclude = {
     orderBy: { createdAt: "desc" },
   },
 } satisfies Prisma.ProjectInclude;
+
+const mentorEmailActionSecret = crypto
+  .createHash("sha256")
+  .update(`${env.JWT_SECRET}:mentor-email-action`)
+  .digest("hex");
+
+function mentorEmailReviewHref(requestId: string, facultyId: string) {
+  const token = jwt.sign(
+    { type: "mentor_email_action", requestId, facultyId } satisfies MentorEmailActionToken,
+    mentorEmailActionSecret,
+    { expiresIn: "7d" },
+  );
+  const reviewUrl = new URL(`/mentor-review/${requestId}`, env.FRONTEND_URL);
+  return `${reviewUrl.toString()}#token=${encodeURIComponent(token)}`;
+}
+
+function assertMentorEmailActionToken(token: string, requestId: string) {
+  try {
+    const payload = jwt.verify(token, mentorEmailActionSecret) as MentorEmailActionToken;
+    if (
+      payload.type !== "mentor_email_action" ||
+      payload.requestId !== requestId ||
+      !payload.facultyId
+    ) {
+      throw new Error("Invalid mentor action token");
+    }
+    return payload;
+  } catch {
+    throw new ApiError(
+      410,
+      "MENTOR_ACTION_LINK_INVALID",
+      "This Faculty Mentor email link is invalid or has expired",
+    );
+  }
+}
 
 type SummaryProject = Prisma.ProjectGetPayload<{ include: typeof summaryInclude }>;
 type DetailProject = Prisma.ProjectGetPayload<{ include: typeof detailInclude }>;
@@ -405,7 +447,9 @@ export async function create(viewer: Viewer, data: CreateInput) {
           })),
         });
       }
-      await tx.mentorRequest.create({ data: { projectId: project.id, facultyId: mentor.id } });
+      const mentorRequest = await tx.mentorRequest.create({
+        data: { projectId: project.id, facultyId: mentor.id },
+      });
       if (equipment.length) {
         await tx.projectEquipmentRequirement.createMany({
           data: equipment.map((item) => ({ projectId: project.id, equipmentId: item.id })),
@@ -431,7 +475,7 @@ export async function create(viewer: Viewer, data: CreateInput) {
         type: "MENTOR_REQUEST",
         title: `Review ${project.title}`,
         body: `${creator.name} requested your verification as Faculty Mentor.`,
-        href: `/faculty?project=${project.id}`,
+        href: mentorEmailReviewHref(mentorRequest.id, mentor.id),
       });
       await tx.auditLog.create({
         data: {
@@ -521,7 +565,7 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
         where: { projectId: id, status: MentorRequestStatus.PENDING },
         data: { status: MentorRequestStatus.CANCELLED, respondedAt: new Date() },
       });
-      await tx.mentorRequest.create({
+      const mentorRequest = await tx.mentorRequest.create({
         data: { projectId: id, facultyId: project!.currentMentorId },
       });
       status = await pendingStatus(tx, id);
@@ -530,7 +574,7 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
         type: "MENTOR_REQUEST",
         title: `Review updated project ${data.title ?? project!.title}`,
         body: "Major project details changed and require renewed Faculty Mentor verification.",
-        href: `/faculty?project=${id}`,
+        href: mentorEmailReviewHref(mentorRequest.id, project!.currentMentorId),
       });
     }
     await tx.project.update({
@@ -619,7 +663,7 @@ export async function inviteMember(projectId: string, email: string, viewer: Vie
       data: { status: ProjectStatus.TEAM_ACCEPTANCE_PENDING, rejectionReason: null },
     });
     if (project!.status === ProjectStatus.VERIFIED && project!.currentMentorId) {
-      await tx.mentorRequest.create({
+      const mentorRequest = await tx.mentorRequest.create({
         data: { projectId, facultyId: project!.currentMentorId },
       });
       await createNotification(tx, {
@@ -627,7 +671,7 @@ export async function inviteMember(projectId: string, email: string, viewer: Vie
         type: "MENTOR_REQUEST",
         title: `Review team change for ${project!.title}`,
         body: "A new teammate was invited and the updated team requires renewed approval.",
-        href: `/faculty?project=${projectId}`,
+        href: mentorEmailReviewHref(mentorRequest.id, project!.currentMentorId),
       });
     }
     if (user) {
@@ -746,7 +790,7 @@ export async function cancelOrRemoveMember(projectId: string, memberId: string, 
       },
     });
     if (needsRenewedMentorApproval && project!.currentMentorId) {
-      await tx.mentorRequest.create({
+      const mentorRequest = await tx.mentorRequest.create({
         data: { projectId, facultyId: project!.currentMentorId },
       });
       const status = await pendingStatus(tx, projectId);
@@ -756,7 +800,7 @@ export async function cancelOrRemoveMember(projectId: string, memberId: string, 
         type: "MENTOR_REQUEST",
         title: `Review team change for ${project!.title}`,
         body: "The verified team changed and requires renewed Faculty Mentor approval.",
-        href: `/faculty?project=${projectId}`,
+        href: mentorEmailReviewHref(mentorRequest.id, project!.currentMentorId),
       });
     } else {
       await recomputeProjectStatus(tx, projectId);
@@ -800,7 +844,7 @@ export async function requestMentor(projectId: string, facultyId: string, viewer
       where: { projectId, status: MentorRequestStatus.PENDING },
       data: { status: MentorRequestStatus.CANCELLED, respondedAt: new Date() },
     });
-    await tx.mentorRequest.create({ data: { projectId, facultyId } });
+    const mentorRequest = await tx.mentorRequest.create({ data: { projectId, facultyId } });
     const teamStatus = await pendingStatus(tx, projectId);
     await tx.project.update({
       where: { id: projectId },
@@ -811,7 +855,7 @@ export async function requestMentor(projectId: string, facultyId: string, viewer
       type: "MENTOR_REQUEST",
       title: `Review ${project!.title}`,
       body: `${viewer.name} selected you as Faculty Mentor.`,
-      href: `/faculty?project=${projectId}`,
+      href: mentorEmailReviewHref(mentorRequest.id, facultyId),
     });
     await tx.auditLog.create({
       data: {
@@ -887,6 +931,146 @@ export async function decideMentorRequest(
     }
   });
   return get(projectId, viewer);
+}
+
+export async function getMentorEmailReview(requestId: string, token: string) {
+  const action = assertMentorEmailActionToken(token, requestId);
+  const request = await prisma.mentorRequest.findUnique({
+    where: { id: requestId },
+    include: {
+      faculty: { select: { name: true, email: true } },
+      project: {
+        include: {
+          creator: { select: { name: true, email: true } },
+          members: {
+            include: { user: { select: { name: true } } },
+            orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+          },
+          equipmentRequirements: {
+            include: {
+              equipment: { select: { name: true, category: { select: { name: true } } } },
+            },
+          },
+          consumableRequirements: {
+            include: { consumable: { select: { name: true, unit: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!request || request.facultyId !== action.facultyId) {
+    throw new ApiError(404, "NOT_FOUND", "Faculty Mentor review request not found");
+  }
+  return {
+    requestId: request.id,
+    status: request.status,
+    reason: request.reason,
+    requestedAt: request.requestedAt.toISOString(),
+    respondedAt: request.respondedAt?.toISOString() ?? null,
+    faculty: request.faculty,
+    project: {
+      id: request.project.id,
+      title: request.project.title,
+      description: request.project.description,
+      status: request.project.status,
+      submittedAt: request.project.submittedAt?.toISOString() ?? null,
+      leader: request.project.creator,
+      members: request.project.members.map((member) => ({
+        name: member.user?.name ?? member.email,
+        email: member.email,
+        role: member.role,
+        status: member.status,
+      })),
+      equipment: request.project.equipmentRequirements.map((item) => ({
+        name: item.equipment.name,
+        category: item.equipment.category.name,
+      })),
+      consumables: request.project.consumableRequirements.map((item) => ({
+        name: item.consumable.name,
+        unit: item.consumable.unit,
+      })),
+    },
+  };
+}
+
+export async function decideMentorEmailRequest(
+  requestId: string,
+  token: string,
+  decision: "APPROVED" | "REJECTED",
+  reason: string | undefined,
+) {
+  const action = assertMentorEmailActionToken(token, requestId);
+  const request = await prisma.mentorRequest.findUnique({
+    where: { id: requestId },
+    include: { project: true },
+  });
+  if (!request || request.facultyId !== action.facultyId) {
+    throw new ApiError(404, "NOT_FOUND", "Faculty Mentor review request not found");
+  }
+  if (request.status === decision) {
+    return { projectId: request.projectId, projectStatus: request.project.status, decision };
+  }
+  if (request.status !== MentorRequestStatus.PENDING) {
+    throw new ApiError(
+      409,
+      "REQUEST_RESOLVED",
+      "This Faculty Mentor request has already been resolved",
+    );
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.mentorRequest.updateMany({
+      where: { id: request.id, facultyId: action.facultyId, status: MentorRequestStatus.PENDING },
+      data: { status: decision, reason, respondedAt: new Date() },
+    });
+    if (updated.count !== 1) {
+      throw new ApiError(
+        409,
+        "REQUEST_RESOLVED",
+        "This Faculty Mentor request has already been resolved",
+      );
+    }
+    const projectStatus =
+      decision === "REJECTED"
+        ? ProjectStatus.REJECTED
+        : await recomputeProjectStatus(tx, request.projectId);
+    if (decision === "REJECTED") {
+      await tx.project.update({
+        where: { id: request.projectId },
+        data: { status: projectStatus, rejectionReason: reason },
+      });
+    }
+    await createNotification(tx, {
+      userId: request.project.creatorId,
+      type: decision === "APPROVED" ? "MENTOR_APPROVED" : "MENTOR_REJECTED",
+      title:
+        decision === "APPROVED"
+          ? `${request.project.title} was approved`
+          : `${request.project.title} needs changes`,
+      body:
+        decision === "APPROVED"
+          ? projectStatus === ProjectStatus.VERIFIED
+            ? "Your project is verified and ready for booking."
+            : "Faculty approved. The project is still waiting for team responses."
+          : reason!,
+      href: `/projects/${request.projectId}`,
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: request.facultyId,
+        action:
+          decision === "APPROVED" ? "project.approved_email_link" : "project.rejected_email_link",
+        entityType: "Project",
+        entityId: request.projectId,
+        metadata: { reason, channel: "EMAIL_ACTION_LINK" },
+      },
+    });
+    if (projectStatus === ProjectStatus.VERIFIED) {
+      await notifyProjectVerified(tx, request.projectId, request.project.title);
+    }
+    return { projectId: request.projectId, projectStatus, decision };
+  });
+  return result;
 }
 
 export async function remove(id: string, viewer: Viewer) {

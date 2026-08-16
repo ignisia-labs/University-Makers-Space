@@ -71,6 +71,28 @@ export const mentorDecisionSchema = z.object({
     }),
 });
 
+const mentorEmailActionBody = z
+  .object({
+    token: z.string().min(40).max(4096),
+    decision: z.enum(["APPROVED", "REJECTED"]),
+    reason: z.string().trim().min(3).max(1000).optional(),
+  })
+  .strict()
+  .refine((value) => value.decision !== "REJECTED" || Boolean(value.reason), {
+    message: "A reason is required when rejecting a project",
+    path: ["reason"],
+  });
+
+export const mentorEmailReviewSchema = z.object({
+  params: z.object({ requestId: z.string().uuid() }).strict(),
+  body: z.object({ token: z.string().min(40).max(4096) }).strict(),
+});
+
+export const mentorEmailDecisionSchema = z.object({
+  params: z.object({ requestId: z.string().uuid() }).strict(),
+  body: mentorEmailActionBody,
+});
+
 export const invitationDecisionSchema = z.object({
   params: idParam,
   body: z.object({ decision: z.enum(["ACCEPTED", "DECLINED"]) }).strict(),

@@ -173,7 +173,7 @@ Before testing, ensure at least one actual Faculty Mentor is provisioned. For lo
 3. Confirm the project shows “Waiting for Faculty Mentor approval,” the Team Leader is accepted, and resources are described as expectations rather than reservations.
 4. Enter the MIT-WPU email of a Student who has never used the app. Open the invitation link as that Student, sign in with the matching verified Google account, complete onboarding, and confirm the invitation reopens so it can be accepted or declined exactly once.
 5. As Team Leader, cancel a pending/declined invitation or remove an accepted member. Confirm the human-readable status and re-verification behavior.
-6. Sign in with the pre-provisioned Faculty Mentor account. Confirm Pending, Active, and History tabs, review the full submission, approve it, and reject another project with a required reason.
+6. Open the pre-provisioned Faculty Mentor's secure email review link in a private browser. Confirm the full submission is visible without app login, approve one project, reject another with a required reason, and verify the Team Leader notification/state changes.
 7. Confirm a project becomes Verified only when every retained invitation is accepted and the Faculty Mentor has approved.
 8. Edit major details or change the Faculty Mentor on a verified project and confirm it returns to the correct pending state. Confirm resource-only changes remain advisory and do not invalidate approval.
 9. Open Notifications for each account and confirm invitation, team-response, mentor-decision, and verification records link to the relevant project.
@@ -220,14 +220,14 @@ Deliverables:
 - Configured equipment and consumables are expected project requirements only; selecting them does not reserve stock, quantities, machines, or time.
 - Invitation records and Pending, Accepted, Declined, Cancelled, and—if expiration is enabled—Expired behavior. A teammate may be invited before registration; the matching verified Google identity is linked on first sign-in, incomplete Students complete onboarding, and the email/deep link then returns them to the relevant invitation. Repeated responses are idempotent.
 - A project becomes Verified only after all required invited members accept and the assigned Faculty Mentor approves. Declined invitations and pending conditions remain visible in human language.
-- Faculty Dashboard and project lists for Pending Approval, Active Projects, and Historical Projects. The decision view includes project name/description, leader, team, expected equipment/consumables, and submission date. Reject requires a reason.
+- Faculty Dashboard and project lists for Pending Approval, Active Projects, and Historical Projects, plus a public secure email review page. The signed action token stays in the URL fragment rather than server/access logs, expires after seven days, records the Faculty identity from the pre-provisioned request, is idempotent, and does not require Faculty app login. The decision view includes project name/description, leader, team, expected equipment/consumables, and submission date. Reject requires a reason.
 - Pre-verification Team Leader editing, invitation cancellation, accepted-member removal, Faculty Mentor changes, and post-verification major edits with the RFP-defined re-verification effects. Faculty change revokes the previous approval and returns the project to Mentor Approval Pending; resource-change approval effects remain policy-configurable.
 - Connected Student Dashboard states for new user, pending invitation, pending mentor approval, and relevant quick actions.
 - Ownership, privacy, eligibility, state-transition, idempotency, rate-limit, audit, and notification-generation tests.
 
 Exit gate:
 
-- A Student can manage their profile, create a solo or team project, complete invitations, declare expected requirements, request an authorized Faculty Mentor, and receive an approval/rejection using only persisted data.
+- A Student can manage their profile, create a solo or team project, complete invitations, declare expected requirements, request an authorized Faculty Mentor, and receive an approval/rejection using only persisted data; Faculty may approve or reject via their signed email link without app login.
 - Project lists, details, dashboard states, Faculty queues, edits, member removal, mentor changes, and re-verification rules match the RFP.
 - Only a verified project led by the signed-in Team Leader can proceed to booking.
 - Phase 2 must create the correct notification/email-queue records and deep-link targets for both unregistered Students and provisioned Faculty. Actual asynchronous provider delivery remains open until Phase 7 because production mail credentials have not been supplied.

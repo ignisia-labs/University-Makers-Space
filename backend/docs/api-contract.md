@@ -40,7 +40,7 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 | ------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Users         | Admin/Super Admin                                        | Admin manages profile activation; only Super Admin changes roles and provisioning                                |
 | Equipment     | Authenticated                                            | Lab Assistant updates availability; Admin manages catalogue                                                      |
-| Projects      | Student's own team, assigned mentor, or operations staff | Student leader edits eligible projects; faculty decides mentor request; Admin manages any                        |
+| Projects      | Student's own team, assigned mentor, or operations staff | Student leader edits eligible projects; Faculty may decide by secure email action link; Admin manages any       |
 | Bookings      | Student's own booking or operational staff               | Verified student project creates; owner cancels in policy window; Lab Assistant/Admin changes operational status |
 | Events        | Authenticated                                            | Student/faculty registration; Lab Assistant/Admin manages                                                        |
 | Notifications | Current user's own                                       | Admin/Super Admin creates                                                                                        |
@@ -49,11 +49,12 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 ## Important workflow endpoints
 
 - `POST /projects` idempotently creates the complete project aggregate: leader, invitations, mentor request, requirements, audit, in-app notifications, and pending email-delivery records.
-- `POST /projects/:id/members` invites an existing eligible student.
+- `POST /projects/:id/members` invites a Student by institutional email; the Student may complete onboarding after opening the invitation.
 - `POST /projects/:id/invitations/respond` idempotently accepts or declines the signed-in Student's invitation.
 - `DELETE /projects/:id/members/:memberId` cancels an invitation or removes an accepted member with re-verification when required.
 - `POST /projects/:id/mentor-requests` requests faculty verification.
-- `POST /projects/:id/mentor-decision` lets the assigned Faculty Mentor approve or reject; rejection requires a reason.
+- `POST /projects/:id/mentor-decision` remains available to an authenticated Faculty Mentor.
+- `POST /projects/mentor-requests/:requestId/email-review` and `POST /projects/mentor-requests/:requestId/email-decision` power the signed, seven-day Faculty email action link; the token remains in the URL fragment and is submitted in the request body, so it is not sent in server/access logs. No app login is required and rejection requires a reason.
 - `GET /users/search/faculty-mentors` provides minimum-length, paginated, role-filtered search over the university-provided Faculty directory. Teammates are invited directly by institutional email and do not need to exist before invitation.
 - `PATCH /users/me/student-profile` updates the signed-in Student's permitted profile fields.
 - `POST /bookings` accepts `labSlotId`, `projectId`, selected `participantIds`, requested equipment/consumables, and a UUID `idempotencyKey`.

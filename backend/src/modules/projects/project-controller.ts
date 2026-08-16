@@ -64,6 +64,27 @@ export async function decideMentor(req: Request, res: Response) {
   );
 }
 
+export async function getMentorEmailReview(req: Request, res: Response) {
+  return ok(
+    res,
+    "Faculty Mentor review request",
+    await service.getMentorEmailReview(req.params.requestId!, req.body.token),
+  );
+}
+
+export async function decideMentorEmailRequest(req: Request, res: Response) {
+  return ok(
+    res,
+    "Faculty Mentor decision recorded",
+    await service.decideMentorEmailRequest(
+      req.params.requestId!,
+      req.body.token,
+      req.body.decision,
+      req.body.reason,
+    ),
+  );
+}
+
 export async function remove(req: Request, res: Response) {
   await service.remove(req.params.id!, req.user!);
   return noContent(res);

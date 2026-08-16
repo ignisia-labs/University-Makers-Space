@@ -108,3 +108,9 @@ This log records product context, implementation decisions, and material changes
 - Confirmed that any first-time verified MIT-WPU Google user defaults to Student unless their email has a privileged provisioning record. Student profile data is collected through onboarding rather than imported.
 - Linked pending invitations to the matching Student account on first Google sign-in, created the in-app invitation at claim time, and preserved the project deep link through sign-in and onboarding.
 - Added explicit pending invitation-email delivery state and a fifth migration so the asynchronous mail worker can deliver to Students who do not yet have application accounts without creating placeholder users.
+
+## 2026-08-16 — Passwordless Faculty email verification links
+
+- Replaced the requirement for Faculty Mentor app login during project verification with a signed, seven-day email action link. The link opens a public project-review page where the invited Faculty Mentor can approve or reject without an app session.
+- Bound each link to one mentor-request ID and the pre-provisioned Faculty account, kept the signed token in the URL fragment rather than server/access logs, made the decision idempotent, required a rejection reason, and retained backend state recomputation, Team Leader notification, and audit logging.
+- Kept authenticated Faculty dashboard approval as an optional operational path; the email action path is now the primary Faculty workflow. Production delivery still requires the Phase 7 asynchronous mail provider/worker.

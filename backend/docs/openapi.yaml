@@ -311,7 +311,7 @@ paths:
   /projects/{id}/members:
     post:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
-      summary: Invite an eligible existing student
+      summary: Invite a Student by institutional email, including before first sign-in
       responses: { "201": { description: Invitation created } }
   /projects/{id}/members/{memberId}:
     delete:
@@ -331,6 +331,51 @@ paths:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
       summary: Approve or reject the pending mentor request
       responses: { "200": { description: Decision recorded } }
+  /projects/mentor-requests/{requestId}/email-review:
+    post:
+      security: []
+      summary: Read a Faculty Mentor email review using its signed action token in the request body
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Review request }
+        "410": { description: Invalid or expired email action link }
+  /projects/mentor-requests/{requestId}/email-decision:
+    post:
+      security: []
+      summary: Approve or reject through a signed Faculty Mentor email action link
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, decision]
+              properties:
+                token: { type: string }
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string }
+      responses:
+        "200": { description: Decision recorded }
+        "409": { description: Review request already resolved }
+        "410": { description: Invalid or expired email action link }
   /bookings:
     get:
       {

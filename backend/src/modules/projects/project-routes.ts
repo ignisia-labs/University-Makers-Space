@@ -8,6 +8,8 @@ import {
   createProjectSchema,
   invitationDecisionSchema,
   listProjectsSchema,
+  mentorEmailDecisionSchema,
+  mentorEmailReviewSchema,
   memberSchema,
   mentorDecisionSchema,
   mentorRequestSchema,
@@ -18,6 +20,16 @@ import {
 
 export const projectRoutes = Router();
 
+projectRoutes.post(
+  "/mentor-requests/:requestId/email-review",
+  validate(mentorEmailReviewSchema),
+  asyncHandler(controller.getMentorEmailReview),
+);
+projectRoutes.post(
+  "/mentor-requests/:requestId/email-decision",
+  validate(mentorEmailDecisionSchema),
+  asyncHandler(controller.decideMentorEmailRequest),
+);
 projectRoutes.get("/", authenticate, validate(listProjectsSchema), asyncHandler(controller.list));
 projectRoutes.get("/:id", authenticate, validate(projectIdSchema), asyncHandler(controller.get));
 projectRoutes.post(
