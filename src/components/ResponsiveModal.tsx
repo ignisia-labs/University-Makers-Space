@@ -14,18 +14,23 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { cn } from "@/lib/utils";
 
 export function ResponsiveModal({
   open,
   onOpenChange,
   title,
   description,
+  size = "default",
+  desktopScrollable = true,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
+  size?: "default" | "wide";
+  desktopScrollable?: boolean;
   children: ReactNode;
 }) {
   const isMobile = useIsMobile();
@@ -46,7 +51,13 @@ export function ResponsiveModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        className={cn(
+          "max-h-[92vh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto",
+          size === "wide" ? "sm:max-w-4xl" : "sm:max-w-lg",
+          !desktopScrollable && "lg:overflow-y-hidden",
+        )}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

@@ -1,34 +1,25 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { AppShell } from "@/components/AppShell";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { useMakerSpace } from "@/lib/makerspace-context";
-export const Route = createFileRoute("/notifications")({ component: Notifications });
-function Notifications() {
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useMakerSpace();
-  return (
-    <AppShell
-      title="Notifications"
-      subtitle={`${notifications.filter((n) => !n.read).length} unread`}
-    >
-      <button
-        onClick={markAllNotificationsRead}
-        className="min-h-11 rounded-xl border px-4 text-sm font-semibold"
-      >
-        Mark all read
-      </button>
-      <div className="mt-4 space-y-3">
-        {notifications.map((n) => (
-          <Link
-            key={n.id}
-            to={n.href as "/projects"}
-            onClick={() => markNotificationRead(n.id)}
-            className={`card-surface block p-4 ${n.read ? "opacity-70" : "border-primary/40"}`}
-          >
-            <p className="font-semibold">{n.title}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{n.body}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{n.createdAt}</p>
-          </Link>
-        ))}
-      </div>
-    </AppShell>
-  );
+
+export const Route = createFileRoute("/notifications")({ component: NotificationsRedirect });
+
+const roleHomes = {
+  Student: "/dashboard",
+  "Faculty Mentor": "/faculty",
+  "Lab Assistant": "/operations",
+  Admin: "/admin",
+  "Super Admin": "/super-admin",
+} as const;
+
+function NotificationsRedirect() {
+  const navigate = useNavigate();
+  const { role } = useMakerSpace();
+  const destination = roleHomes[role];
+
+  useEffect(() => {
+    void navigate({ to: destination, replace: true });
+  }, [destination, navigate]);
+
+  return null;
 }

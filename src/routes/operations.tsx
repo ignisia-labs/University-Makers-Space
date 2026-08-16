@@ -1,5 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DoorClosed, DoorOpen, Search, UsersRound } from "lucide-react";
+import {
+  Boxes,
+  CalendarClock,
+  DoorClosed,
+  DoorOpen,
+  FolderKanban,
+  Footprints,
+  RadioTower,
+  Search,
+  UsersRound,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -25,12 +35,12 @@ const equipmentStatuses: EquipmentStatus[] = [
   "Out of Service",
 ];
 type OperationsView = "live" | "bookings" | "visits" | "equipment" | "projects";
-const operationsViews: { id: OperationsView; label: string }[] = [
-  { id: "live", label: "Live" },
-  { id: "bookings", label: "Bookings" },
-  { id: "visits", label: "Visits" },
-  { id: "equipment", label: "Equipment" },
-  { id: "projects", label: "Projects" },
+const operationsViews = [
+  { id: "live", label: "Live", icon: RadioTower },
+  { id: "bookings", label: "Bookings", icon: CalendarClock },
+  { id: "visits", label: "Visits", icon: Footprints },
+  { id: "equipment", label: "Equipment", icon: Boxes },
+  { id: "projects", label: "Projects", icon: FolderKanban },
 ];
 
 function Operations() {
@@ -122,24 +132,13 @@ function Operations() {
   }
 
   return (
-    <AppShell title="Live operations" subtitle="Lab Assistant console">
-      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Lab Assistant workspace">
-        {operationsViews.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setView(item.id)}
-            className={`min-h-11 shrink-0 rounded-xl px-4 text-sm font-semibold ${
-              view === item.id
-                ? "bg-primary text-primary-foreground"
-                : "border bg-card text-muted-foreground"
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
+    <AppShell
+      title={operationsViews.find((item) => item.id === view)?.label ?? "Live"}
+      subtitle="Lab Assistant console"
+      workspaceNavigation={operationsViews}
+      activeWorkspace={view}
+      onWorkspaceChange={(id) => setView(id as OperationsView)}
+    >
       {view === "live" && (
         <>
           <section className="grid gap-3 sm:grid-cols-3" aria-label="Live laboratory occupancy">

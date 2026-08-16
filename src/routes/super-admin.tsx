@@ -1,5 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BadgeCheck, KeyRound, Search, ShieldCheck, UserPlus, UserRoundX } from "lucide-react";
+import {
+  BadgeCheck,
+  KeyRound,
+  LayoutDashboard,
+  ScrollText,
+  Search,
+  ShieldCheck,
+  UserPlus,
+  UserRoundX,
+  UsersRound,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -11,6 +21,12 @@ export const Route = createFileRoute("/super-admin")({ component: SuperAdmin });
 
 const roles: AppRole[] = ["Student", "Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"];
 const privilegedRoles: AppRole[] = ["Faculty Mentor", "Lab Assistant", "Admin", "Super Admin"];
+type SuperAdminView = "overview" | "users" | "audit";
+const superAdminViews = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "users", label: "Users", icon: UsersRound },
+  { id: "audit", label: "Audit Logs", icon: ScrollText },
+] as const;
 const blankUser: Omit<AppUser, "id"> = {
   name: "",
   email: "",
@@ -30,6 +46,7 @@ function SuperAdmin() {
     equipment,
     reservations,
   } = useMakerSpace();
+  const [view, setView] = useState<SuperAdminView>("overview");
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"All" | AppRole>("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Inactive">("All");
@@ -87,226 +104,223 @@ function SuperAdmin() {
   }
   return (
     <AppShell
-      title="Super Admin"
-      subtitle="Institutional access, privileged roles and immutable audit history"
+      title={superAdminViews.find((item) => item.id === view)?.label ?? "Overview"}
+      subtitle="Super Admin workspace"
+      workspaceNavigation={superAdminViews}
+      activeWorkspace={view}
+      onWorkspaceChange={(id) => setView(id as SuperAdminView)}
     >
-      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Super Admin workspace">
-        {[
-          ["#platform-overview", "Dashboard"],
-          ["#institutional-users", "Users"],
-          ["#system-audit", "Audit Log"],
-          ["#platform-configuration", "Platform Configuration"],
-        ].map(([href, label]) => (
-          <a
-            key={href}
-            href={href}
-            className="min-h-11 shrink-0 rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground"
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
+      {view === "overview" && (
+        <>
+          <section id="platform-overview">
+            <h2 className="font-semibold">Platform overview</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <OverviewMetric
+                label="Privileged accounts"
+                value={users.filter((user) => user.role !== "Student").length}
+                note={`${users.filter((user) => user.role !== "Student" && user.active).length} active`}
+              />
+              <OverviewMetric
+                label="Awaiting first sign-in"
+                value={
+                  users.filter((user) => user.role !== "Student" && !user.firstSignInAt).length
+                }
+                note="Pre-provisioned identities"
+              />
+              <OverviewMetric
+                label="Platform health"
+                value="Operational"
+                note="Frontend prototype services"
+              />
+              <OverviewMetric
+                label="Active bookings"
+                value={reservations.filter((booking) => booking.status === "Active").length}
+                note={`${equipment.filter((item) => item.status !== "Available").length} equipment alerts`}
+              />
+            </div>
+            {sessionNotice && (
+              <div className="mt-3 rounded-xl border border-info/30 bg-info/10 p-3 text-sm text-info">
+                {sessionNotice}
+              </div>
+            )}
+          </section>
 
-      <section id="platform-overview">
-        <h2 className="font-semibold">Platform overview</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <OverviewMetric
-            label="Privileged accounts"
-            value={users.filter((user) => user.role !== "Student").length}
-            note={`${users.filter((user) => user.role !== "Student" && user.active).length} active`}
-          />
-          <OverviewMetric
-            label="Awaiting first sign-in"
-            value={users.filter((user) => user.role !== "Student" && !user.firstSignInAt).length}
-            note="Pre-provisioned identities"
-          />
-          <OverviewMetric
-            label="Platform health"
-            value="Operational"
-            note="Frontend prototype services"
-          />
-          <OverviewMetric
-            label="Active bookings"
-            value={reservations.filter((booking) => booking.status === "Active").length}
-            note={`${equipment.filter((item) => item.status !== "Available").length} equipment alerts`}
-          />
-        </div>
-        {sessionNotice && (
-          <div className="mt-3 rounded-xl border border-info/30 bg-info/10 p-3 text-sm text-info">
-            {sessionNotice}
-          </div>
-        )}
-      </section>
-
-      <section id="platform-configuration" className="card-surface mt-7 p-5">
-        <h2 className="font-semibold">Lab configuration summary</h2>
-        <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryValue label="Lab" value={config.labName} />
-          <SummaryValue
-            label="Operating hours"
-            value={`${config.openingTime}–${config.closingTime}`}
-          />
-          <SummaryValue label="Slot capacity" value={String(config.capacity)} />
-          <SummaryValue label="Booking horizon" value={`${config.bookingHorizon} days`} />
-        </div>
-        <p className="mt-4 text-xs text-muted-foreground">
-          Future multi-lab access will extend this summary when additional labs are configured.
-        </p>
-      </section>
-
-      <section id="institutional-users" className="card-surface mt-7 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Institutional user directory</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Search by name, institutional email or PRN. Privileged roles are provisioned before
-              first sign-in.
+          <section id="platform-configuration" className="card-surface mt-7 p-5">
+            <h2 className="font-semibold">Lab configuration summary</h2>
+            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryValue label="Lab" value={config.labName} />
+              <SummaryValue
+                label="Operating hours"
+                value={`${config.openingTime}–${config.closingTime}`}
+              />
+              <SummaryValue label="Slot capacity" value={String(config.capacity)} />
+              <SummaryValue label="Booking horizon" value={`${config.bookingHorizon} days`} />
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Review the current MakerSpace operating configuration alongside platform health.
             </p>
+          </section>
+        </>
+      )}
+
+      {view === "users" && (
+        <section id="institutional-users" className="card-surface p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Institutional user directory</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Search by name, institutional email or PRN. Privileged roles are provisioned before
+                first sign-in.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(blankUser);
+                setDraftError("");
+                setProvisioning(true);
+              }}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              <UserPlus className="size-4" />
+              Pre-provision user
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(blankUser);
-              setDraftError("");
-              setProvisioning(true);
-            }}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
-            <UserPlus className="size-4" />
-            Pre-provision user
-          </button>
-        </div>
-        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-          <label className="relative">
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+            <label className="relative">
+              <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search name, email or PRN"
+                className="form-input pl-10"
+              />
+            </label>
+            <select
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value as "All" | AppRole)}
+              className="form-input lg:w-48"
+            >
+              <option>All</option>
+              {roles.map((role) => (
+                <option key={role}>{role}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as "All" | "Active" | "Inactive")
+              }
+              className="form-input lg:w-36"
+            >
+              <option>All</option>
+              <option>Active</option>
+              <option>Inactive</option>
+            </select>
+          </div>
+          <div className="mt-4 space-y-3">
+            {filteredUsers.length ? (
+              filteredUsers.map((user) => (
+                <article key={user.id} className="rounded-xl border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{user.name}</p>
+                      <p className="mt-1 break-all text-sm text-muted-foreground">
+                        {user.email}
+                        {user.prn ? ` · ${user.prn}` : ""}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <StatusBadge label={user.role} />
+                        <StatusBadge label={user.active ? "Active" : "Inactive"} />
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {user.firstSignInAt
+                          ? `First sign-in: ${user.firstSignInAt}`
+                          : `Pre-provisioned${user.provisionedAt ? `: ${user.provisionedAt}` : " · awaiting first sign-in"}`}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleTarget(user);
+                          setNewRole(user.role);
+                        }}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold"
+                      >
+                        <KeyRound className="size-3.5" />
+                        Change role
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTarget(user)}
+                        className={`inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${user.active ? "border-destructive/40 text-destructive" : "border-success/40 text-success"}`}
+                      >
+                        {user.active ? (
+                          <UserRoundX className="size-3.5" />
+                        ) : (
+                          <BadgeCheck className="size-3.5" />
+                        )}
+                        {user.active ? "Disable" : "Activate"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No institutional users match these filters.
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+      {view === "audit" && (
+        <section id="system-audit" className="card-surface p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">System audit log</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Visible to Super Admins. Admins see only lab-configuration history in their
+                workspace. Audit records are view-only.
+              </p>
+            </div>
+            <ShieldCheck className="size-6 text-primary" />
+          </div>
+          <label className="relative mt-4 block">
             <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
             <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search name, email or PRN"
+              value={auditQuery}
+              onChange={(event) => setAuditQuery(event.target.value)}
+              placeholder="Search audit actions, actors or records"
               className="form-input pl-10"
             />
           </label>
-          <select
-            value={roleFilter}
-            onChange={(event) => setRoleFilter(event.target.value as "All" | AppRole)}
-            className="form-input lg:w-48"
-          >
-            <option>All</option>
-            {roles.map((role) => (
-              <option key={role}>{role}</option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as "All" | "Active" | "Inactive")
-            }
-            className="form-input lg:w-36"
-          >
-            <option>All</option>
-            <option>Active</option>
-            <option>Inactive</option>
-          </select>
-        </div>
-        <div className="mt-4 space-y-3">
-          {filteredUsers.length ? (
-            filteredUsers.map((user) => (
-              <article key={user.id} className="rounded-xl border p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold">{user.name}</p>
-                    <p className="mt-1 break-all text-sm text-muted-foreground">
-                      {user.email}
-                      {user.prn ? ` · ${user.prn}` : ""}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <StatusBadge label={user.role} />
-                      <StatusBadge label={user.active ? "Active" : "Inactive"} />
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {user.firstSignInAt
-                        ? `First sign-in: ${user.firstSignInAt}`
-                        : `Pre-provisioned${user.provisionedAt ? `: ${user.provisionedAt}` : " · awaiting first sign-in"}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRoleTarget(user);
-                        setNewRole(user.role);
-                      }}
-                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold"
-                    >
-                      <KeyRound className="size-3.5" />
-                      Change role
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTarget(user)}
-                      className={`inline-flex min-h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold ${user.active ? "border-destructive/40 text-destructive" : "border-success/40 text-success"}`}
-                    >
-                      {user.active ? (
-                        <UserRoundX className="size-3.5" />
-                      ) : (
-                        <BadgeCheck className="size-3.5" />
-                      )}
-                      {user.active ? "Disable" : "Activate"}
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No institutional users match these filters.
-            </div>
-          )}
-        </div>
-      </section>
-      <section id="system-audit" className="mt-7 card-surface p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">System audit log</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Visible to Super Admins. Admins see only lab-configuration history in their workspace.
-              Audit records are view-only.
-            </p>
+          <div className="mt-4 space-y-2">
+            {filteredAudit.length ? (
+              filteredAudit.map((event) => (
+                <article key={event.id} className="rounded-xl border p-3 text-sm">
+                  <strong>{event.action}</strong>
+                  <span className="mx-2 text-muted-foreground">{event.entity}</span>
+                  <span className="block mt-1 text-xs text-muted-foreground sm:inline sm:mt-0">
+                    {event.actorName} ({event.actorRole}) · {event.timestamp}
+                  </span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {event.entityType}
+                    {event.reason ? ` · Reason: ${event.reason}` : ""}
+                  </p>
+                  <AuditChangeSummary event={event} />
+                </article>
+              ))
+            ) : (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No audit events match the current search. New administrative actions will appear
+                here.
+              </div>
+            )}
           </div>
-          <ShieldCheck className="size-6 text-primary" />
-        </div>
-        <label className="relative mt-4 block">
-          <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
-          <input
-            value={auditQuery}
-            onChange={(event) => setAuditQuery(event.target.value)}
-            placeholder="Search audit actions, actors or records"
-            className="form-input pl-10"
-          />
-        </label>
-        <div className="mt-4 space-y-2">
-          {filteredAudit.length ? (
-            filteredAudit.map((event) => (
-              <article key={event.id} className="rounded-xl border p-3 text-sm">
-                <strong>{event.action}</strong>
-                <span className="mx-2 text-muted-foreground">{event.entity}</span>
-                <span className="block mt-1 text-xs text-muted-foreground sm:inline sm:mt-0">
-                  {event.actorName} ({event.actorRole}) · {event.timestamp}
-                </span>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {event.entityType}
-                  {event.reason ? ` · Reason: ${event.reason}` : ""}
-                </p>
-                <AuditChangeSummary event={event} />
-              </article>
-            ))
-          ) : (
-            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No audit events match the current search. New administrative actions will appear here.
-            </div>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       <ResponsiveModal
         open={provisioning}

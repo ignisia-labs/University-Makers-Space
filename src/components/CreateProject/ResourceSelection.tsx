@@ -67,9 +67,13 @@ export function ResourceSelection({
         onValueChange={(value) => setTab(value as CategoryId)}
         className="mt-4 w-full min-w-0 max-w-full"
       >
-        <TabsList className="h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl p-1">
+        <TabsList className="h-auto w-full max-w-full justify-start gap-2 overflow-x-auto rounded-2xl bg-muted/70 p-1.5">
           {Object.entries(categories).map(([id, category]) => (
-            <TabsTrigger key={id} value={id} className="min-h-11 shrink-0 px-3 text-xs">
+            <TabsTrigger
+              key={id}
+              value={id}
+              className="min-h-11 shrink-0 rounded-full border border-transparent px-4 text-xs data-[state=active]:border-border data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
               {category.label}
             </TabsTrigger>
           ))}

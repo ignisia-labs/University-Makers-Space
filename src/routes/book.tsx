@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CircleAlert } from "lucide-react";
+import { CalendarDays, CircleAlert, Clock3, FolderKanban, History, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { SlotBookingModal } from "@/components/Booking/SlotBookingModal";
+import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { bookingDates, timeSlots } from "@/lib/makerspace-data";
+import type { Reservation } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/book")({
@@ -244,6 +246,8 @@ function BookPage() {
         </button>
       </div>
 
+      <SlotHistoryTimeline reservations={reservations} />
+
       <SlotBookingModal
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -322,4 +326,115 @@ function Step({
       {children}
     </section>
   );
+}
+
+function SlotHistoryTimeline({ reservations }: { reservations: Reservation[] }) {
+  const timeline = [...reservations].sort((a, b) => {
+    if (a.status === "Active" && b.status === "Active") {
+      return bookingDay(a.date) - bookingDay(b.date);
+    }
+    const activeDifference = Number(b.status === "Active") - Number(a.status === "Active");
+    if (activeDifference) return activeDifference;
+    return bookingDay(b.date) - bookingDay(a.date);
+  });
+
+  return (
+    <section className="mt-8" aria-labelledby="slot-history-title">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Activity</p>
+          <h2 id="slot-history-title" className="mt-1 text-lg font-semibold">
+            Slot history timeline
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Confirmed sessions and previous reservation outcomes in one chronological view.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+          <History className="size-3.5" /> {timeline.length} records
+        </span>
+      </div>
+
+      {timeline.length ? (
+        <ol className="relative ml-3 space-y-4 border-l border-border pl-6 sm:ml-5 sm:pl-8">
+          {timeline.map((reservation) => {
+            const displayStatus =
+              reservation.status === "Active"
+                ? "Confirmed"
+                : reservation.status === "No Show"
+                  ? "No-Show"
+                  : reservation.status;
+            const active = reservation.status === "Active";
+            return (
+              <li key={reservation.id} className="relative">
+                <span
+                  className={cn(
+                    "absolute -left-[2.05rem] top-5 grid size-4 place-items-center rounded-full border-[3px] border-background sm:-left-[2.55rem]",
+                    active
+                      ? "bg-primary shadow-[0_0_0_4px_rgba(56,81,194,0.10)]"
+                      : reservation.status === "Completed"
+                        ? "bg-success"
+                        : reservation.status === "Cancelled"
+                          ? "bg-muted-foreground"
+                          : "bg-warning",
+                  )}
+                  aria-hidden
+                />
+                <article
+                  className={cn(
+                    "rounded-2xl border bg-card p-4 shadow-[var(--shadow-card)] sm:p-5",
+                    active && "border-primary/25 bg-primary/[0.025]",
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <CalendarDays className="size-3.5" /> {reservation.date}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Clock3 className="size-3.5" /> {reservation.slot}
+                        </span>
+                      </p>
+                      <h3 className="mt-2 text-base font-semibold">{reservation.projectName}</h3>
+                    </div>
+                    <StatusBadge label={displayStatus} />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground">
+                      <FolderKanban className="size-3.5" /> Project slot
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                      <Users className="size-3.5" /> {reservation.attendees}{" "}
+                      {reservation.attendees === 1 ? "attendee" : "attendees"}
+                    </span>
+                  </div>
+
+                  {(reservation.cancelledReason || reservation.noShowReason) && (
+                    <p className="mt-4 rounded-xl bg-muted/70 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+                      <strong className="text-foreground">
+                        {reservation.status === "Cancelled"
+                          ? "Cancellation reason:"
+                          : "No-show note:"}
+                      </strong>{" "}
+                      {reservation.cancelledReason ?? reservation.noShowReason}
+                    </p>
+                  )}
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="card-surface p-7 text-center text-sm text-muted-foreground">
+          Your slot history will appear after the first reservation.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function bookingDay(date: string) {
+  return Number(date.match(/\b(\d{1,2})\b/)?.[1] ?? 0);
 }

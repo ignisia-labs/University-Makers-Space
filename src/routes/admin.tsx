@@ -1,5 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PackagePlus, Pencil, Search, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  FlaskConical,
+  LayoutDashboard,
+  PackagePlus,
+  Pencil,
+  Search,
+  Settings2,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -26,6 +35,13 @@ const equipmentStatuses: EquipmentStatus[] = [
   "Out of Service",
 ];
 const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+type AdminView = "dashboard" | "equipment" | "consumables" | "config";
+const adminViews = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "equipment", label: "Equipment", icon: Boxes },
+  { id: "consumables", label: "Consumables", icon: FlaskConical },
+  { id: "config", label: "Lab Config", icon: Settings2 },
+] as const;
 
 function emptyEquipment(): Omit<Equipment, "id"> {
   return {
@@ -68,8 +84,9 @@ function Admin() {
     equipmentCategories,
     addEquipmentCategory,
   } = useMakerSpace();
+  const [view, setView] = useState<AdminView>("dashboard");
   const [draft, setDraft] = useState(config);
-  const [catalogue, setCatalogue] = useState<"equipment" | "consumables">("equipment");
+  const catalogue = view === "consumables" ? "consumables" : "equipment";
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [equipmentModal, setEquipmentModal] = useState<{
@@ -146,358 +163,363 @@ function Admin() {
   }
 
   return (
-    <AppShell title="Administration" subtitle="Lab operating rules and resource catalogue">
-      <nav className="mb-6 flex gap-2 overflow-x-auto pb-1" aria-label="Admin workspace">
-        {[
-          ["#admin-overview", "Dashboard"],
-          ["#admin-resources", "Resources"],
-          ["#admin-configuration", "Configuration"],
-          ["#admin-oversight", "Oversight"],
-        ].map(([href, label]) => (
-          <a
-            key={href}
-            href={href}
-            className="min-h-11 shrink-0 rounded-xl border bg-card px-4 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground"
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
-
-      <section id="admin-overview">
-        <h2 className="font-semibold">Operational overview</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <AdminMetric
-            label="Current occupancy"
-            value={`${present}/${config.capacity}`}
-            note="Entered and not exited"
-          />
-          <AdminMetric
-            label="Booking utilization"
-            value={`${utilization}%`}
-            note={`${bookedSeats} seats across active slots`}
-          />
-          <AdminMetric
-            label="Unavailable equipment"
-            value={equipment.filter((item) => item.status !== "Available").length}
-            note="Operational attention required"
-          />
-          <AdminMetric
-            label="Upcoming booking volume"
-            value={activeBookings.length}
-            note={`${visits.filter((visit) => visit.status === "Active").length} active visits`}
-          />
-        </div>
-        <div className="card-surface mt-3 p-4">
-          <p className="text-sm font-semibold">Pending operational issues</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {equipment.filter((item) => item.status !== "Available").length} equipment alerts ·{" "}
-            {reservations.filter((item) => item.status === "No Show").length} no-shows ·{" "}
-            {reservations.filter((item) => item.status === "Cancelled").length} cancellations
-          </p>
-        </div>
-      </section>
-
-      <section id="admin-configuration" className="card-surface mt-7 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Lab operational settings</h2>
+    <AppShell
+      title={adminViews.find((item) => item.id === view)?.label ?? "Dashboard"}
+      subtitle="MakerSpace administration"
+      workspaceNavigation={adminViews}
+      activeWorkspace={view}
+      onWorkspaceChange={(id) => {
+        setView(id as AdminView);
+        setCategory("All");
+        setQuery("");
+      }}
+    >
+      {view === "dashboard" && (
+        <section id="admin-overview">
+          <h2 className="font-semibold">Operational overview</h2>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <AdminMetric
+              label="Current occupancy"
+              value={`${present}/${config.capacity}`}
+              note="Entered and not exited"
+            />
+            <AdminMetric
+              label="Booking utilization"
+              value={`${utilization}%`}
+              note={`${bookedSeats} seats across active slots`}
+            />
+            <AdminMetric
+              label="Unavailable equipment"
+              value={equipment.filter((item) => item.status !== "Available").length}
+              note="Operational attention required"
+            />
+            <AdminMetric
+              label="Upcoming booking volume"
+              value={activeBookings.length}
+              note={`${visits.filter((visit) => visit.status === "Active").length} active visits`}
+            />
+          </div>
+          <div className="card-surface mt-3 p-4">
+            <p className="text-sm font-semibold">Pending operational issues</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              These settings define booking availability and are recorded in the prototype audit
-              log.
+              {equipment.filter((item) => item.status !== "Available").length} equipment alerts ·{" "}
+              {reservations.filter((item) => item.status === "No Show").length} no-shows ·{" "}
+              {reservations.filter((item) => item.status === "Cancelled").length} cancellations
             </p>
           </div>
-          {saved && (
-            <span className="rounded-full bg-success/15 px-3 py-1 text-sm font-semibold text-success">
-              Saved
-            </span>
-          )}
-        </div>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Lab name">
-            <input
-              value={draft.labName}
-              onChange={(event) => updateDraft("labName", event.target.value)}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Opening time">
-            <input
-              type="time"
-              value={draft.openingTime}
-              onChange={(event) => updateDraft("openingTime", event.target.value)}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Closing time">
-            <input
-              type="time"
-              value={draft.closingTime}
-              onChange={(event) => updateDraft("closingTime", event.target.value)}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Default slot duration (minutes)">
-            <input
-              type="number"
-              min="15"
-              value={draft.slotDuration}
-              onChange={(event) => updateDraft("slotDuration", Number(event.target.value))}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Capacity per slot">
-            <input
-              type="number"
-              min="1"
-              value={draft.capacity}
-              onChange={(event) => updateDraft("capacity", Number(event.target.value))}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Booking horizon (days)">
-            <input
-              type="number"
-              min="1"
-              value={draft.bookingHorizon}
-              onChange={(event) => updateDraft("bookingHorizon", Number(event.target.value))}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Cancellation window (hours)">
-            <input
-              type="number"
-              min="0"
-              value={draft.cancellationWindow}
-              onChange={(event) => updateDraft("cancellationWindow", Number(event.target.value))}
-              className="form-input"
-            />
-          </Field>
-          <Field label="Maximum future bookings per project">
-            <input
-              type="number"
-              min="1"
-              value={draft.maximumFutureBookingsPerProject ?? 1}
-              onChange={(event) =>
-                updateDraft("maximumFutureBookingsPerProject", Number(event.target.value))
-              }
-              className="form-input"
-            />
-          </Field>
-        </div>
-        <div className="mt-5 grid gap-5 lg:grid-cols-2">
-          <div>
-            <p className="text-sm font-medium">Available days</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {weekDays.map((day) => (
+        </section>
+      )}
+
+      {view === "config" && (
+        <section id="admin-configuration" className="card-surface p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Lab operational settings</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                These settings define booking availability and are recorded in the prototype audit
+                log.
+              </p>
+            </div>
+            {saved && (
+              <span className="rounded-full bg-success/15 px-3 py-1 text-sm font-semibold text-success">
+                Saved
+              </span>
+            )}
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Lab name">
+              <input
+                value={draft.labName}
+                onChange={(event) => updateDraft("labName", event.target.value)}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Opening time">
+              <input
+                type="time"
+                value={draft.openingTime}
+                onChange={(event) => updateDraft("openingTime", event.target.value)}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Closing time">
+              <input
+                type="time"
+                value={draft.closingTime}
+                onChange={(event) => updateDraft("closingTime", event.target.value)}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Default slot duration (minutes)">
+              <input
+                type="number"
+                min="15"
+                value={draft.slotDuration}
+                onChange={(event) => updateDraft("slotDuration", Number(event.target.value))}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Capacity per slot">
+              <input
+                type="number"
+                min="1"
+                value={draft.capacity}
+                onChange={(event) => updateDraft("capacity", Number(event.target.value))}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Booking horizon (days)">
+              <input
+                type="number"
+                min="1"
+                value={draft.bookingHorizon}
+                onChange={(event) => updateDraft("bookingHorizon", Number(event.target.value))}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Cancellation window (hours)">
+              <input
+                type="number"
+                min="0"
+                value={draft.cancellationWindow}
+                onChange={(event) => updateDraft("cancellationWindow", Number(event.target.value))}
+                className="form-input"
+              />
+            </Field>
+            <Field label="Maximum future bookings per project">
+              <input
+                type="number"
+                min="1"
+                value={draft.maximumFutureBookingsPerProject ?? 1}
+                onChange={(event) =>
+                  updateDraft("maximumFutureBookingsPerProject", Number(event.target.value))
+                }
+                className="form-input"
+              />
+            </Field>
+          </div>
+          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+            <div>
+              <p className="text-sm font-medium">Available days</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {weekDays.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() =>
+                      updateDraft(
+                        "availableDays",
+                        draft.availableDays.includes(day)
+                          ? draft.availableDays.filter((item) => item !== day)
+                          : [...draft.availableDays, day],
+                      )
+                    }
+                    className={`min-h-10 rounded-xl border px-3 text-sm font-semibold ${draft.availableDays.includes(day) ? "border-primary bg-primary/10 text-primary" : ""}`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Closure dates</p>
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="date"
+                  value={closureInput}
+                  onChange={(event) => setClosureInput(event.target.value)}
+                  className="form-input"
+                />
                 <button
-                  key={day}
                   type="button"
-                  onClick={() =>
-                    updateDraft(
-                      "availableDays",
-                      draft.availableDays.includes(day)
-                        ? draft.availableDays.filter((item) => item !== day)
-                        : [...draft.availableDays, day],
-                    )
-                  }
-                  className={`min-h-10 rounded-xl border px-3 text-sm font-semibold ${draft.availableDays.includes(day) ? "border-primary bg-primary/10 text-primary" : ""}`}
+                  onClick={() => {
+                    if (closureInput && !draft.closureDates.includes(closureInput))
+                      updateDraft("closureDates", [...draft.closureDates, closureInput]);
+                    setClosureInput("");
+                  }}
+                  className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
                 >
-                  {day}
+                  Add
                 </button>
-              ))}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {draft.closureDates.map((date) => (
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() =>
+                      updateDraft(
+                        "closureDates",
+                        draft.closureDates.filter((item) => item !== date),
+                      )
+                    }
+                    className="rounded-full border px-3 py-1 text-xs"
+                  >
+                    {date} ×
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <div>
-            <p className="text-sm font-medium">Closure dates</p>
-            <div className="mt-2 flex gap-2">
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <Field label="Quick-visit rules">
+              <textarea
+                value={draft.quickVisitRules}
+                onChange={(event) => updateDraft("quickVisitRules", event.target.value)}
+                className="form-input min-h-24 py-3"
+              />
+            </Field>
+            <Field label="Project verification requirements">
+              <textarea
+                value={draft.projectVerificationRequirements}
+                onChange={(event) =>
+                  updateDraft("projectVerificationRequirements", event.target.value)
+                }
+                className="form-input min-h-24 py-3"
+              />
+            </Field>
+          </div>
+          <button
+            type="button"
+            onClick={saveSettings}
+            className="mt-5 min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+          >
+            Save operational settings
+          </button>
+          <div className="mt-6 border-t pt-5">
+            <h3 className="font-semibold">Configuration history</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Recorded changes to MakerSpace operating rules.
+            </p>
+            <div className="mt-3 space-y-2">
+              {auditLogs.filter((event) => event.entityType === "Lab Configuration").length ? (
+                auditLogs
+                  .filter((event) => event.entityType === "Lab Configuration")
+                  .map((event) => (
+                    <div key={event.id} className="rounded-xl border p-3 text-sm">
+                      <strong>{event.action}</strong>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {event.actorName} · {event.timestamp}
+                      </span>
+                    </div>
+                  ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Configuration changes made during this session will appear here.
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {(view === "equipment" || view === "consumables") && (
+        <section id="admin-resources">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">
+                {catalogue === "equipment" ? "Equipment catalogue" : "Consumables catalogue"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {catalogue === "equipment"
+                  ? "Manage equipment details, quantities, visibility and operational attributes."
+                  : "Manage consumable details, categories and active status."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                catalogue === "equipment"
+                  ? setEquipmentModal({ item: emptyEquipment() })
+                  : setConsumableModal({ item: emptyConsumable() })
+              }
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              <PackagePlus className="size-4" />
+              Add {catalogue === "equipment" ? "equipment" : "consumable"}
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <label className="relative">
+              <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
               <input
-                type="date"
-                value={closureInput}
-                onChange={(event) => setClosureInput(event.target.value)}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={`Search ${catalogue}`}
+                className="form-input pl-10"
+              />
+            </label>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="form-input sm:w-52"
+            >
+              <option>All</option>
+              {equipmentCategories.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </div>
+          <div className="card-surface mt-4 p-4">
+            <p className="text-sm font-semibold">Configured categories</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {equipmentCategories.map((item) => (
+                <span key={item} className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                  {item}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={categoryInput}
+                onChange={(event) => setCategoryInput(event.target.value)}
+                placeholder="New configured category"
                 className="form-input"
               />
               <button
                 type="button"
                 onClick={() => {
-                  if (closureInput && !draft.closureDates.includes(closureInput))
-                    updateDraft("closureDates", [...draft.closureDates, closureInput]);
-                  setClosureInput("");
+                  addEquipmentCategory(categoryInput);
+                  setCategoryInput("");
                 }}
-                className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
+                disabled={!categoryInput.trim()}
+                className="min-h-11 shrink-0 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50"
               >
-                Add
+                Add category
               </button>
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {draft.closureDates.map((date) => (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() =>
-                    updateDraft(
-                      "closureDates",
-                      draft.closureDates.filter((item) => item !== date),
-                    )
-                  }
-                  className="rounded-full border px-3 py-1 text-xs"
-                >
-                  {date} ×
-                </button>
-              ))}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {catalogue === "equipment"
+              ? shownEquipment.map((item) => (
+                  <EquipmentCard
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setEquipmentModal({ id: item.id, item: { ...item } })}
+                    onDelete={() =>
+                      setDeleteTarget({ type: "equipment", id: item.id, name: item.name })
+                    }
+                  />
+                ))
+              : shownConsumables.map((item) => (
+                  <ConsumableCard
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setConsumableModal({ id: item.id, item: { ...item } })}
+                    onDelete={() =>
+                      setDeleteTarget({ type: "consumable", id: item.id, name: item.name })
+                    }
+                  />
+                ))}
+          </div>
+          {((catalogue === "equipment" && !shownEquipment.length) ||
+            (catalogue === "consumables" && !shownConsumables.length)) && (
+            <div className="card-surface mt-4 p-7 text-center text-sm text-muted-foreground">
+              No {catalogue} match the current search and category filter.
             </div>
-          </div>
-        </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <Field label="Quick-visit rules">
-            <textarea
-              value={draft.quickVisitRules}
-              onChange={(event) => updateDraft("quickVisitRules", event.target.value)}
-              className="form-input min-h-24 py-3"
-            />
-          </Field>
-          <Field label="Project verification requirements">
-            <textarea
-              value={draft.projectVerificationRequirements}
-              onChange={(event) =>
-                updateDraft("projectVerificationRequirements", event.target.value)
-              }
-              className="form-input min-h-24 py-3"
-            />
-          </Field>
-        </div>
-        <button
-          type="button"
-          onClick={saveSettings}
-          className="mt-5 min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-        >
-          Save operational settings
-        </button>
-      </section>
-
-      <section id="admin-resources" className="mt-7">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="font-semibold">Resource catalogue</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Manage student-visible equipment and configurable consumables.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              catalogue === "equipment"
-                ? setEquipmentModal({ item: emptyEquipment() })
-                : setConsumableModal({ item: emptyConsumable() })
-            }
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
-            <PackagePlus className="size-4" />
-            Add {catalogue === "equipment" ? "equipment" : "consumable"}
-          </button>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setCatalogue("equipment");
-              setCategory("All");
-            }}
-            className={`min-h-10 rounded-xl px-4 text-sm font-semibold ${catalogue === "equipment" ? "bg-primary text-primary-foreground" : "border bg-card"}`}
-          >
-            Equipment
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setCatalogue("consumables");
-              setCategory("All");
-            }}
-            className={`min-h-10 rounded-xl px-4 text-sm font-semibold ${catalogue === "consumables" ? "bg-primary text-primary-foreground" : "border bg-card"}`}
-          >
-            Consumables
-          </button>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-          <label className="relative">
-            <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${catalogue}`}
-              className="form-input pl-10"
-            />
-          </label>
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="form-input sm:w-52"
-          >
-            <option>All</option>
-            {equipmentCategories.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </div>
-        <div className="card-surface mt-4 p-4">
-          <p className="text-sm font-semibold">Equipment categories</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {equipmentCategories.map((item) => (
-              <span key={item} className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
-                {item}
-              </span>
-            ))}
-          </div>
-          <div className="mt-3 flex gap-2">
-            <input
-              value={categoryInput}
-              onChange={(event) => setCategoryInput(event.target.value)}
-              placeholder="New configured category"
-              className="form-input"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                addEquipmentCategory(categoryInput);
-                setCategoryInput("");
-              }}
-              disabled={!categoryInput.trim()}
-              className="min-h-11 shrink-0 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50"
-            >
-              Add category
-            </button>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {catalogue === "equipment"
-            ? shownEquipment.map((item) => (
-                <EquipmentCard
-                  key={item.id}
-                  item={item}
-                  onEdit={() => setEquipmentModal({ id: item.id, item: { ...item } })}
-                  onDelete={() =>
-                    setDeleteTarget({ type: "equipment", id: item.id, name: item.name })
-                  }
-                />
-              ))
-            : shownConsumables.map((item) => (
-                <ConsumableCard
-                  key={item.id}
-                  item={item}
-                  onEdit={() => setConsumableModal({ id: item.id, item: { ...item } })}
-                  onDelete={() =>
-                    setDeleteTarget({ type: "consumable", id: item.id, name: item.name })
-                  }
-                />
-              ))}
-        </div>
-        {((catalogue === "equipment" && !shownEquipment.length) ||
-          (catalogue === "consumables" && !shownConsumables.length)) && (
-          <div className="card-surface mt-4 p-7 text-center text-sm text-muted-foreground">
-            No {catalogue} match the current search and category filter.
-          </div>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       <ResponsiveModal
         open={!!equipmentModal}
@@ -552,44 +574,25 @@ function Admin() {
         )}
       </ResponsiveModal>
 
-      <section id="admin-oversight" className="mt-7">
-        <h2 className="font-semibold">Operational oversight</h2>
-        <div className="mt-3 grid gap-3 lg:grid-cols-3">
-          <OversightList
-            title="Projects"
-            items={projects.slice(0, 4).map((item) => `${item.name} · ${item.status}`)}
-          />
-          <OversightList
-            title="Bookings"
-            items={reservations.slice(0, 4).map((item) => `${item.projectName} · ${item.status}`)}
-          />
-          <OversightList
-            title="Visits"
-            items={visits.slice(0, 4).map((item) => `${item.title} · ${item.status}`)}
-          />
-        </div>
-        <div className="card-surface mt-4 p-5">
-          <h3 className="font-semibold">Configuration audit history</h3>
-          <div className="mt-3 space-y-2">
-            {auditLogs.filter((event) => event.entityType === "Lab Configuration").length ? (
-              auditLogs
-                .filter((event) => event.entityType === "Lab Configuration")
-                .map((event) => (
-                  <div key={event.id} className="rounded-xl border p-3 text-sm">
-                    <strong>{event.action}</strong>
-                    <span className="block mt-1 text-xs text-muted-foreground">
-                      {event.actorName} · {event.timestamp}
-                    </span>
-                  </div>
-                ))
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Configuration changes made during this session will appear here.
-              </p>
-            )}
+      {view === "dashboard" && (
+        <section id="admin-oversight" className="mt-7">
+          <h2 className="font-semibold">Operational oversight</h2>
+          <div className="mt-3 grid gap-3 lg:grid-cols-3">
+            <OversightList
+              title="Projects"
+              items={projects.slice(0, 4).map((item) => `${item.name} · ${item.status}`)}
+            />
+            <OversightList
+              title="Bookings"
+              items={reservations.slice(0, 4).map((item) => `${item.projectName} · ${item.status}`)}
+            />
+            <OversightList
+              title="Visits"
+              items={visits.slice(0, 4).map((item) => `${item.title} · ${item.status}`)}
+            />
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </AppShell>
   );
 }

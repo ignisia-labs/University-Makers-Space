@@ -10,6 +10,8 @@ import {
   LogOut,
   Settings,
   UserRound,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -26,13 +28,33 @@ export function AppShell({
   title,
   subtitle,
   children,
+  workspaceNavigation,
+  activeWorkspace,
+  onWorkspaceChange,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  workspaceNavigation?: readonly {
+    id: string;
+    label: string;
+    icon: LucideIcon;
+  }[];
+  activeWorkspace?: string;
+  onWorkspaceChange?: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
-  const { profile, role, notifications, authenticated, signOut } = useMakerSpace();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsMounted, setNotificationsMounted] = useState(false);
+  const {
+    profile,
+    role,
+    notifications,
+    authenticated,
+    signOut,
+    markNotificationRead,
+    markAllNotificationsRead,
+  } = useMakerSpace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const initials = profile.fullName
     .split(" ")
@@ -50,29 +72,17 @@ export function AppShell({
           ? "Admin"
           : null;
 
-  const nav =
-    role === "Student"
-      ? studentNav
-      : ([
-          {
-            to:
-              role === "Faculty Mentor"
-                ? "/faculty"
-                : role === "Lab Assistant"
-                  ? "/operations"
-                  : role === "Admin"
-                    ? "/admin"
-                    : "/super-admin",
-            label:
-              role === "Faculty Mentor"
-                ? "Faculty"
-                : role === "Lab Assistant"
-                  ? "Operations"
-                  : role,
-            icon: LayoutDashboard,
-          },
-        ] as const);
+  const showSidebar = role === "Student" || (workspaceNavigation?.length ?? 0) > 1;
   const unread = notifications.filter((item) => !item.read).length;
+  const openNotifications = () => {
+    setNotificationsMounted(true);
+    window.requestAnimationFrame(() => setNotificationsOpen(true));
+  };
+  const closeNotifications = () => setNotificationsOpen(false);
+  const toggleNotifications = () => {
+    if (notificationsOpen) closeNotifications();
+    else openNotifications();
+  };
   if (!authenticated) {
     return (
       <main className="grid min-h-screen place-items-center bg-background px-4">
@@ -114,6 +124,7 @@ export function AppShell({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-sidebar transition-[width] md:flex",
+          !showSidebar && "md:hidden",
           expanded ? "w-60" : "w-[4.5rem]",
         )}
       >
@@ -133,39 +144,48 @@ export function AppShell({
           )}
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          {nav.map(({ to, label, icon: Icon }) => {
-            const active = pathname === to;
-            return (
-              <Link
-                key={to}
-                to={to}
-                aria-label={label}
-                className={cn(
-                  "tap flex items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                )}
-              >
-                <Icon className="size-5 shrink-0" />
-                {expanded && <span className="truncate">{label}</span>}
-              </Link>
-            );
-          })}
+          {role === "Student"
+            ? studentNav.map(({ to, label, icon: Icon }) => {
+                const active = pathname === to;
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    aria-label={label}
+                    className={cn(
+                      "tap flex items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                    )}
+                  >
+                    <Icon className="size-5 shrink-0" />
+                    {expanded && <span className="truncate">{label}</span>}
+                  </Link>
+                );
+              })
+            : workspaceNavigation?.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onWorkspaceChange?.(id)}
+                  aria-label={label}
+                  aria-current={activeWorkspace === id ? "page" : undefined}
+                  className={cn(
+                    "tap flex items-center gap-3 rounded-xl px-3 text-left text-sm font-medium transition-colors",
+                    activeWorkspace === id
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" />
+                  {expanded && <span className="truncate">{label}</span>}
+                </button>
+              ))}
         </nav>
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 flex gap-1">
-              <Link
-                to="/notifications"
-                className="tap relative grid place-items-center rounded-xl px-2 hover:bg-sidebar-accent"
-                aria-label="Notifications"
-              >
-                <Bell className="size-4" />
-                {unread > 0 && (
-                  <span className="absolute right-1 top-1 size-2 rounded-full bg-destructive" />
-                )}
-              </Link>
               <Link
                 to="/profile"
                 className="tap grid place-items-center rounded-xl px-2 hover:bg-sidebar-accent"
@@ -206,54 +226,212 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className={cn("transition-[padding]", expanded ? "md:pl-60" : "md:pl-[4.5rem]")}>
-        <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
+      <div
+        className={cn(
+          "transition-[padding]",
+          showSidebar && (expanded ? "md:pl-60" : "md:pl-[4.5rem]"),
+        )}
+      >
+        <header
+          className={cn(
+            "sticky top-0 border-b border-border bg-background/95 backdrop-blur",
+            notificationsMounted ? "z-40" : "z-20",
+          )}
+        >
           <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-4 sm:px-6">
             <div className="min-w-0">
               <h1 className="truncate text-xl font-bold sm:text-2xl">{title}</h1>
               {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
             </div>
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground md:hidden">
-              {initials}
-            </span>
-            <Link
-              to="/notifications"
-              aria-label="Notifications"
-              className="relative hidden size-10 place-items-center rounded-full bg-accent text-accent-foreground md:grid"
-            >
-              <Bell className="size-4" />
-              {unread > 0 && (
-                <span className="absolute right-1 top-1 size-2 rounded-full bg-destructive" />
-              )}
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/profile"
+                aria-label="Profile"
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground md:hidden"
+              >
+                {initials}
+              </Link>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={toggleNotifications}
+                  aria-label="Notifications"
+                  aria-haspopup="dialog"
+                  aria-expanded={notificationsOpen}
+                  className="relative grid size-10 place-items-center rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent/75"
+                >
+                  <Bell className="size-4" />
+                  {unread > 0 && (
+                    <span className="absolute right-1 top-1 size-2 rounded-full bg-destructive" />
+                  )}
+                </button>
+
+                {notificationsMounted && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close notifications"
+                      className={cn(
+                        "fixed inset-0 z-40 cursor-default bg-foreground/10 transition-opacity duration-200 ease-out",
+                        notificationsOpen ? "opacity-100" : "pointer-events-none opacity-0",
+                      )}
+                      onClick={closeNotifications}
+                    />
+                    <section
+                      role="dialog"
+                      aria-modal="false"
+                      aria-labelledby="notification-panel-title"
+                      onTransitionEnd={(event) => {
+                        if (
+                          event.propertyName === "opacity" &&
+                          !notificationsOpen &&
+                          event.currentTarget === event.target
+                        ) {
+                          setNotificationsMounted(false);
+                        }
+                      }}
+                      className={cn(
+                        "absolute right-0 top-full z-50 mt-2 w-[calc(100vw-2rem)] max-w-sm origin-top-right overflow-hidden rounded-2xl border bg-card shadow-2xl transition-[opacity,transform] duration-200 ease-out",
+                        notificationsOpen
+                          ? "scale-100 opacity-100"
+                          : "pointer-events-none scale-95 opacity-0",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-4 border-b px-4 py-4">
+                        <div>
+                          <h2 id="notification-panel-title" className="font-semibold">
+                            Notifications
+                          </h2>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {unread ? `${unread} unread` : "You're all caught up"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={closeNotifications}
+                          aria-label="Close notifications"
+                          className="grid size-10 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                      <div className="max-h-[min(60vh,30rem)] overflow-y-auto p-2">
+                        {notifications.length ? (
+                          notifications.map((item) => (
+                            <Link
+                              key={item.id}
+                              to={item.href as "/projects"}
+                              onClick={() => {
+                                markNotificationRead(item.id);
+                                closeNotifications();
+                              }}
+                              className={cn(
+                                "block rounded-xl px-3 py-3 transition-colors hover:bg-muted",
+                                !item.read && "bg-primary/5",
+                              )}
+                            >
+                              <span className="flex items-start gap-3">
+                                <span
+                                  className={cn(
+                                    "mt-1.5 size-2 shrink-0 rounded-full",
+                                    item.read ? "bg-border" : "bg-primary",
+                                  )}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-semibold">{item.title}</span>
+                                  <span className="mt-1 block text-sm text-muted-foreground">
+                                    {item.body}
+                                  </span>
+                                  <span className="mt-1.5 block text-xs text-muted-foreground">
+                                    {item.createdAt}
+                                  </span>
+                                </span>
+                              </span>
+                            </Link>
+                          ))
+                        ) : (
+                          <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                            No notifications yet.
+                          </p>
+                        )}
+                      </div>
+                      {notifications.length > 0 && (
+                        <div className="border-t p-3">
+                          <button
+                            type="button"
+                            onClick={markAllNotificationsRead}
+                            disabled={!unread}
+                            className="min-h-11 w-full rounded-xl text-sm font-semibold text-primary transition-colors hover:bg-primary/5 disabled:text-muted-foreground disabled:hover:bg-transparent"
+                          >
+                            Mark all as read
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 pb-28 pt-5 sm:px-6 md:pb-12">{children}</main>
+        <main
+          className={cn(
+            "mx-auto max-w-5xl px-4 pt-5 sm:px-6 md:pb-12",
+            showSidebar ? "pb-28" : "pb-12",
+          )}
+        >
+          {children}
+        </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
-        <ul className="grid grid-cols-5">
-          {nav.map(({ to, label, icon: Icon }) => {
-            const active = pathname === to;
-            return (
-              <li key={to}>
-                <Link
-                  to={to}
-                  aria-label={label}
-                  className={cn(
-                    "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-medium",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
-                >
-                  <Icon className="size-5" />
-                  {label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      {showSidebar && (
+        <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
+          <ul
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${role === "Student" ? studentNav.length : (workspaceNavigation?.length ?? 1)}, minmax(0, 1fr))`,
+            }}
+          >
+            {role === "Student"
+              ? studentNav.map(({ to, label, icon: Icon }) => {
+                  const active = pathname === to;
+                  return (
+                    <li key={to}>
+                      <Link
+                        to={to}
+                        aria-label={label}
+                        className={cn(
+                          "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-medium",
+                          active ? "text-primary" : "text-muted-foreground",
+                        )}
+                      >
+                        <Icon className="size-5" />
+                        {label}
+                      </Link>
+                    </li>
+                  );
+                })
+              : workspaceNavigation?.map(({ id, label, icon: Icon }) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => onWorkspaceChange?.(id)}
+                      aria-label={label}
+                      aria-current={activeWorkspace === id ? "page" : undefined}
+                      className={cn(
+                        "flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium",
+                        activeWorkspace === id ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      <Icon className="size-5" />
+                      <span className="max-w-full truncate">{label}</span>
+                    </button>
+                  </li>
+                ))}
+          </ul>
+        </nav>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
+  BadgeCheck,
   Boxes,
   CalendarCheck,
   CalendarClock,
@@ -11,12 +12,13 @@ import {
   FolderKanban,
   Footprints,
   Plus,
+  TimerReset,
   Users,
 } from "lucide-react";
 import { useMemo } from "react";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
-import type { Equipment, Project, Reservation, StudentProfile } from "@/lib/makerspace-data";
+import type { Equipment, Project, Reservation, StudentProfile, Visit } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +47,7 @@ type ProjectRelationship = "leader" | "member" | "invited";
 type DashboardProject = Project & { relationship: ProjectRelationship };
 
 function Dashboard() {
-  const { profile, projects, reservations, equipment } = useMakerSpace();
+  const { profile, projects, reservations, equipment, visits } = useMakerSpace();
   const data = useMemo(
     () => getDashboardData(profile, projects, reservations),
     [profile, projects, reservations],
@@ -69,22 +71,15 @@ function Dashboard() {
           invitationCount={data.invitations.length}
           hasUpcomingBooking={Boolean(data.upcoming)}
         />
+        <StudentMetrics data={data} visits={visits} />
+        <JourneyProgress project={journeyProject} hasUpcomingBooking={Boolean(data.upcoming)} />
         <NextActionCard data={data} />
-
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem]">
-          <div className="space-y-6">
-            <JourneyProgress project={journeyProject} hasUpcomingBooking={Boolean(data.upcoming)} />
-            <UpcomingBookingCard
-              bookings={data.upcomingBookings}
-              project={upcomingProject}
-              equipment={equipment}
-            />
-          </div>
-          <div className="space-y-6">
-            <ProjectsSummary data={data} />
-            <InvitationsDrawer invitations={data.invitations} />
-          </div>
-        </div>
+        <UpcomingBookingCard
+          bookings={data.upcomingBookings}
+          project={upcomingProject}
+          equipment={equipment}
+        />
+        <InvitationsDrawer invitations={data.invitations} />
 
         <QuickActions data={data} />
       </div>
@@ -117,21 +112,6 @@ function DashboardHeader({
 }
 
 function NextActionCard({ data }: { data: DashboardData }) {
-  if (data.upcoming) {
-    const project = data.projects.find((item) => item.id === data.upcoming?.projectId);
-    const canManage = project?.relationship === "leader";
-    return (
-      <ActionCard
-        eyebrow="Upcoming MakerSpace visit"
-        title={data.upcoming.projectName}
-        body={`${data.upcoming.date} · ${data.upcoming.slot}`}
-        to="/book"
-        action={canManage ? "Manage booking" : "View booking"}
-        icon={CalendarCheck}
-      />
-    );
-  }
-
   if (data.invitations.length) {
     const invitation = data.invitations[0]!;
     return (
@@ -146,6 +126,9 @@ function NextActionCard({ data }: { data: DashboardData }) {
       />
     );
   }
+
+  // The dedicated upcoming-booking card is the single source of truth for the next visit.
+  if (data.upcoming) return null;
 
   if (data.projects.length === 0) {
     return (
@@ -228,6 +211,115 @@ function NextActionCard({ data }: { data: DashboardData }) {
       action="View projects"
       icon={FolderKanban}
     />
+  );
+}
+
+function StudentMetrics({ data, visits }: { data: DashboardData; visits: Visit[] }) {
+  const activeProjects = data.projects.filter(
+    (project) => project.relationship !== "invited" && project.status !== "Archived",
+  ).length;
+  const completedVisits = visits.filter((visit) => visit.status === "Completed" && visit.exit);
+  const totalMinutes = completedVisits.reduce(
+    (total, visit) => total + visitDurationMinutes(visit.entry, visit.exit),
+    0,
+  );
+  const verifiedLeaderProject = data.leaderProjects.find(
+    (project) => project.status === "Verified",
+  );
+  const verifiedTeamProject = data.projects.find(
+    (project) => project.relationship === "member" && project.status === "Verified",
+  );
+  const readiness = verifiedLeaderProject
+    ? { value: "Ready to reserve", note: verifiedLeaderProject.name, tone: "success" }
+    : verifiedTeamProject
+      ? { value: "Team verified", note: verifiedTeamProject.name, tone: "success" }
+      : activeProjects
+        ? {
+            value: "Verification pending",
+            note: "Complete your current project steps",
+            tone: "warning",
+          }
+        : { value: "Start a project", note: "Create a project to begin", tone: "neutral" };
+  const nextSlot = data.upcoming;
+  const slotStatus = nextSlot ? relativeBookingDay(nextSlot.date) : "No slot reserved";
+
+  const metrics = [
+    {
+      label: "Active projects",
+      value: String(activeProjects),
+      note: activeProjects === 1 ? "Project in progress" : "Projects in progress",
+      to: "/projects" as const,
+      icon: FolderKanban,
+      tone: "primary",
+    },
+    {
+      label: "MakerSpace time",
+      value: formatVisitDuration(totalMinutes),
+      note: `${completedVisits.length} completed ${completedVisits.length === 1 ? "visit" : "visits"}`,
+      to: "/visits" as const,
+      icon: TimerReset,
+      tone: "info",
+    },
+    {
+      label: "Project readiness",
+      value: readiness.value,
+      note: readiness.note,
+      to: "/projects" as const,
+      icon: BadgeCheck,
+      tone: readiness.tone,
+    },
+    {
+      label: "Upcoming slot",
+      value: slotStatus,
+      note: nextSlot ? `${nextSlot.date} · ${nextSlot.slot}` : "Reserve when a project is verified",
+      to: "/book" as const,
+      icon: CalendarClock,
+      tone: nextSlot ? "primary" : "neutral",
+      status: nextSlot?.status,
+    },
+  ];
+
+  return (
+    <section aria-labelledby="student-metrics-title">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 id="student-metrics-title" className="text-base font-semibold">
+          At a glance
+        </h2>
+        <span className="text-xs font-medium text-muted-foreground">Your current progress</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {metrics.map(({ label, value, note, to, icon: Icon, tone, status }) => (
+          <Link
+            key={label}
+            to={to}
+            className="card-surface group flex min-h-36 min-w-0 flex-col justify-between p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg sm:min-h-40 sm:p-5"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span
+                className={cn(
+                  "grid size-10 shrink-0 place-items-center rounded-xl",
+                  metricToneClass(tone),
+                )}
+              >
+                <Icon className="size-5" />
+              </span>
+              {status && (
+                <span className="rounded-full bg-success/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-success">
+                  {status}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 pt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">
+                {label}
+              </p>
+              <p className="mt-1 truncate text-base font-bold sm:text-xl">{value}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">{note}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -346,7 +438,7 @@ function UpcomingBookingCard({
   if (!booking) {
     return (
       <section>
-        <h2 className="mb-3 text-base font-semibold">Upcoming booking</h2>
+        <h2 className="mb-3 text-base font-semibold">Upcoming booking / visit</h2>
         <article className="card-surface p-6 text-center">
           <CalendarClock className="mx-auto size-6 text-muted-foreground" />
           <p className="mt-3 text-sm text-muted-foreground">No upcoming MakerSpace booking yet.</p>
@@ -368,7 +460,7 @@ function UpcomingBookingCard({
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Upcoming booking</h2>
+        <h2 className="text-base font-semibold">Upcoming booking / visit</h2>
         <StatusBadge label={booking.status} />
       </div>
       <article className="card-surface p-5 sm:p-6">
@@ -459,43 +551,6 @@ function UpcomingBookingCard({
   );
 }
 
-function ProjectsSummary({ data }: { data: DashboardData }) {
-  const summaries = [
-    {
-      label: "Active projects",
-      value: data.projects.filter(
-        (project) => project.relationship !== "invited" && project.status !== "Archived",
-      ).length,
-    },
-    {
-      label: "Pending verification",
-      value: data.projects.filter(
-        (project) =>
-          project.relationship !== "invited" &&
-          (project.status === "Team Acceptance Pending" ||
-            project.status === "Mentor Approval Pending"),
-      ).length,
-    },
-    {
-      label: "Invites awaiting response",
-      value: data.invitations.length + data.leaderPendingInvitations,
-    },
-  ];
-  return (
-    <section className="card-surface p-5">
-      <h2 className="text-base font-semibold">Project summary</h2>
-      <dl className="mt-4 grid grid-cols-3 gap-3">
-        {summaries.map(({ label, value }) => (
-          <div key={label} className="rounded-xl bg-accent/65 p-3">
-            <dt className="text-[11px] font-medium leading-4 text-muted-foreground">{label}</dt>
-            <dd className="mt-1 text-2xl font-bold">{value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
 function InvitationsDrawer({ invitations }: { invitations: DashboardProject[] }) {
   if (!invitations.length) return null;
   return (
@@ -530,32 +585,66 @@ function InvitationsDrawer({ invitations }: { invitations: DashboardProject[] })
 
 function QuickActions({ data }: { data: DashboardData }) {
   const actions = [
-    { to: "/projects" as const, label: "Create Project", icon: Plus, visible: true },
+    {
+      to: "/projects" as const,
+      label: "Create Project",
+      description: "Register a new build and invite your team.",
+      icon: Plus,
+      visible: true,
+    },
     {
       to: "/book" as const,
-      label: "Book a Slot",
+      label: "Reserve a Slot",
+      description: "Choose a session for a verified project.",
       icon: CalendarClock,
       visible: data.leaderProjects.some((project) => project.status === "Verified"),
     },
-    { to: "/visits" as const, label: "Quick Visit", icon: Footprints, visible: true },
-    { to: "/equipment" as const, label: "Explore Equipment", icon: Boxes, visible: true },
+    {
+      to: "/visits" as const,
+      label: "Request Quick Visit",
+      description: "Ask to visit without a project reservation.",
+      icon: Footprints,
+      visible: true,
+    },
+    {
+      to: "/equipment" as const,
+      label: "Explore Equipment Directory",
+      description: "Review available tools and resources.",
+      icon: Boxes,
+      visible: true,
+    },
+    {
+      to: "/invitations/$projectId" as const,
+      params: data.invitations[0] ? { projectId: data.invitations[0].id } : undefined,
+      label: "View Pending Invitations",
+      description: `${data.invitations.length} ${data.invitations.length === 1 ? "invitation needs" : "invitations need"} your response.`,
+      icon: Users,
+      visible: data.invitations.length > 0,
+    },
   ];
   return (
     <section>
       <h2 className="mb-3 text-base font-semibold">Quick actions</h2>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {actions
           .filter((action) => action.visible)
-          .map(({ to, label, icon: Icon }) => (
+          .map(({ to, params, label, description, icon: Icon }) => (
             <Link
               key={label}
               to={to}
-              className="card-surface flex min-h-28 flex-col justify-between p-4 transition-shadow hover:shadow-lg"
+              params={params ?? {}}
+              className="card-surface group flex min-h-36 flex-col justify-between p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg"
             >
-              <span className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground">
-                <Icon className="size-5" />
-              </span>
-              <span className="mt-3 text-sm font-semibold">{label}</span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="grid size-11 place-items-center rounded-xl bg-accent text-accent-foreground">
+                  <Icon className="size-5" />
+                </span>
+                <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+              </div>
+              <div className="mt-5">
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+              </div>
             </Link>
           ))}
       </div>
@@ -657,4 +746,42 @@ function findEquipmentStatus(resource: string, equipment: Equipment[]) {
     );
   });
   return match?.status ?? "Configured";
+}
+
+function visitDurationMinutes(entry: string, exit: string | null) {
+  if (!exit) return 0;
+  const [entryHour = 0, entryMinute = 0] = entry.split(":").map(Number);
+  const [exitHour = 0, exitMinute = 0] = exit.split(":").map(Number);
+  return Math.max(0, exitHour * 60 + exitMinute - (entryHour * 60 + entryMinute));
+}
+
+function formatVisitDuration(totalMinutes: number) {
+  if (!totalMinutes) return "0 min";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!hours) return `${minutes} min`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function relativeBookingDay(dateLabel: string) {
+  const match = dateLabel.match(/(\d{1,2})\s+([A-Za-z]{3})/);
+  if (!match) return "Scheduled";
+  const [, day, month] = match;
+  const bookingDate = new Date(`${month} ${day}, ${new Date().getFullYear()} 00:00:00`);
+  if (Number.isNaN(bookingDate.getTime())) return "Scheduled";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((bookingDate.getTime() - today.getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days > 1) return `In ${days} days`;
+  return "Scheduled";
+}
+
+function metricToneClass(tone: string) {
+  if (tone === "success") return "bg-success/10 text-success";
+  if (tone === "warning") return "bg-warning/10 text-warning";
+  if (tone === "info") return "bg-info/10 text-info";
+  if (tone === "primary") return "bg-primary/10 text-primary";
+  return "bg-muted text-muted-foreground";
 }
