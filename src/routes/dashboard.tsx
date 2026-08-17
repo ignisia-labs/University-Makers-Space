@@ -285,35 +285,122 @@ function StudentMetrics({ data, visits }: { data: DashboardData; visits: Visit[]
   return (
     <section aria-labelledby="student-metrics-title">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 id="student-metrics-title" className="text-base font-semibold">
+        <h2
+          id="student-metrics-title"
+          className="text-xs font-mono uppercase tracking-widest text-[#1E2B8A]"
+        >
           At a glance
         </h2>
-        <span className="text-xs font-medium text-muted-foreground">Your current progress</span>
+        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+          Your current progress
+        </span>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {metrics.map(({ label, value, note, to, icon: Icon, tone, status }) => (
           <Link
             key={label}
             to={to}
-            className="card-surface group flex min-h-36 min-w-0 flex-col justify-between p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg sm:min-h-40 sm:p-5"
+            className="card-surface group flex min-h-40 min-w-0 flex-col justify-between p-4 border border-indigo-100 bg-white shadow-sm rounded-3xl transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:shadow-indigo-100/80 hover:border-indigo-300/60 sm:min-h-44 sm:p-5 relative overflow-hidden"
           >
-            <div className="flex items-start justify-between gap-2">
+            {/* Ambient inner shadow highlight */}
+            <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-[#F0EFFF]/30 to-[#F0EFFF]/60 pointer-events-none" />
+
+            <div className="relative z-10 flex items-start justify-between gap-2">
               <span
                 className={cn(
-                  "grid size-10 shrink-0 place-items-center rounded-xl",
+                  "grid size-9 shrink-0 place-items-center rounded-xl",
                   metricToneClass(tone),
                 )}
               >
-                <Icon className="size-5" />
+                <Icon className="size-4.5" />
               </span>
               {status && <StatusBadge label={status} className="shrink-0" />}
             </div>
-            <div className="min-w-0 pt-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">
+
+            <div className="relative z-10 min-w-0 pt-3">
+              <p className="text-[9px] font-mono tracking-widest uppercase text-zinc-400 font-semibold">
                 {label}
               </p>
-              <p className="mt-1 truncate text-base font-bold sm:text-xl">{value}</p>
-              <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted-foreground">{note}</p>
+              <p className="mt-1.5 truncate text-base font-serif font-light text-zinc-800 sm:text-xl">
+                {value}
+              </p>
+
+              {/* Custom sparkline telemetry graph for MakerSpace Time */}
+              {label === "MakerSpace time" && (
+                <div className="mt-3 w-full h-8 flex items-end">
+                  <svg className="w-full h-full overflow-visible" viewBox="0 0 100 20">
+                    <path
+                      d="M 0 18 Q 15 5, 30 14 T 60 4 T 90 12 T 100 2"
+                      fill="none"
+                      stroke="#1E2B8A"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 0 18 Q 15 5, 30 14 T 60 4 T 90 12 T 100 2 L 100 20 L 0 20 Z"
+                      fill="url(#sparkline-grad)"
+                      opacity="0.08"
+                    />
+                    <defs>
+                      <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#1E2B8A" />
+                        <stop offset="100%" stopColor="#1E2B8A" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+              )}
+
+              {/* Custom horizontal copper progress bar for Project Readiness */}
+              {label === "Project readiness" && (
+                <div className="mt-3 w-full">
+                  <div className="w-full h-1 bg-zinc-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#1E2B8A] rounded-full transition-all duration-1000"
+                      style={{
+                        width:
+                          value === "Ready to reserve" || value === "Team verified"
+                            ? "100%"
+                            : value === "Verification pending"
+                              ? "60%"
+                              : "20%",
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Custom dot array visualizer for Active Projects */}
+              {label === "Active projects" && (
+                <div className="mt-3.5 flex gap-1">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={cn(
+                        "w-2 h-1 rounded-full transition-colors duration-500",
+                        i < activeProjects ? "bg-[#2CC5B0]" : "bg-zinc-200",
+                      )}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Custom active timeline indicator for Upcoming Slot */}
+              {label === "Upcoming slot" && (
+                <div className="mt-3.5 flex items-center gap-1.5 font-mono text-[9px] text-[#1E2B8A] uppercase tracking-wider">
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      nextSlot ? "bg-[#2CC5B0] animate-pulse" : "bg-zinc-300",
+                    )}
+                  />
+                  <span>{nextSlot ? "Active reservation" : "Idle state"}</span>
+                </div>
+              )}
+
+              <p className="mt-2 line-clamp-1 text-[10px] leading-4 text-zinc-400 font-mono tracking-tight">
+                {note}
+              </p>
             </div>
           </Link>
         ))}
@@ -372,57 +459,141 @@ function JourneyProgress({
   const currentStep = hasUpcomingBooking ? 3 : project?.status === "Verified" ? 2 : project ? 1 : 0;
 
   return (
-    <section className="card-surface p-5 sm:p-6">
+    <section className="card-surface p-6 border border-indigo-100 bg-white shadow-sm shadow-indigo-50/50 rounded-3xl relative overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">Your MakerSpace journey</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h2 className="text-xs font-mono uppercase tracking-widest text-[#1E2B8A]">
+            Your MakerSpace journey
+          </h2>
+          <p className="mt-1.5 text-sm font-serif font-light italic text-zinc-500">
             {project
-              ? `${project.name} · ${project.relationship === "leader" ? "You lead this project" : "Team project"}`
+              ? `${project.name} · ${project.relationship === "leader" ? "Project Lead" : "Team Member"}`
               : "Your next steps will appear here."}
           </p>
         </div>
         {project && <StatusBadge label={project.status} />}
       </div>
-      <ol className="mt-5 grid gap-4 sm:grid-cols-4">
-        {steps.map((step, index) => {
-          const done = index < currentStep;
-          const active = index === currentStep;
-          return (
-            <li key={step} className="flex items-center gap-3 sm:block">
-              <div className="flex items-center gap-2 sm:w-full">
-                <span
-                  className={cn(
-                    "grid size-9 shrink-0 place-items-center rounded-full border text-sm font-bold",
-                    done && "border-success bg-success text-success-foreground",
-                    active && "border-primary bg-primary text-primary-foreground",
-                    !done && !active && "border-border bg-muted text-muted-foreground",
-                  )}
-                >
-                  {done ? <Check className="size-4" /> : index + 1}
-                </span>
-                <span
-                  className={cn(
-                    "hidden h-1 flex-1 rounded-full sm:block",
-                    done ? "bg-success" : "bg-border",
-                  )}
-                />
-              </div>
-              <p
-                className={cn(
-                  "text-sm font-medium sm:mt-3",
-                  active || done ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {step}
-              </p>
-            </li>
-          );
-        })}
-      </ol>
+
+      <div className="relative mt-8">
+        {/* Background connector line */}
+        <div className="absolute top-[18px] left-4 right-4 h-0.5 bg-zinc-100 -z-10 hidden sm:block" />
+
+        <ol className="grid gap-6 sm:grid-cols-4 relative z-10">
+          {steps.map((step, index) => {
+            const done = index < currentStep;
+            const active = index === currentStep;
+            return (
+              <li key={step} className="flex items-center gap-4 sm:block sm:text-center">
+                <div className="flex items-center justify-center gap-2 sm:w-full relative">
+                  {/* Step Node */}
+                  <span
+                    className={cn(
+                      "grid size-9 shrink-0 place-items-center rounded-full border text-xs font-mono transition-all duration-500",
+                      done &&
+                        "border-[#2CC5B0] bg-[#2CC5B0] text-white shadow-sm shadow-[#2CC5B0]/10",
+                      active &&
+                        "border-[#1E2B8A] bg-[#1E2B8A] text-white shadow-md shadow-[#1E2B8A]/15 scale-110",
+                      !done && !active && "border-zinc-200 bg-white text-zinc-400",
+                    )}
+                  >
+                    {done ? <Check className="size-4 stroke-[2.5]" /> : `0${index + 1}`}
+                  </span>
+                </div>
+
+                {/* Step Label */}
+                <div className="sm:mt-3">
+                  <p
+                    className={cn(
+                      "text-[10px] font-mono tracking-widest uppercase font-semibold transition-colors duration-500",
+                      active ? "text-[#1E2B8A]" : done ? "text-zinc-700" : "text-zinc-400",
+                    )}
+                  >
+                    {step}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </section>
   );
 }
+
+const NoBookingBlueprint = () => (
+  <svg
+    className="w-full max-w-[130px] h-24 opacity-25 select-none text-[#1E2B8A] hidden sm:block"
+    viewBox="0 0 100 80"
+    fill="none"
+  >
+    <g stroke="currentColor" strokeWidth="0.5" strokeDasharray="1.5 1.5">
+      <path d="M 10 10 L 90 10 L 90 70 L 10 70 Z" />
+      <path d="M 10 30 L 90 30" />
+      <path d="M 10 50 L 90 50" />
+      <path d="M 30 10 L 30 70" />
+      <path d="M 50 10 L 50 70" />
+      <path d="M 70 10 L 70 70" />
+    </g>
+    <path
+      d="M 10 10 L 25 25 M 90 10 L 75 25 M 90 70 L 75 55 M 10 70 L 25 55"
+      stroke="currentColor"
+      strokeWidth="0.5"
+    />
+    <circle cx="50" cy="40" r="14" stroke="currentColor" strokeWidth="0.75" />
+    <circle cx="50" cy="40" r="4" fill="currentColor" />
+    <path d="M 50 20 L 50 60 M 30 40 L 70 40" stroke="currentColor" strokeWidth="0.5" />
+  </svg>
+);
+
+const MachineBlueprint = () => (
+  <svg
+    className="w-full max-w-[140px] h-28 opacity-80 select-none hidden lg:block text-[#1E2B8A]"
+    viewBox="0 0 120 100"
+    fill="none"
+  >
+    {/* Frame */}
+    <path d="M 20 80 L 100 80 L 100 20 L 20 20 Z" stroke="#0F172A" strokeWidth="0.75" />
+    {/* Dual Z rods */}
+    <path
+      d="M 30 80 L 30 20 M 90 80 L 90 20"
+      stroke="currentColor"
+      strokeWidth="0.5"
+      strokeDasharray="2 1"
+    />
+    {/* Platform */}
+    <path d="M 25 65 L 95 65" stroke="#0F172A" strokeWidth="1.2" />
+    {/* Gantry */}
+    <path d="M 20 45 L 100 45" stroke="#0F172A" strokeWidth="1.5" />
+    {/* Head */}
+    <g transform="translate(52, 38)">
+      <rect
+        x="0"
+        y="0"
+        width="16"
+        height="11"
+        rx="1"
+        fill="#F0EFFF"
+        stroke="currentColor"
+        strokeWidth="0.75"
+      />
+      <path d="M 5 11 L 8 15 L 11 11 Z" fill="currentColor" />
+      <path d="M 8 -10 L 8 0" stroke="currentColor" strokeWidth="0.75" strokeDasharray="1.5 1" />
+    </g>
+    <text
+      x="15"
+      y="93"
+      fill="currentColor"
+      fontSize="5"
+      fontFamily="monospace"
+      letterSpacing="0.05em"
+    >
+      SYS_FABRICATION_4.0
+    </text>
+    <text x="80" y="15" fill="zinc-400" fontSize="5" fontFamily="monospace">
+      STATUS: OK
+    </text>
+  </svg>
+);
 
 function UpcomingBookingCard({
   bookings,
@@ -437,13 +608,20 @@ function UpcomingBookingCard({
   if (!booking) {
     return (
       <section>
-        <h2 className="mb-3 text-base font-semibold">Upcoming booking / visit</h2>
-        <article className="card-surface p-6 text-center">
-          <CalendarClock className="mx-auto size-6 text-muted-foreground" />
-          <p className="mt-3 text-sm text-muted-foreground">No upcoming MakerSpace booking yet.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Bookings become available once a project you lead is verified.
-          </p>
+        <h2 className="mb-3 text-xs font-mono uppercase tracking-widest text-[#1E2B8A]">
+          Upcoming booking / visit
+        </h2>
+        <article className="card-surface p-6 border border-indigo-100 bg-white shadow-sm shadow-indigo-50/50 rounded-3xl flex items-center justify-between gap-6">
+          <div className="min-w-0">
+            <h3 className="text-base font-serif font-light text-zinc-800">
+              No active laboratory reservation
+            </h3>
+            <p className="mt-1.5 text-xs text-zinc-400 leading-normal max-w-sm">
+              Reservations and slot calendars become active once a project you lead receives mentor
+              verification.
+            </p>
+          </div>
+          <NoBookingBlueprint />
         </article>
       </section>
     );
@@ -459,83 +637,99 @@ function UpcomingBookingCard({
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Upcoming booking / visit</h2>
+        <h2 className="text-xs font-mono uppercase tracking-widest text-[#1E2B8A]">
+          Upcoming booking / visit
+        </h2>
         <StatusBadge label={booking.status} />
       </div>
-      <article className="card-surface p-5 sm:p-6">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-          <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold">{booking.projectName}</h3>
-            <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+      <article className="card-surface p-6 border border-indigo-100 bg-white shadow-sm shadow-indigo-50/50 rounded-3xl">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-xl font-serif font-medium text-zinc-800 leading-snug">
+              {booking.projectName}
+            </h3>
+
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-mono text-zinc-400">
               <span className="inline-flex items-center gap-1.5">
-                <CalendarDays className="size-4" /> {booking.date}
+                <CalendarDays className="size-4 text-[#1E2B8A]" /> {booking.date}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <CalendarClock className="size-4" /> {booking.slot}
+                <CalendarClock className="size-4 text-[#1E2B8A]" /> {booking.slot}
               </span>
             </p>
+
+            <div className="mt-6 border-t border-indigo-50 pt-5">
+              <p className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-500 font-semibold">
+                <Users className="size-4 text-[#1E2B8A]" /> Attending team
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {attendeeNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-mono text-indigo-900"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 border-t border-indigo-50 pt-5">
+              <p className="text-xs font-mono uppercase tracking-wider text-zinc-500 font-semibold">
+                Project resource health
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {resourceHealth.map(({ resource, status }) => (
+                  <span
+                    key={resource}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-mono text-indigo-700"
+                  >
+                    {resource}
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        status === "Available"
+                          ? "bg-[#2CC5B0]"
+                          : status === "Configured"
+                            ? "bg-zinc-400"
+                            : "bg-[#1E2B8A]",
+                      )}
+                    />
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
-          <Link
-            to="/book"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold hover:bg-accent"
-          >
-            {canManage ? "Manage booking" : "View booking"}
-          </Link>
+
+          <div className="flex flex-col items-end gap-6 shrink-0">
+            <Link
+              to="/book"
+              className="inline-flex min-h-10 items-center justify-center rounded-xl bg-[#1E2B8A] px-4 text-xs font-semibold uppercase tracking-wider text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+            >
+              {canManage ? "Manage" : "View"}
+            </Link>
+
+            <MachineBlueprint />
+          </div>
         </div>
 
-        <div className="mt-5 border-t border-border pt-5">
-          <p className="flex items-center gap-2 text-sm font-semibold">
-            <Users className="size-4 text-muted-foreground" /> Attending team
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {attendeeNames.map((name) => (
-              <span
-                key={name}
-                className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground"
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-5 border-t border-border pt-5">
-          <p className="text-sm font-semibold">Project resource health</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {resourceHealth.map(({ resource, status }) => (
-              <span
-                key={resource}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium"
-              >
-                {resource}
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    status === "Available"
-                      ? "bg-success"
-                      : status === "Configured"
-                        ? "bg-muted-foreground"
-                        : "bg-warning",
-                  )}
-                />
-                <span className="text-muted-foreground">{status}</span>
-              </span>
-            ))}
-          </div>
-        </div>
         {bookings.length > 1 && (
-          <div className="mt-5 border-t border-border pt-5">
-            <p className="text-sm font-semibold">More upcoming visits</p>
+          <div className="mt-5 border-t border-indigo-50 pt-5">
+            <p className="text-xs font-mono uppercase tracking-wider text-zinc-500 font-semibold">
+              More upcoming visits
+            </p>
             <div className="mt-3 space-y-2">
               {bookings.slice(1, 4).map((nextBooking) => (
                 <Link
                   key={nextBooking.id}
                   to="/book"
-                  className="flex items-center justify-between gap-3 rounded-xl bg-accent/65 px-3 py-3 text-sm hover:bg-accent"
+                  className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50/80 border border-indigo-100 px-3 py-3 text-xs hover:bg-[#F0EFFF]/70"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold">{nextBooking.projectName}</span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                    <span className="block truncate font-serif text-sm font-medium text-zinc-800">
+                      {nextBooking.projectName}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground font-mono">
                       {nextBooking.date} · {nextBooking.slot}
                     </span>
                   </span>

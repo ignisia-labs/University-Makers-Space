@@ -120,7 +120,27 @@ export function AppShell({
     );
   }
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background">
+    <div className="min-h-screen overflow-x-hidden bg-background relative">
+      {/* Floating Ambient Aura Blurs — Ignisia palette */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        {/* Ignisia Teal Aura — top left */}
+        <div
+          className="absolute -top-[20%] -left-[10%] w-[60%] aspect-square rounded-full mix-blend-multiply filter blur-[140px] opacity-[0.07] animate-pulse"
+          style={{
+            background: "radial-gradient(circle, #2CC5B0 0%, transparent 70%)",
+            animationDuration: "14s",
+          }}
+        />
+        {/* Ignisia Indigo-Purple Aura — bottom right */}
+        <div
+          className="absolute -bottom-[20%] -right-[10%] w-[60%] aspect-square rounded-full mix-blend-multiply filter blur-[140px] opacity-[0.08] animate-pulse"
+          style={{
+            background: "radial-gradient(circle, #6D28D9 0%, transparent 70%)",
+            animationDuration: "18s",
+          }}
+        />
+      </div>
+
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-sidebar transition-[width] md:flex",
@@ -138,7 +158,7 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           {expanded && (
-            <span className="font-display text-sm font-bold tracking-tight text-sidebar-foreground">
+            <span className="font-serif text-sm font-light tracking-wide text-zinc-800">
               MIT-WPU MakerSpace
             </span>
           )}
@@ -155,7 +175,7 @@ export function AppShell({
                     className={cn(
                       "tap flex items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors",
                       active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
                         : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
                     )}
                   >
@@ -174,7 +194,7 @@ export function AppShell({
                   className={cn(
                     "tap flex items-center gap-3 rounded-xl px-3 text-left text-sm font-medium transition-colors",
                     activeWorkspace === id
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
                       : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
                   )}
                 >
@@ -183,6 +203,43 @@ export function AppShell({
                 </button>
               ))}
         </nav>
+
+        {/* Ignisia branding badge */}
+        {expanded && (
+          <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/60 to-violet-50/40 px-3 py-2">
+            {/* Ignisia logomark — simplified teal molecular node */}
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
+              <rect x="2" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="11" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="6.5" y="6.5" width="5" height="5" rx="1.5" fill="#2CC5B0" opacity="0.7" />
+              <rect x="2" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="11" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+            </svg>
+            <div className="min-w-0">
+              <p className="text-[9px] font-mono uppercase tracking-widest text-indigo-400/80">
+                an
+              </p>
+              <p className="-mt-0.5 font-serif text-xs font-semibold italic text-indigo-800">
+                Ignisia
+              </p>
+              <p className="text-[8px] font-mono uppercase tracking-widest text-indigo-400/80">
+                project
+              </p>
+            </div>
+          </div>
+        )}
+        {!expanded && (
+          <div className="mx-auto mb-2 flex size-9 items-center justify-center rounded-xl border border-indigo-100/80 bg-indigo-50/60">
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none">
+              <rect x="2" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="11" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="6.5" y="6.5" width="5" height="5" rx="1.5" fill="#2CC5B0" opacity="0.7" />
+              <rect x="2" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+              <rect x="11" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
+            </svg>
+          </div>
+        )}
+
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 flex gap-1">
@@ -202,8 +259,8 @@ export function AppShell({
               </Link>
             </div>
           )}
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+          <div className="flex items-center gap-3 px-2 py-1">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sidebar-accent text-xs font-bold text-sidebar-accent-foreground">
               {initials}
             </span>
             {expanded && (
@@ -228,7 +285,7 @@ export function AppShell({
 
       <div
         className={cn(
-          "transition-[padding]",
+          "transition-[padding] relative z-10",
           showSidebar && (expanded ? "md:pl-60" : "md:pl-[4.5rem]"),
         )}
       >
@@ -240,8 +297,14 @@ export function AppShell({
         >
           <div className="mx-auto grid max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-4 sm:px-6">
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-bold sm:text-2xl">{title}</h1>
-              {subtitle && <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+              <h1 className="truncate text-2xl sm:text-3xl font-serif font-light text-[#0F172A] tracking-wide">
+                {title}
+              </h1>
+              {subtitle && (
+                <p className="truncate text-[10px] font-mono tracking-widest uppercase text-zinc-400 mt-1">
+                  {subtitle}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Link

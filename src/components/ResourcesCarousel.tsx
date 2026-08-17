@@ -19,7 +19,7 @@ const resources = [
     icon: Printer,
     title: "Additive Manufacturing",
     body: "FDM and resin 3D printers for rapid prototyping and part production.",
-    accent: "bg-blue-50 text-blue-600",
+    accent: "bg-indigo-50 text-blue-600",
   },
   {
     icon: ScanLine,
@@ -113,8 +113,8 @@ export function ResourcesCarousel() {
             Explore the resources your project needs.
           </h2>
           <p className="text-sm leading-6 text-muted-foreground max-w-sm">
-            MakerSpace resources are configured by the university.
-            Availability is shown when you plan your project and book a visit.
+            MakerSpace resources are configured by the university. Availability is shown when you
+            plan your project and book a visit.
           </p>
         </div>
       </div>

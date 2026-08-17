@@ -36,10 +36,7 @@ export function GuidedJourney() {
         return;
       }
 
-      const idx = Math.min(
-        steps.length - 1,
-        Math.floor(scrolled / STEP_SCROLL_HEIGHT)
-      );
+      const idx = Math.min(steps.length - 1, Math.floor(scrolled / STEP_SCROLL_HEIGHT));
       setActiveIndex(idx);
     };
 
@@ -61,7 +58,6 @@ export function GuidedJourney() {
       <div className="sticky top-0 h-screen flex flex-col justify-center overflow-hidden">
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
           <div className="flex flex-col lg:flex-row lg:items-center gap-12 lg:gap-16">
-
             {/* ── LEFT: Heading ──────────────────────────────────── */}
             <div className="lg:w-[42%] shrink-0">
               {/* Left-edge vertical tracker */}
@@ -81,8 +77,8 @@ export function GuidedJourney() {
                         i === activeIndex
                           ? "h-5 bg-primary"
                           : i < activeIndex
-                          ? "h-3 bg-primary/35"
-                          : "h-3 bg-border"
+                            ? "h-3 bg-primary/35"
+                            : "h-3 bg-border"
                       }`}
                     />
                   ))}
@@ -97,9 +93,8 @@ export function GuidedJourney() {
                 From an idea to time in the MakerSpace.
               </h2>
               <p className="mt-4 text-sm leading-6 text-muted-foreground max-w-sm">
-                The platform carries project context forward, so your team does
-                not have to repeatedly provide information the university already
-                knows.
+                The platform carries project context forward, so your team does not have to
+                repeatedly provide information the university already knows.
               </p>
             </div>
 
@@ -112,30 +107,29 @@ export function GuidedJourney() {
                   const isPast = index < activeIndex;
 
                   // Stronger blur & fade on inactive cards
-                  const blurPx =
-                    distance === 0 ? 0 : distance === 1 ? 2.5 : distance * 4;
+                  const blurPx = distance === 0 ? 0 : distance === 1 ? 2.5 : distance * 4;
                   const opacity =
                     distance === 0
                       ? 1
                       : distance === 1
-                      ? 0.38
-                      : Math.max(0.05, 0.22 - distance * 0.06);
+                        ? 0.38
+                        : Math.max(0.05, 0.22 - distance * 0.06);
                   // Active card scales UP, others scale down more aggressively
-                  const scale = isActive
-                    ? 1.04
-                    : Math.max(0.91, 1 - distance * 0.03);
+                  const scale = isActive ? 1.04 : Math.max(0.91, 1 - distance * 0.03);
 
                   return (
                     <li
                       key={step}
-                      ref={(el) => { cardRefs.current[index] = el; }}
+                      ref={(el) => {
+                        cardRefs.current[index] = el;
+                      }}
                       className={`flex items-center gap-5 rounded-2xl border px-7 py-5 select-none
                         ${
                           isActive
                             ? "border-primary/40 bg-background shadow-xl ring-2 ring-primary/20"
                             : isPast
-                            ? "border-border bg-background/70"
-                            : "border-border/60 bg-background/40"
+                              ? "border-border bg-background/70"
+                              : "border-border/60 bg-background/40"
                         }`}
                       style={{
                         filter: `blur(${blurPx}px)`,
@@ -154,8 +148,8 @@ export function GuidedJourney() {
                           isActive
                             ? "size-11 text-sm bg-primary text-primary-foreground shadow-md"
                             : isPast
-                            ? "size-9 text-xs bg-primary/15 text-primary"
-                            : "size-9 text-xs bg-accent text-accent-foreground"
+                              ? "size-9 text-xs bg-primary/15 text-primary"
+                              : "size-9 text-xs bg-accent text-accent-foreground"
                         }`}
                       >
                         {isPast ? (
@@ -166,11 +160,7 @@ export function GuidedJourney() {
                             stroke="currentColor"
                             strokeWidth="2.5"
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M5 13l4 4L19 7"
-                            />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         ) : (
                           index + 1
@@ -180,9 +170,7 @@ export function GuidedJourney() {
                       {/* Step label — larger & bolder on active */}
                       <span
                         className={`font-semibold transition-all duration-300 ${
-                          isActive
-                            ? "text-base text-foreground"
-                            : "text-sm text-muted-foreground"
+                          isActive ? "text-base text-foreground" : "text-sm text-muted-foreground"
                         }`}
                       >
                         {step}
@@ -192,7 +180,6 @@ export function GuidedJourney() {
                 })}
               </ol>
             </div>
-
           </div>
         </div>
       </div>

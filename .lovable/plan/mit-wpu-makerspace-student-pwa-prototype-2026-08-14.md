@@ -4,15 +4,15 @@ A touch-first, mock-data frontend covering the public landing page and the full 
 
 ## Screens & Routes
 
-| Route | Screen |
-|---|---|
-| `/` | Institutional landing page + "Sign in with MIT-WPU (@mitwpu.edu.in)" CTA (mock sign-in → onboarding) |
-| `/onboarding` | One-step profile form (read-only email, name, PRN, department, programme, academic year) |
-| `/dashboard` | 4-step process tracker, upcoming reservation card, quick action pills |
-| `/projects` | Project cards + creation wizard (drawer on mobile, dialog on desktop) |
-| `/book` | 4-step capacity-aware slot booking + confirmation drawer |
-| `/visits` | Quick Visit request (purpose chips) + visit history timeline |
-| `/equipment` | Category filter chips + equipment catalogue cards |
+| Route         | Screen                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| `/`           | Institutional landing page + "Sign in with MIT-WPU (@mitwpu.edu.in)" CTA (mock sign-in → onboarding) |
+| `/onboarding` | One-step profile form (read-only email, name, PRN, department, programme, academic year)             |
+| `/dashboard`  | 4-step process tracker, upcoming reservation card, quick action pills                                |
+| `/projects`   | Project cards + creation wizard (drawer on mobile, dialog on desktop)                                |
+| `/book`       | 4-step capacity-aware slot booking + confirmation drawer                                             |
+| `/visits`     | Quick Visit request (purpose chips) + visit history timeline                                         |
+| `/equipment`  | Category filter chips + equipment catalogue cards                                                    |
 
 ## Layout & Navigation
 

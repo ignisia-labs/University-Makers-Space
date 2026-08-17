@@ -1,17 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CheckCircle2, LoaderCircle, ChevronDown } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { academicYears, departments, programmes } from "@/lib/makerspace-data";
 
@@ -24,11 +15,6 @@ export const Route = createFileRoute("/onboarding")({
         name: "description",
         content:
           "Set up your MakerSpace student profile with PRN, department, programme and academic year.",
-      },
-      { property: "og:title", content: "Student onboarding — MIT-WPU MakerSpace" },
-      {
-        property: "og:description",
-        content: "One-step profile setup for MIT-WPU MakerSpace students.",
       },
     ],
   }),
@@ -72,19 +58,14 @@ function Onboarding() {
 
   if (isComplete) {
     return (
-      <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
-        <section className="card-surface w-full max-w-md p-6 text-center sm:p-8">
-          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-success/10 text-success">
+      <main className="grid min-h-screen place-items-center bg-[#F0EFFF] px-4 py-10">
+        <section className="w-full max-w-md p-8 bg-white border border-zinc-200 rounded-3xl shadow-sm text-center animate-in fade-in zoom-in-95 duration-500">
+          <span className="mx-auto grid size-12 place-items-center rounded-full bg-[#2CC5B0]/10 text-[#2CC5B0]">
             <CheckCircle2 className="size-6" />
           </span>
-          <h1 className="mt-5 text-2xl font-bold">Your profile is complete</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {invitationProjectId
-              ? "You have joined the project team. Taking you to your dashboard…"
-              : "You are ready to start your MakerSpace journey. Taking you to your dashboard…"}
-          </p>
-          <div className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-primary">
-            <LoaderCircle className="size-4 animate-spin" /> Preparing your dashboard
+          <h1 className="mt-5 text-2xl font-serif font-light text-zinc-900">Profile Saved</h1>
+          <div className="mt-4 inline-flex items-center gap-2 text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
+            <LoaderCircle className="size-3.5 animate-spin" /> Redirecting...
           </div>
         </section>
       </main>
@@ -92,17 +73,17 @@ function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-10 sm:px-6">
-      <div className="mx-auto max-w-xl">
-        <p className="text-sm font-semibold text-primary">Step 1 of 1</p>
-        <h1 className="mt-1 text-3xl font-bold">Complete your student profile</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          We use these details to verify your project registrations and MakerSpace visits.
-        </p>
+    <div className="min-h-screen bg-[#F0EFFF] text-zinc-900 flex flex-col justify-center items-center px-4 py-12 sm:px-6">
+      <div className="w-full max-w-lg bg-white border border-zinc-200 rounded-[2.5rem] p-8 sm:p-10 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* Clean, Elegant Serif Heading */}
+        <h1 className="text-3xl sm:text-4xl font-serif font-light text-[#0F172A] tracking-wide">
+          Complete Student Profile
+        </h1>
 
+        {/* Form */}
         <form
           noValidate
-          className="card-surface mt-6 space-y-5 p-5 sm:p-6"
+          className="mt-8 space-y-6"
           onSubmit={(e) => {
             e.preventDefault();
             if (!validate()) return;
@@ -111,69 +92,105 @@ function Onboarding() {
               completeOnboarding(form);
               if (invitationProjectId) {
                 acceptProjectInvitation(invitationProjectId, form);
-                toast.success("Profile completed. You have joined the project team.");
+                toast.success("Profile completed. Joined project team.");
               } else {
-                toast.success("Profile completed. Welcome to the MakerSpace!");
+                toast.success("Profile completed. Welcome!");
               }
               setIsSaving(false);
               setIsComplete(true);
             }, 450);
           }}
         >
-          <div className="space-y-2">
-            <Label htmlFor="email">Institutional email</Label>
-            <Input id="email" value={form.email} readOnly className="h-12 bg-muted" />
+          {/* Email (Read only) */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-400">
+              Institutional Email
+            </label>
+            <input
+              type="email"
+              value={form.email}
+              readOnly
+              className="w-full h-11 px-4 rounded-xl border border-zinc-200 bg-zinc-50/50 text-zinc-500 font-mono text-xs outline-none cursor-not-allowed"
+            />
           </div>
 
-          <TextField
-            id="name"
-            label="Full name"
-            value={form.fullName}
-            error={errors.fullName}
-            onChange={set("fullName")}
-          />
-          <TextField
-            id="prn"
-            label="PRN"
-            value={form.prn}
-            error={errors.prn}
-            placeholder="Enter your PRN"
-            onChange={set("prn")}
-          />
-          <FieldSelect
-            id="department"
+          {/* Full name input */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
+              Full Name
+            </label>
+            <input
+              type="text"
+              value={form.fullName}
+              onChange={(e) => set("fullName")(e.target.value)}
+              placeholder="e.g. Rahul Sharma"
+              className={`w-full h-11 px-4 rounded-xl border ${
+                errors.fullName
+                  ? "border-rose-400 focus:border-rose-500"
+                  : "border-zinc-200 focus:border-[#1E2B8A]"
+              } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all`}
+            />
+            {errors.fullName && (
+              <p className="text-[10px] font-mono text-rose-500">{errors.fullName}</p>
+            )}
+          </div>
+
+          {/* PRN input */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
+              PRN (Permanent Registration Number)
+            </label>
+            <input
+              type="text"
+              value={form.prn}
+              onChange={(e) => set("prn")(e.target.value)}
+              placeholder="Enter your PRN"
+              className={`w-full h-11 px-4 rounded-xl border ${
+                errors.prn
+                  ? "border-rose-400 focus:border-rose-500"
+                  : "border-zinc-200 focus:border-[#1E2B8A]"
+              } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all`}
+            />
+            {errors.prn && <p className="text-[10px] font-mono text-rose-500">{errors.prn}</p>}
+          </div>
+
+          {/* Custom Select for Department */}
+          <CustomSelect
             label="Department"
             value={form.department}
             options={departments}
             error={errors.department}
             onChange={set("department")}
           />
-          <FieldSelect
-            id="programme"
+
+          {/* Custom Select for Programme */}
+          <CustomSelect
             label="Programme"
             value={form.programme}
             options={programmes}
             error={errors.programme}
             onChange={set("programme")}
           />
-          <FieldSelect
-            id="year"
-            label="Academic year"
+
+          {/* Custom Select for Academic Year */}
+          <CustomSelect
+            label="Academic Year"
             value={form.academicYear}
             options={academicYears}
             error={errors.academicYear}
             onChange={set("academicYear")}
           />
 
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={isSaving}
-            className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-wait disabled:opacity-80"
+            className="w-full min-h-12 inline-flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-900 text-xs font-bold tracking-widest text-white uppercase transition-all hover:bg-zinc-800 hover:border-zinc-800 active:scale-[0.98] disabled:cursor-wait cursor-pointer"
           >
             {isSaving ? (
-              <>
-                <LoaderCircle className="size-5 animate-spin" /> Saving your profile…
-              </>
+              <span className="flex items-center gap-2">
+                <LoaderCircle className="size-4.5 animate-spin" /> Saving...
+              </span>
             ) : (
               "Complete Onboarding"
             )}
@@ -184,84 +201,83 @@ function Onboarding() {
   );
 }
 
-function TextField({
-  id,
-  label,
-  value,
-  placeholder,
-  error,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  placeholder?: string;
-  error: string | undefined;
-  onChange: (value: string) => void;
-}) {
-  const errorId = `${id}-error`;
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? errorId : undefined}
-        className="h-12"
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {error && (
-        <p id={errorId} className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function FieldSelect({
-  id,
-  label,
-  value,
-  options,
-  error,
-  onChange,
-}: {
-  id: string;
+interface CustomSelectProps {
   label: string;
   value: string;
   options: string[];
-  error: string | undefined;
+  error?: string;
   onChange: (value: string) => void;
-}) {
-  const errorId = `${id}-error`;
+}
+
+function CustomSelect({ label, value, options, error, onChange }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger
-          id={id}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
-          className="h-12 w-full"
-        >
-          <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option} value={option} className="min-h-11">
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error && (
-        <p id={errorId} className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
+    <div className="space-y-1.5 relative" ref={containerRef}>
+      <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
+        {label}
+      </label>
+
+      {/* Trigger Box */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full h-11 px-4 rounded-xl border flex items-center justify-between text-left ${
+          error
+            ? "border-rose-400"
+            : isOpen
+              ? "border-[#1E2B8A] ring-1 ring-[#1E2B8A]/10"
+              : "border-zinc-200"
+        } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all cursor-pointer`}
+      >
+        <span className={value ? "text-zinc-800" : "text-zinc-400"}>
+          {value || `Select ${label.toLowerCase()}`}
+        </span>
+        <ChevronDown
+          className={`size-4 text-zinc-400 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* Dropdown Options Menu */}
+      {isOpen && (
+        <div className="absolute z-20 w-full mt-1 bg-white border border-zinc-200 rounded-2xl shadow-lg max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200 no-scrollbar">
+          <div className="p-1 space-y-0.5">
+            {options.map((option) => {
+              const isSelected = option === value;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    onChange(option);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-mono transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-[#1E2B8A]/10 text-[#1E2B8A] font-semibold"
+                      : "text-zinc-700 hover:bg-[#F0EFFF] hover:text-zinc-950"
+                  }`}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
+
+      {error && <p className="text-[10px] font-mono text-rose-500 mt-1">{error}</p>}
     </div>
   );
 }

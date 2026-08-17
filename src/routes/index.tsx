@@ -1,90 +1,38 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Boxes,
-  Cpu,
-  Printer,
-  Wrench,
-} from "lucide-react";
-import heroImage from "@/assets/hero-makerspace.jpg";
-import bgVideo from "../../Assets/gemini_generated_video_ab04e635.mp4";
-import { GuidedJourney } from "@/components/GuidedJourney";
-import { ResourcesCarousel } from "@/components/ResourcesCarousel";
-import { SiteFooter } from "@/components/SiteFooter";
+import { createFileRoute } from "@tanstack/react-router";
+import { HeroSection } from "@/components/landing/HeroSection";
+import { AboutSection } from "@/components/landing/AboutSection";
+import { EquipmentSection } from "@/components/landing/EquipmentSection";
+import { LandingFooter } from "@/components/landing/LandingFooter";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
+      { title: "MIT-WPU MakerSpace — Prototyping Laboratory" },
       {
         name: "description",
-        content:
-          "MIT-WPU MakerSpace helps students take a project from idea and mentorship to verified resources, slot booking and a physical visit.",
-      },
-      { property: "og:title", content: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
-      {
-        property: "og:description",
-        content:
-          "Move your project from idea to MakerSpace visit with institutional access, team collaboration and verified booking.",
+        content: "MIT-WPU MakerSpace rapid prototyping and hardware engineering laboratory.",
       },
     ],
   }),
-  component: Landing,
+  component: LandingPage,
 });
 
-const resourceAreas = [
-  {
-    icon: Printer,
-    title: "Prototyping & fabrication",
-    body: "Bring physical ideas to life through configured fabrication resources.",
-  },
-  {
-    icon: Cpu,
-    title: "Electronics & IoT",
-    body: "Develop connected prototypes with electronics and embedded resources.",
-  },
-  {
-    icon: Wrench,
-    title: "Robotics & mechanical work",
-    body: "Build, test and refine systems for engineering projects.",
-  },
-  {
-    icon: Boxes,
-    title: "CAD, computing & measurement",
-    body: "Use the resources your project needs to design, evaluate and iterate.",
-  },
-];
-
-const journey = [
-  "Create your project",
-  "Build your team",
-  "Choose a Faculty Mentor",
-  "Identify required resources",
-  "Get your project verified",
-  "Book a MakerSpace slot",
-  "Visit and build",
-];
-
-import { ClubHero } from "@/components/ClubHero";
-
-function Landing() {
+function LandingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <ClubHero />
+    <div className="min-h-screen bg-[#F0EFFF] text-[#0F172A] flex flex-col selection:bg-[#1E2B8A]/10 selection:text-[#1E2B8A]">
+      <main className="flex-1">
+        {/* Cinematic Widescreen Video Hero with Serif overlays */}
+        <HeroSection />
 
-      <main>
+        {/* Parallax About Section with Visual Floor Plan SVG */}
+        <AboutSection />
 
-        <GuidedJourney />
-
-        <ResourcesCarousel />
-
-
-
-
-
+        {/* Immersive Equipment Grid */}
+        <EquipmentSection />
       </main>
 
-      <SiteFooter />
+      {/* Done - Minimalist Footer */}
+      <LandingFooter />
     </div>
   );
 }

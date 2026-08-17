@@ -29,21 +29,24 @@ export function SiteFooter() {
 
   return (
     <footer className="border-t border-border bg-background overflow-hidden">
-
       {/* ── Top section: CTA + columns ───────────────────────── */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-14 pb-10">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
-
           {/* LEFT: CTA block */}
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">
               Get started
             </p>
             <h2 className="text-3xl sm:text-4xl font-bold leading-tight text-foreground">
-              Build your next<br />idea at the<br />MakerSpace.
+              Build your next
+              <br />
+              idea at the
+              <br />
+              MakerSpace.
             </h2>
             <p className="mt-4 text-sm leading-6 text-muted-foreground max-w-xs">
-              Sign in with your MIT-WPU institutional account to create a project and access the MakerSpace workflow.
+              Sign in with your MIT-WPU institutional account to create a project and access the
+              MakerSpace workflow.
             </p>
             <Link
               to="/login"
@@ -126,7 +129,6 @@ export function SiteFooter() {
               ))}
             </ul>
           </div>
-
         </div>
       </div>
 
@@ -155,11 +157,9 @@ export function SiteFooter() {
           rel="noreferrer"
           className="text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors tracking-wide"
         >
-          Built by{" "}
-          <span className="font-bold text-[#2938cf]">Ignisia</span>
+          Built by <span className="font-bold text-[#2938cf]">Ignisia</span>
         </a>
       </div>
-
     </footer>
   );
 }

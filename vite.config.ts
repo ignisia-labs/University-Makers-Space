@@ -18,7 +18,7 @@ export default defineConfig({
     // Polling keeps HMR dependable so source changes appear without restarting Vite.
     server: {
       host: "127.0.0.1",
-      port: 5173,
+      port: 5174,
       strictPort: true,
       watch: { usePolling: true, interval: 300 },
     },

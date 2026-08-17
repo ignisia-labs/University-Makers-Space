@@ -304,6 +304,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       signOut() {
         setAuthenticated(false);
         setRole("Student");
+        window.location.href = "/";
       },
       addProject(p) {
         setProjects((prev) => [

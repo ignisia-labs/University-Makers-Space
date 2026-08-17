@@ -5,22 +5,22 @@ Scope: frontend prototype only. No backend service, authentication endpoint, dat
 
 ## PRD compliance checklist
 
-| PRD area | Frontend coverage | Notes |
-| --- | --- | --- |
-| Faculty dashboard and review queue | Implemented | Pending-review, active-project and archive directories; counts and empty states. |
-| Faculty project review | Implemented | Review sheet includes description, leader, roster, expected equipment, expected consumables and submission date. |
-| Faculty decision actions | Implemented | Approve immediately updates status; reject requires a reason and renders it in the archive. |
-| Lab Assistant live operations | Implemented | Live entered/capacity metric, expected teams, individual/team check-in and individual check-out. |
-| Lab Assistant exceptions | Implemented | No-show and operational cancellation both require a reason and move the booking out of current operations. |
-| Lab Assistant equipment controls | Implemented | Available, Under Maintenance, Damaged and Out of Service updates; a non-available state requires an operational note. |
-| Admin lab configuration | Implemented | Lab name, operating hours, slot duration, capacity, booking horizon, cancellation window, available days, closure dates, quick-visit rules and project verification requirements. |
-| Admin equipment catalogue | Implemented | Search/filter plus add, edit and remove controls; quantities, status, visibility, booking visibility and notes are editable. |
-| Admin consumables catalogue | Implemented | Separate catalogue with add, edit, active/inactive and remove controls. |
-| Super Admin user directory | Implemented | Search by name/email/PRN, role filter and active/inactive filter. |
-| Super Admin pre-provisioning | Implemented | Validates institutional-domain email, prevents duplicates and provisions privileged personas before first sign-in. |
-| Super Admin role and account state controls | Implemented | Confirmation sheets for changing a role and enabling/disabling an account. |
-| Immutable audit-log viewer | Implemented | Administrative actions append audit events; the UI exposes no audit edit/delete control and supports search. |
-| Responsive shell | Implemented in existing shared shell and preserved | Desktop sidebar, tablet collapse behaviour and mobile bottom navigation remain in place. The role pages use stacked cards, scrollable tab controls and responsive modal/drawer primitives. |
+| PRD area                                    | Frontend coverage                                  | Notes                                                                                                                                                                                      |
+| ------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Faculty dashboard and review queue          | Implemented                                        | Pending-review, active-project and archive directories; counts and empty states.                                                                                                           |
+| Faculty project review                      | Implemented                                        | Review sheet includes description, leader, roster, expected equipment, expected consumables and submission date.                                                                           |
+| Faculty decision actions                    | Implemented                                        | Approve immediately updates status; reject requires a reason and renders it in the archive.                                                                                                |
+| Lab Assistant live operations               | Implemented                                        | Live entered/capacity metric, expected teams, individual/team check-in and individual check-out.                                                                                           |
+| Lab Assistant exceptions                    | Implemented                                        | No-show and operational cancellation both require a reason and move the booking out of current operations.                                                                                 |
+| Lab Assistant equipment controls            | Implemented                                        | Available, Under Maintenance, Damaged and Out of Service updates; a non-available state requires an operational note.                                                                      |
+| Admin lab configuration                     | Implemented                                        | Lab name, operating hours, slot duration, capacity, booking horizon, cancellation window, available days, closure dates, quick-visit rules and project verification requirements.          |
+| Admin equipment catalogue                   | Implemented                                        | Search/filter plus add, edit and remove controls; quantities, status, visibility, booking visibility and notes are editable.                                                               |
+| Admin consumables catalogue                 | Implemented                                        | Separate catalogue with add, edit, active/inactive and remove controls.                                                                                                                    |
+| Super Admin user directory                  | Implemented                                        | Search by name/email/PRN, role filter and active/inactive filter.                                                                                                                          |
+| Super Admin pre-provisioning                | Implemented                                        | Validates institutional-domain email, prevents duplicates and provisions privileged personas before first sign-in.                                                                         |
+| Super Admin role and account state controls | Implemented                                        | Confirmation sheets for changing a role and enabling/disabling an account.                                                                                                                 |
+| Immutable audit-log viewer                  | Implemented                                        | Administrative actions append audit events; the UI exposes no audit edit/delete control and supports search.                                                                               |
+| Responsive shell                            | Implemented in existing shared shell and preserved | Desktop sidebar, tablet collapse behaviour and mobile bottom navigation remain in place. The role pages use stacked cards, scrollable tab controls and responsive modal/drawer primitives. |
 
 ## State and authority boundary
 
@@ -46,15 +46,15 @@ The above is deliberately simulated client state, appropriate for the current pr
 
 ## E2E execution summary
 
-| Flow | Result | Verified state transition |
-| --- | --- | --- |
-| Faculty approval | Passed | Pending project moved to Verified; pending count changed from 2 to 1. |
-| Faculty rejection | Passed | Rejection modal required a reason; the second pending project moved out of the queue. |
-| Lab attendance | Passed | Individual check-in changed present count from 0/20 to 1/20; check-out returned it to 0/20. |
-| Lab equipment health | Passed | Equipment changed to Under Maintenance with required calibration note. |
-| Admin settings and catalogue | Passed | Capacity saved; a new equipment item and a new consumable appeared in their respective catalogues. |
+| Flow                                    | Result | Verified state transition                                                                             |
+| --------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------- |
+| Faculty approval                        | Passed | Pending project moved to Verified; pending count changed from 2 to 1.                                 |
+| Faculty rejection                       | Passed | Rejection modal required a reason; the second pending project moved out of the queue.                 |
+| Lab attendance                          | Passed | Individual check-in changed present count from 0/20 to 1/20; check-out returned it to 0/20.           |
+| Lab equipment health                    | Passed | Equipment changed to Under Maintenance with required calibration note.                                |
+| Admin settings and catalogue            | Passed | Capacity saved; a new equipment item and a new consumable appeared in their respective catalogues.    |
 | Super Admin provisioning and role audit | Passed | An institutional identity was pre-provisioned, changed to Lab Assistant and the audit event appeared. |
-| Static checks | Passed | `npx tsc --noEmit`, ESLint with zero errors and `npm run build` all completed successfully. |
+| Static checks                           | Passed | `npx tsc --noEmit`, ESLint with zero errors and `npm run build` all completed successfully.           |
 
 ### Automated fixes applied
 
