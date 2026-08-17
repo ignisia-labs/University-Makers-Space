@@ -67,6 +67,7 @@
   --color-info-foreground: var(--info-foreground);
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
 }
 
 :root {
@@ -255,4 +256,27 @@
     border-color: var(--color-ring);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-ring) 18%, transparent);
   }
+}
+
+/* ── Guided Journey step cards ─────────────────────────────────── */
+@keyframes journey-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.journey-step {
+  opacity: 0;
+  animation: journey-fade-up 0.5s ease forwards;
+}
+
+/* ── Resources infinite marquee ────────────────────────────────── */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
