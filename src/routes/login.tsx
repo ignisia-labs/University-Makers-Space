@@ -49,7 +49,7 @@ const prototypeRoles: AppRole[] = [
 
 function Login() {
   const navigate = useNavigate();
-  const { authenticated, role, beginPrototypeSession } = useMakerSpace();
+  const { authenticated, role, beginPrototypeSession, beginNewStudentSession } = useMakerSpace();
   const { error } = Route.useSearch();
   const [isChecking, setIsChecking] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -64,7 +64,7 @@ function Login() {
 
     if (import.meta.env.DEV) {
       window.setTimeout(() => {
-        beginPrototypeSession();
+        beginNewStudentSession();
         navigate({ to: "/onboarding" });
       }, 450);
       return;

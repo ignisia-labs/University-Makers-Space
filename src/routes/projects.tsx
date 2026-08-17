@@ -13,6 +13,7 @@ import { useMakerSpace } from "@/lib/makerspace-context";
 import { TeamMembers } from "@/components/CreateProject/TeamMembers";
 import { MentorSelect } from "@/components/CreateProject/MentorSelect";
 import { ResourceSelection } from "@/components/CreateProject/ResourceSelection";
+import { splitResourceSelection } from "@/lib/project-resources";
 
 export const Route = createFileRoute("/projects")({
   head: () => ({
@@ -34,13 +35,21 @@ export const Route = createFileRoute("/projects")({
 });
 
 function ProjectsPage() {
-  const { projects, profile, addProject, updateProject } = useMakerSpace();
+  const { projects, profile, reservations, addProject, updateProject } = useMakerSpace();
   const [open, setOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const visibleProjects = projects.filter(
+    (project) =>
+      project.leader.toLowerCase() === profile.fullName.toLowerCase() ||
+      project.members.some((member) => member.email?.toLowerCase() === profile.email.toLowerCase()),
+  );
 
   return (
-    <AppShell title="Projects" subtitle={`${projects.length} projects registered`}>
+    <AppShell
+      title="Projects"
+      subtitle={`${visibleProjects.length} ${visibleProjects.length === 1 ? "project" : "projects"}`}
+    >
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -50,7 +59,7 @@ function ProjectsPage() {
       </button>
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        {projects.map((project) => (
+        {visibleProjects.map((project) => (
           <article key={project.id} className="card-surface p-5">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
               <h2 className="min-w-0 truncate text-lg font-semibold">{project.name}</h2>
@@ -75,7 +84,8 @@ function ProjectsPage() {
               </div>
             </dl>
             <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              <Users className="size-4" /> {project.members.length + 1} members
+              <Users className="size-4" /> {project.members.length + 1}{" "}
+              {project.members.length === 0 ? "member" : "members"}
             </p>
             <button
               type="button"
@@ -87,6 +97,22 @@ function ProjectsPage() {
           </article>
         ))}
       </div>
+      {!visibleProjects.length && (
+        <section className="card-surface mt-5 p-8 text-center sm:p-10">
+          <p className="text-lg font-semibold">Start building something</p>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted-foreground">
+            Create a project, invite your team and choose a Faculty Mentor before reserving
+            MakerSpace time.
+          </p>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="pressable mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="size-4" /> Create Project
+          </button>
+        </section>
+      )}
 
       <ResponsiveModal
         open={open}
@@ -100,6 +126,7 @@ function ProjectsPage() {
             addProject({
               ...data,
               leader: profile.fullName,
+              leaderEmail: profile.email,
               members: [],
               status: data.invitedEmails.length
                 ? "Team Acceptance Pending"
@@ -123,6 +150,9 @@ function ProjectsPage() {
           <ProjectDetailPanel
             project={selectedProject}
             profile={profile}
+            reservations={reservations.filter(
+              (reservation) => reservation.projectId === selectedProject.id,
+            )}
             onSubmitForVerification={() =>
               updateProject(selectedProject.id, {
                 status: selectedProject.invitedEmails.length
@@ -146,6 +176,7 @@ function ProjectWizard({
     invitedEmails: string[];
     mentor: string;
     resources: string[];
+    consumables: string[];
   }) => void;
 }) {
   const [name, setName] = useState("");
@@ -161,7 +192,15 @@ function ProjectWizard({
       className="min-w-0"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ name, description, invitedEmails, mentor, resources });
+        const splitResources = splitResourceSelection(resources);
+        onSubmit({
+          name,
+          description,
+          invitedEmails,
+          mentor,
+          resources: splitResources.equipment,
+          consumables: splitResources.consumables,
+        });
       }}
     >
       <ol className="mb-6 grid grid-cols-3 gap-2" aria-label="Project creation progress">

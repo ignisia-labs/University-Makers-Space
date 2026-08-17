@@ -11,6 +11,7 @@ type SlotBookingModalProps = {
   slot: string;
   attendees: number;
   projectResources: string[];
+  unavailableResources?: string[];
   onConfirm: (resources: string[]) => void;
 };
 
@@ -22,13 +23,15 @@ export function SlotBookingModal({
   slot,
   attendees,
   projectResources,
+  unavailableResources = [],
   onConfirm,
 }: SlotBookingModalProps) {
   const [resources, setResources] = useState(projectResources);
 
   useEffect(() => {
-    if (open) setResources(projectResources);
-  }, [open, projectResources]);
+    if (open)
+      setResources(projectResources.filter((resource) => !unavailableResources.includes(resource)));
+  }, [open, projectResources, unavailableResources]);
 
   const toggle = (resource: string) =>
     setResources((current) =>
@@ -65,13 +68,21 @@ export function SlotBookingModal({
           <ul className="mt-3 divide-y divide-border rounded-xl border border-border px-3">
             {projectResources.map((resource) => (
               <li key={resource}>
-                <label className="flex min-h-12 cursor-pointer items-center gap-3 py-2 text-sm font-medium">
+                <label className="flex min-h-12 cursor-pointer items-center gap-3 py-2 text-sm font-medium has-[:disabled]:cursor-not-allowed has-[:disabled]:text-muted-foreground">
                   <Checkbox
                     checked={resources.includes(resource)}
                     onCheckedChange={() => toggle(resource)}
+                    disabled={unavailableResources.includes(resource)}
                     className="size-5"
                   />
-                  {resource}
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <span>{resource}</span>
+                    {unavailableResources.includes(resource) && (
+                      <span className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-foreground">
+                        Unavailable
+                      </span>
+                    )}
+                  </span>
                 </label>
               </li>
             ))}

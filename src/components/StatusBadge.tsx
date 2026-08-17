@@ -14,8 +14,10 @@ const map: Record<string, Tone> = {
   Available: "success",
   Active: "success",
   Confirmed: "success",
+  Approved: "success",
   "Team Acceptance Pending": "warning",
   "Mentor Approval Pending": "warning",
+  "Awaiting review": "warning",
   "Under Maintenance": "warning",
   Rejected: "warning",
   Cancelled: "muted",
@@ -34,7 +36,6 @@ const map: Record<string, Tone> = {
 };
 
 export function StatusBadge({ label, className }: { label: string; className?: string }) {
-  if (label === "Verified") return null;
   const tone = map[label] ?? "muted";
   return (
     <span

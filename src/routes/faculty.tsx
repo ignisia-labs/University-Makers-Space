@@ -127,7 +127,7 @@ function Faculty() {
                 </span>
                 <span>
                   <strong className="text-foreground">Team:</strong> {item.members.length + 1}{" "}
-                  members
+                  {item.members.length === 0 ? "member" : "members"}
                 </span>
                 <span>
                   <strong className="text-foreground">Submitted:</strong> {item.createdAt}

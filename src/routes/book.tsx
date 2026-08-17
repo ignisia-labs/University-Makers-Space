@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, CircleAlert, Clock3, FolderKanban, History, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { SlotBookingModal } from "@/components/Booking/SlotBookingModal";
+import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import { bookingDates, timeSlots } from "@/lib/makerspace-data";
 import type { Reservation } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
 
@@ -31,19 +31,52 @@ export const Route = createFileRoute("/book")({
 });
 
 function BookPage() {
-  const { projects, profile, reservations, addReservation, cancelReservation } = useMakerSpace();
-  const verified = projects.filter((p) => p.status === "Verified");
+  const { projects, profile, reservations, equipment, slots, addReservation, cancelReservation } =
+    useMakerSpace();
+  const leaderProjects = projects.filter(
+    (project) => project.leader.toLowerCase() === profile.fullName.toLowerCase(),
+  );
+  const leaderProjectIds = new Set(leaderProjects.map((project) => project.id));
+  const studentReservations = reservations.filter((reservation) =>
+    leaderProjectIds.has(reservation.projectId),
+  );
+  const verified = leaderProjects.filter((project) => project.status === "Verified");
+  const publishedSlots = slots.filter((slot) => slot.published);
+  const bookingDates = useMemo(
+    () => [
+      ...new Map(
+        publishedSlots.map((slot) => [
+          slot.dateId,
+          { id: slot.dateId, day: slot.day, date: slot.date, month: slot.month },
+        ]),
+      ).values(),
+    ],
+    [publishedSlots],
+  );
   const [projectId, setProjectId] = useState(verified[0]?.id ?? "");
   const project = verified.find((p) => p.id === projectId);
   const [attending, setAttending] = useState<string[]>(["leader"]);
-  const [dateId, setDateId] = useState(bookingDates[0]!.id);
+  const [dateId, setDateId] = useState(bookingDates[0]?.id ?? "");
   const [slotId, setSlotId] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<Reservation | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
-  const selectedDate = bookingDates.find((d) => d.id === dateId)!;
-  const selectedSlot = timeSlots.find((s) => s.id === slotId);
+  const selectedDate = bookingDates.find((d) => d.id === dateId);
+  const dateSlots = publishedSlots.filter((slot) => slot.dateId === dateId);
+  const selectedSlot = dateSlots.find((slot) => slot.id === slotId);
   const capacityUsed = attending.length;
+  const unavailableResources = useMemo(
+    () =>
+      (project?.resources ?? []).filter(
+        (resource) => !isProjectEquipmentAvailable(resource, equipment),
+      ),
+    [project, equipment],
+  );
+
+  useEffect(() => {
+    if (!dateId && bookingDates[0]) setDateId(bookingDates[0].id);
+  }, [bookingDates, dateId]);
 
   const toggleAttendee = (id: string) =>
     setAttending((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
@@ -64,7 +97,7 @@ function BookPage() {
   return (
     <AppShell title="Book a slot" subtitle="Capacity-aware reservation">
       <div className="space-y-6">
-        {reservations
+        {studentReservations
           .filter((reservation) => reservation.status === "Active")
           .map((reservation) => (
             <section key={reservation.id} className="card-surface border-warning/40 p-5">
@@ -77,20 +110,15 @@ function BookPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() =>
-                    cancelReservation(reservation.id, cancelReason || "Cancelled by team leader")
-                  }
-                  className="min-h-11 rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive hover:bg-destructive/10"
+                  onClick={() => {
+                    setCancelTarget(reservation);
+                    setCancelReason("");
+                  }}
+                  className="pressable min-h-11 rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive transition-all duration-200 hover:bg-destructive/10"
                 >
                   Cancel booking
                 </button>
               </div>
-              <input
-                value={cancelReason}
-                onChange={(event) => setCancelReason(event.target.value)}
-                placeholder="Cancellation reason (optional)"
-                className="mt-4 h-11 w-full rounded-xl border border-border bg-card px-3 text-sm"
-              />
               <p className="mt-2 text-xs text-muted-foreground">
                 Cancelling releases reserved capacity and keeps the booking in history.
               </p>
@@ -116,7 +144,8 @@ function BookPage() {
                 >
                   <span className="block text-sm font-semibold">{p.name}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {p.members.length + 1} members · {p.mentor}
+                    {p.members.length + 1} {p.members.length === 0 ? "member" : "members"} ·{" "}
+                    {p.mentor}
                   </span>
                 </button>
               </li>
@@ -161,7 +190,10 @@ function BookPage() {
                 <button
                   type="button"
                   aria-pressed={d.id === dateId}
-                  onClick={() => setDateId(d.id)}
+                  onClick={() => {
+                    setDateId(d.id);
+                    setSlotId(null);
+                  }}
                   className={cn(
                     "flex min-h-20 w-[4.5rem] flex-col items-center justify-center rounded-2xl border transition-colors",
                     d.id === dateId
@@ -180,10 +212,24 @@ function BookPage() {
 
         <Step index={4} title="Choose a time slot">
           <ul className="grid gap-3 sm:grid-cols-2">
-            {timeSlots.map((slot) => {
-              const left = slot.capacity - slot.booked;
+            {dateSlots.map((slot) => {
+              const booked = reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "Active" &&
+                    (reservation.slotId === slot.id ||
+                      (!reservation.slotId &&
+                        reservation.date === `${slot.day}, ${slot.date} ${slot.month}` &&
+                        reservation.slot === slot.label)),
+                )
+                .reduce((total, reservation) => total + reservation.attendees, 0);
+              const left = Math.max(0, slot.capacity - booked);
               const full = left < capacityUsed;
               const active = slot.id === slotId;
+              const projectEquipment = (project?.resources ?? []).map((resource) => ({
+                name: resource,
+                available: isProjectEquipmentAvailable(resource, equipment),
+              }));
               return (
                 <li key={slot.id}>
                   <button
@@ -215,7 +261,7 @@ function BookPage() {
                       </span>
                     </div>
                     <ul className="mt-3 flex flex-wrap gap-2">
-                      {slot.equipment.map((e) => (
+                      {projectEquipment.map((e) => (
                         <li
                           key={e.name}
                           className={cn(
@@ -246,22 +292,61 @@ function BookPage() {
         </button>
       </div>
 
-      <SlotHistoryTimeline reservations={reservations} />
+      <SlotHistoryTimeline reservations={studentReservations} />
+
+      <ResponsiveModal
+        open={Boolean(cancelTarget)}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel this reservation?"
+        description="The reserved capacity will be released and the cancellation will remain in slot history."
+      >
+        <label className="block text-sm font-medium">
+          Reason for cancellation
+          <textarea
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            placeholder="Briefly tell the team why this booking is being cancelled"
+            className="form-input mt-2 min-h-24 resize-none py-3"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!cancelReason.trim()}
+          onClick={() => {
+            if (!cancelTarget) return;
+            cancelReservation(cancelTarget.id, cancelReason.trim());
+            setCancelTarget(null);
+            setCancelReason("");
+            toast.success("Reservation cancelled");
+          }}
+          className="pressable mt-5 min-h-12 w-full rounded-xl bg-destructive px-5 text-sm font-semibold text-destructive-foreground transition-all duration-200 disabled:opacity-50"
+        >
+          Confirm cancellation
+        </button>
+      </ResponsiveModal>
 
       <SlotBookingModal
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         projectName={project?.name ?? "—"}
-        date={`${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`}
+        date={
+          selectedDate
+            ? `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`
+            : "No date selected"
+        }
         slot={selectedSlot?.label ?? "—"}
         attendees={capacityUsed}
         projectResources={project?.resources ?? []}
+        unavailableResources={unavailableResources}
         onConfirm={(resources) => {
           addReservation({
             projectId: project?.id ?? "",
             projectName: project?.name ?? "",
-            date: `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`,
+            date: selectedDate
+              ? `${selectedDate.day}, ${selectedDate.date} ${selectedDate.month}`
+              : "",
             slot: selectedSlot?.label ?? "",
+            slotId: selectedSlot?.id,
             attendees: capacityUsed,
             participantIds: attending,
             status: "Active",
@@ -437,4 +522,29 @@ function SlotHistoryTimeline({ reservations }: { reservations: Reservation[] }) 
 
 function bookingDay(date: string) {
   return Number(date.match(/\b(\d{1,2})\b/)?.[1] ?? 0);
+}
+
+function isProjectEquipmentAvailable(
+  resource: string,
+  equipment: ReturnType<typeof useMakerSpace>["equipment"],
+) {
+  const key = resource.toLowerCase();
+  const match = equipment.find((item) => {
+    const name = item.name.toLowerCase();
+    return (
+      name.includes(key) ||
+      key.includes(name) ||
+      (key.includes("printer") && item.category === "3D Printing") ||
+      (key.includes("laser") && item.category === "Laser") ||
+      (key.includes("robot") && item.category === "Robotics") ||
+      (key.includes("workstation") && item.category === "Workstations") ||
+      ((key.includes("solder") || key.includes("oscilloscope")) && item.category === "Electronics")
+    );
+  });
+  return match
+    ? match.visible &&
+        match.bookingVisible !== false &&
+        match.availableQuantity > 0 &&
+        (match.status === "Available" || match.status === "Partially Available")
+    : true;
 }

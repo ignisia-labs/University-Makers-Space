@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/StatusBadge";
-import { equipmentCatalogue, type EquipmentCategory } from "@/lib/makerspace-data";
+import { useMakerSpace } from "@/lib/makerspace-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/equipment")({
@@ -24,18 +24,13 @@ export const Route = createFileRoute("/equipment")({
   component: EquipmentPage,
 });
 
-const categories: Array<"All" | EquipmentCategory> = [
-  "All",
-  "3D Printing",
-  "Laser",
-  "Robotics",
-  "Electronics",
-  "Workstations",
-];
-
 function EquipmentPage() {
-  const [filter, setFilter] = useState<"All" | EquipmentCategory>("All");
-  const items = equipmentCatalogue.filter((e) => filter === "All" || e.category === filter);
+  const { equipment, equipmentCategories } = useMakerSpace();
+  const [filter, setFilter] = useState("All");
+  const categories = ["All", ...equipmentCategories];
+  const items = equipment.filter(
+    (item) => item.visible && (filter === "All" || item.category === filter),
+  );
 
   return (
     <AppShell title="Equipment" subtitle={`${items.length} machines listed`}>
@@ -83,6 +78,11 @@ function EquipmentPage() {
                   <li key={spec}>· {spec}</li>
                 ))}
               </ul>
+              {item.availabilityReason && (
+                <p className="mt-3 rounded-xl bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+                  {item.availabilityReason}
+                </p>
+              )}
             </div>
           </article>
         ))}

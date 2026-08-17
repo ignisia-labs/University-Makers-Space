@@ -48,6 +48,9 @@ type DashboardProject = Project & { relationship: ProjectRelationship };
 
 function Dashboard() {
   const { profile, projects, reservations, equipment, visits } = useMakerSpace();
+  const studentVisits = visits.filter(
+    (visit) => visit.ownerEmail?.toLowerCase() === profile.email.toLowerCase(),
+  );
   const data = useMemo(
     () => getDashboardData(profile, projects, reservations),
     [profile, projects, reservations],
@@ -71,7 +74,7 @@ function Dashboard() {
           invitationCount={data.invitations.length}
           hasUpcomingBooking={Boolean(data.upcoming)}
         />
-        <StudentMetrics data={data} visits={visits} />
+        <StudentMetrics data={data} visits={studentVisits} />
         <JourneyProgress project={journeyProject} hasUpcomingBooking={Boolean(data.upcoming)} />
         <NextActionCard data={data} />
         <UpcomingBookingCard

@@ -27,8 +27,11 @@ export const Route = createFileRoute("/visits")({
 });
 
 function VisitsPage() {
-  const { visits, addVisit } = useMakerSpace();
+  const { visits, addVisit, profile } = useMakerSpace();
   const [purpose, setPurpose] = useState<string | null>(null);
+  const studentVisits = visits.filter(
+    (visit) => visit.ownerEmail?.toLowerCase() === profile.email.toLowerCase(),
+  );
 
   return (
     <AppShell title="Visits" subtitle="Quick access and visit history">
@@ -89,7 +92,7 @@ function VisitsPage() {
       <section className="mt-6">
         <h2 className="mb-3 text-base font-semibold">Visit history</h2>
         <ol className="relative space-y-3 border-l border-border pl-5">
-          {visits.map((visit) => (
+          {studentVisits.map((visit) => (
             <li key={visit.id} className="relative">
               <span
                 className="absolute -left-[1.6rem] top-6 size-3 rounded-full border-2 border-background bg-primary"
@@ -111,6 +114,11 @@ function VisitsPage() {
             </li>
           ))}
         </ol>
+        {!studentVisits.length && (
+          <div className="card-surface ml-1 p-7 text-center text-sm text-muted-foreground">
+            Your visit history will appear after your first MakerSpace visit.
+          </div>
+        )}
       </section>
     </AppShell>
   );

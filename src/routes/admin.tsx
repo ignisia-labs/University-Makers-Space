@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Boxes,
+  CalendarPlus,
   FlaskConical,
   LayoutDashboard,
   PackagePlus,
@@ -15,6 +16,7 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import type {
+  BookingSlot,
   Consumable,
   Equipment,
   EquipmentCategory,
@@ -83,6 +85,9 @@ function Admin() {
     auditLogs,
     equipmentCategories,
     addEquipmentCategory,
+    slots,
+    addSlot,
+    updateSlot,
   } = useMakerSpace();
   const [view, setView] = useState<AdminView>("dashboard");
   const [draft, setDraft] = useState(config);
@@ -105,6 +110,12 @@ function Admin() {
   const [closureInput, setClosureInput] = useState("");
   const [saved, setSaved] = useState(false);
   const [categoryInput, setCategoryInput] = useState("");
+  const [slotDraft, setSlotDraft] = useState({
+    date: "2026-08-22",
+    start: config.openingTime,
+    end: "09:30",
+    capacity: config.capacity,
+  });
   const present = reservations.reduce(
     (total, booking) =>
       total +
@@ -160,6 +171,20 @@ function Admin() {
     if (deleteTarget.type === "equipment") removeEquipment(deleteTarget.id);
     else removeConsumable(deleteTarget.id);
     setDeleteTarget(null);
+  }
+  function publishSlot() {
+    if (!slotDraft.date || !slotDraft.start || !slotDraft.end || slotDraft.capacity < 1) return;
+    const date = new Date(`${slotDraft.date}T12:00:00`);
+    const slot: Omit<BookingSlot, "id"> = {
+      dateId: `admin-${slotDraft.date}`,
+      day: date.toLocaleDateString("en-US", { weekday: "short" }),
+      date: date.toLocaleDateString("en-US", { day: "2-digit" }),
+      month: date.toLocaleDateString("en-US", { month: "short" }),
+      label: `${slotDraft.start} – ${slotDraft.end}`,
+      capacity: slotDraft.capacity,
+      published: true,
+    };
+    addSlot(slot);
   }
 
   return (
@@ -386,6 +411,99 @@ function Admin() {
           >
             Save operational settings
           </button>
+          <div className="mt-6 border-t pt-5">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
+                <CalendarPlus className="size-5" />
+              </span>
+              <div>
+                <h3 className="font-semibold">Published booking slots</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Published sessions become available immediately in Student Slots and share live
+                  capacity with Lab Operations.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <Field label="Date">
+                <input
+                  type="date"
+                  value={slotDraft.date}
+                  onChange={(event) =>
+                    setSlotDraft((current) => ({ ...current, date: event.target.value }))
+                  }
+                  className="form-input"
+                />
+              </Field>
+              <Field label="Starts">
+                <input
+                  type="time"
+                  value={slotDraft.start}
+                  onChange={(event) =>
+                    setSlotDraft((current) => ({ ...current, start: event.target.value }))
+                  }
+                  className="form-input"
+                />
+              </Field>
+              <Field label="Ends">
+                <input
+                  type="time"
+                  value={slotDraft.end}
+                  onChange={(event) =>
+                    setSlotDraft((current) => ({ ...current, end: event.target.value }))
+                  }
+                  className="form-input"
+                />
+              </Field>
+              <Field label="Capacity">
+                <input
+                  type="number"
+                  min="1"
+                  value={slotDraft.capacity}
+                  onChange={(event) =>
+                    setSlotDraft((current) => ({
+                      ...current,
+                      capacity: Number(event.target.value),
+                    }))
+                  }
+                  className="form-input"
+                />
+              </Field>
+              <button
+                type="button"
+                onClick={publishSlot}
+                className="min-h-11 self-end rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+              >
+                Publish slot
+              </button>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {slots.slice(0, 8).map((slot) => (
+                <article
+                  key={slot.id}
+                  className="flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {slot.day}, {slot.date} {slot.month} · {slot.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Capacity {slot.capacity}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateSlot(slot.id, { published: !slot.published })}
+                    className={`min-h-10 shrink-0 rounded-full px-3 text-xs font-semibold ${
+                      slot.published
+                        ? "bg-success/10 text-success"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {slot.published ? "Published" : "Draft"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          </div>
           <div className="mt-6 border-t pt-5">
             <h3 className="font-semibold">Configuration history</h3>
             <p className="mt-1 text-sm text-muted-foreground">

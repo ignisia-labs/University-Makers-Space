@@ -37,6 +37,7 @@ export type Project = {
   name: string;
   description: string;
   leader: string;
+  leaderEmail?: string;
   members: Student[];
   mentor: string;
   status: ProjectStatus;
@@ -60,6 +61,7 @@ export type Reservation = {
   projectName: string;
   date: string;
   slot: string;
+  slotId?: string;
   attendees: number;
   participantIds: string[];
   status: BookingStatus;
@@ -71,6 +73,16 @@ export type Reservation = {
   handledBy?: string;
   attendance?: Record<string, AttendanceRecord>;
 };
+export type BookingSlot = {
+  id: string;
+  dateId: string;
+  day: string;
+  date: string;
+  month: string;
+  label: string;
+  capacity: number;
+  published: boolean;
+};
 export type AttendanceRecord = {
   status: "Expected" | "Entered" | "Exited";
   enteredAt?: string;
@@ -79,6 +91,7 @@ export type AttendanceRecord = {
 };
 export type Visit = {
   id: string;
+  ownerEmail?: string;
   type: "Project Slot" | "Quick Visit";
   title: string;
   date: string;
@@ -244,6 +257,7 @@ export const initialProjects: Project[] = [
     name: "Autonomous Campus Rover",
     description: "A LiDAR-guided rover that maps and patrols the campus perimeter autonomously.",
     leader: "Aarav Deshmukh",
+    leaderEmail: defaultProfile.email,
     members: [directoryStudents[0]!, directoryStudents[3]!],
     mentor: "Prof. Amit Shirke — Robotics",
     status: "Verified",
@@ -403,6 +417,7 @@ export const initialReservations: Reservation[] = [
 export const initialVisits: Visit[] = [
   {
     id: "v1",
+    ownerEmail: defaultProfile.email,
     type: "Project Slot",
     title: "Autonomous Campus Rover",
     date: "12 Aug 2026",
@@ -412,6 +427,7 @@ export const initialVisits: Visit[] = [
   },
   {
     id: "v2",
+    ownerEmail: defaultProfile.email,
     type: "Quick Visit",
     title: "Component pickup",
     date: "09 Aug 2026",
@@ -571,6 +587,18 @@ export const timeSlots = [
     ],
   },
 ];
+export const initialBookingSlots: BookingSlot[] = bookingDates.flatMap((date) =>
+  timeSlots.map((slot) => ({
+    id: `${date.id}-${slot.id}`,
+    dateId: date.id,
+    day: date.day,
+    date: date.date,
+    month: date.month,
+    label: slot.label,
+    capacity: slot.capacity,
+    published: true,
+  })),
+);
 export const quickVisitPurposes = [
   "Component pickup",
   "Consult lab assistant",

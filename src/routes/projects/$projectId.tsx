@@ -8,7 +8,7 @@ export const Route = createFileRoute("/projects/$projectId")({ component: Projec
 
 function ProjectDetails() {
   const { projectId } = Route.useParams();
-  const { projects, profile, updateProject } = useMakerSpace();
+  const { projects, profile, reservations, updateProject } = useMakerSpace();
   const project = projects.find((item) => item.id === projectId);
 
   if (!project) {
@@ -32,6 +32,7 @@ function ProjectDetails() {
       <ProjectDetailPanel
         project={project}
         profile={profile}
+        reservations={reservations.filter((reservation) => reservation.projectId === project.id)}
         onSubmitForVerification={() =>
           updateProject(project.id, {
             status: project.invitedEmails.length

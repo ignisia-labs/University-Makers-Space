@@ -247,10 +247,23 @@ export function AppShell({
               <Link
                 to="/profile"
                 aria-label="Profile"
-                className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground md:hidden"
+                className={cn(
+                  "grid size-11 shrink-0 place-items-center rounded-full bg-accent text-sm font-bold text-accent-foreground",
+                  showSidebar && "md:hidden",
+                )}
               >
                 {initials}
               </Link>
+              {!showSidebar && (
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                  <span className="hidden sm:inline">Sign out</span>
+                </button>
+              )}
               <div className="relative">
                 <button
                   type="button"
@@ -258,7 +271,7 @@ export function AppShell({
                   aria-label="Notifications"
                   aria-haspopup="dialog"
                   aria-expanded={notificationsOpen}
-                  className="relative grid size-10 place-items-center rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent/75"
+                  className="relative grid size-11 place-items-center rounded-full bg-accent text-accent-foreground transition-all duration-200 hover:bg-accent/75"
                 >
                   <Bell className="size-4" />
                   {unread > 0 && (
@@ -310,7 +323,7 @@ export function AppShell({
                           type="button"
                           onClick={closeNotifications}
                           aria-label="Close notifications"
-                          className="grid size-10 shrink-0 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          className="grid size-11 shrink-0 place-items-center rounded-xl text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground"
                         >
                           <X className="size-4" />
                         </button>

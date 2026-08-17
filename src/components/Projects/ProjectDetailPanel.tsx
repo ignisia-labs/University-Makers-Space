@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  CalendarClock,
   Check,
   Clock3,
   Cpu,
@@ -9,16 +10,18 @@ import {
   Users,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
-import type { InvitationStatus, Project, StudentProfile } from "@/lib/makerspace-data";
+import type { InvitationStatus, Project, Reservation, StudentProfile } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
 
 export function ProjectDetailPanel({
   project,
   profile,
+  reservations = [],
   onSubmitForVerification,
 }: {
   project: Project;
   profile: StudentProfile;
+  reservations?: Reservation[];
   onSubmitForVerification?: () => void;
 }) {
   const memberEmails = new Set(
@@ -34,15 +37,14 @@ export function ProjectDetailPanel({
   const isLeader = project.leader === profile.fullName;
 
   return (
-    <div className="min-w-0 space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.07] via-card to-card p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="min-w-0 space-y-3">
+      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.04] px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">
               MakerSpace project
             </p>
-            <h2 className="mt-2 text-xl font-bold sm:text-2xl">{project.name}</h2>
-            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
                 <CalendarDays className="size-3.5" /> Created {project.createdAt}
               </span>
@@ -66,8 +68,8 @@ export function ProjectDetailPanel({
         </section>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-        <div className="space-y-4">
+      <div className="grid gap-4">
+        <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
           <DetailCard icon={Clock3} title="Project abstract">
             <p className="text-sm leading-7 text-muted-foreground">{project.description}</p>
           </DetailCard>
@@ -76,7 +78,7 @@ export function ProjectDetailPanel({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div
                 className="flex -space-x-2"
-                aria-label={`${avatarNames.length} accepted members`}
+                aria-label={`${avatarNames.length} accepted ${avatarNames.length === 1 ? "member" : "members"}`}
               >
                 {avatarNames.slice(0, 5).map((name, index) => (
                   <Avatar key={`${name}-${index}`} name={name} />
@@ -120,7 +122,7 @@ export function ProjectDetailPanel({
           </DetailCard>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 lg:grid lg:grid-cols-4 lg:gap-4 lg:space-y-0">
           <DetailCard icon={GraduationCap} title="Faculty mentor">
             <div className="rounded-xl border border-primary/15 bg-primary/[0.05] p-4">
               <div className="flex items-center gap-3">
@@ -130,6 +132,17 @@ export function ProjectDetailPanel({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold leading-5 break-words">{project.mentor}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Assigned Faculty Mentor</p>
+                  <div className="mt-2">
+                    <StatusBadge
+                      label={
+                        project.status === "Verified"
+                          ? "Approved"
+                          : project.status === "Rejected"
+                            ? "Rejected"
+                            : "Awaiting review"
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -141,6 +154,38 @@ export function ProjectDetailPanel({
 
           <DetailCard icon={FlaskConical} title="Estimated consumables">
             <TagList items={consumables} empty="No consumables selected." tone="neutral" />
+          </DetailCard>
+
+          <DetailCard icon={CalendarClock} title="Project bookings">
+            {reservations.length ? (
+              <div className="space-y-2">
+                {reservations.map((reservation) => (
+                  <article
+                    key={reservation.id}
+                    className="rounded-xl border border-border bg-muted/30 p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{reservation.date}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{reservation.slot}</p>
+                      </div>
+                      <StatusBadge label={reservation.status} />
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {reservation.attendees}{" "}
+                      {reservation.attendees === 1 ? "attendee" : "attendees"}
+                      {reservation.resources.length
+                        ? ` · ${reservation.resources.length} session resources`
+                        : ""}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No project bookings yet. Booking becomes available after verification.
+              </p>
+            )}
           </DetailCard>
         </div>
       </div>
