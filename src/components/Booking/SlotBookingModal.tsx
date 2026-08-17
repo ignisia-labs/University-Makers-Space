@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { Checkbox } from "@/components/ui/checkbox";
+import { StatusBadge } from "@/components/StatusBadge";
 
 type SlotBookingModalProps = {
   open: boolean;
@@ -77,11 +78,7 @@ export function SlotBookingModal({
                   />
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
                     <span>{resource}</span>
-                    {unavailableResources.includes(resource) && (
-                      <span className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning-foreground">
-                        Unavailable
-                      </span>
-                    )}
+                    {unavailableResources.includes(resource) && <StatusBadge label="Unavailable" />}
                   </span>
                 </label>
               </li>

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
@@ -143,9 +144,45 @@ function SuperAdmin() {
                 {sessionNotice}
               </div>
             )}
+            <DashboardQuickActions
+              actions={[
+                {
+                  label: "Pre-Provision User",
+                  description: "Grant an institutional user privileged access before sign-in.",
+                  icon: UserPlus,
+                  onClick: () => {
+                    setDraft(blankUser);
+                    setDraftError("");
+                    setProvisioning(true);
+                  },
+                },
+                {
+                  label: "Manage User Access",
+                  description: "Search accounts, change roles, or disable privileged access.",
+                  icon: KeyRound,
+                  onClick: () => setView("users"),
+                },
+                {
+                  label: "Review Audit Logs",
+                  description: "Inspect immutable administrative and system activity.",
+                  icon: ScrollText,
+                  onClick: () => setView("audit"),
+                },
+                {
+                  label: "Review Platform Health",
+                  description: "Check lab configuration and the current platform summary.",
+                  icon: ShieldCheck,
+                  onClick: () =>
+                    document.getElementById("platform-configuration")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    }),
+                },
+              ]}
+            />
           </section>
 
-          <section id="platform-configuration" className="card-surface mt-7 p-5">
+          <section id="platform-configuration" className="card-surface mt-7 scroll-mt-24 p-5">
             <h2 className="font-semibold">Lab configuration summary</h2>
             <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <SummaryValue label="Lab" value={config.labName} />

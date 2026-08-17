@@ -245,18 +245,7 @@ function TeamRow({
         <p className="truncate text-sm font-semibold">{name}</p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>
       </div>
-      <span
-        className={cn(
-          "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold",
-          status === "Accepted"
-            ? "bg-success/10 text-success"
-            : status === "Pending"
-              ? "bg-warning/15 text-warning-foreground"
-              : "bg-muted text-muted-foreground",
-        )}
-      >
-        {leader ? "Leader" : status}
-      </span>
+      <StatusBadge label={leader ? "Leader" : status} className="shrink-0" />
     </div>
   );
 }

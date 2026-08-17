@@ -306,11 +306,7 @@ function StudentMetrics({ data, visits }: { data: DashboardData; visits: Visit[]
               >
                 <Icon className="size-5" />
               </span>
-              {status && (
-                <span className="rounded-full bg-success/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-success">
-                  {status}
-                </span>
-              )}
+              {status && <StatusBadge label={status} className="shrink-0" />}
             </div>
             <div className="min-w-0 pt-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">
@@ -587,6 +583,7 @@ function InvitationsDrawer({ invitations }: { invitations: DashboardProject[] })
 }
 
 function QuickActions({ data }: { data: DashboardData }) {
+  const canReserve = data.leaderProjects.some((project) => project.status === "Verified");
   const actions = [
     {
       to: "/projects" as const,
@@ -597,10 +594,12 @@ function QuickActions({ data }: { data: DashboardData }) {
     },
     {
       to: "/book" as const,
-      label: "Reserve a Slot",
-      description: "Choose a session for a verified project.",
+      label: canReserve ? "Reserve a Slot" : "View Slot Schedule",
+      description: canReserve
+        ? "Choose a session for a verified project."
+        : "Review available sessions and booking requirements.",
       icon: CalendarClock,
-      visible: data.leaderProjects.some((project) => project.status === "Verified"),
+      visible: true,
     },
     {
       to: "/visits" as const,
@@ -616,14 +615,6 @@ function QuickActions({ data }: { data: DashboardData }) {
       icon: Boxes,
       visible: true,
     },
-    {
-      to: "/invitations/$projectId" as const,
-      params: data.invitations[0] ? { projectId: data.invitations[0].id } : undefined,
-      label: "View Pending Invitations",
-      description: `${data.invitations.length} ${data.invitations.length === 1 ? "invitation needs" : "invitations need"} your response.`,
-      icon: Users,
-      visible: data.invitations.length > 0,
-    },
   ];
   return (
     <section>
@@ -631,11 +622,10 @@ function QuickActions({ data }: { data: DashboardData }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {actions
           .filter((action) => action.visible)
-          .map(({ to, params, label, description, icon: Icon }) => (
+          .map(({ to, label, description, icon: Icon }) => (
             <Link
               key={label}
               to={to}
-              params={params ?? {}}
               className="card-surface group flex min-h-36 flex-col justify-between p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg"
             >
               <div className="flex items-center justify-between gap-3">

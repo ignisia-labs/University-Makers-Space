@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
@@ -232,6 +233,44 @@ function Admin() {
               {reservations.filter((item) => item.status === "Cancelled").length} cancellations
             </p>
           </div>
+          <DashboardQuickActions
+            actions={[
+              {
+                label: "Add Equipment",
+                description: "Create a new machine, tool, or workstation catalogue record.",
+                icon: PackagePlus,
+                onClick: () => setEquipmentModal({ item: emptyEquipment() }),
+              },
+              {
+                label: "Add Consumable",
+                description: "Register a selectable material or consumable resource.",
+                icon: FlaskConical,
+                onClick: () => setConsumableModal({ item: emptyConsumable() }),
+              },
+              {
+                label: "Publish Booking Slot",
+                description: "Create a session that becomes available to students.",
+                icon: CalendarPlus,
+                onClick: () => {
+                  setView("config");
+                  window.setTimeout(
+                    () =>
+                      document.getElementById("published-booking-slots")?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      }),
+                    0,
+                  );
+                },
+              },
+              {
+                label: "Edit Lab Configuration",
+                description: "Update hours, capacity, closures, and booking rules.",
+                icon: Settings2,
+                onClick: () => setView("config"),
+              },
+            ]}
+          />
         </section>
       )}
 
@@ -245,11 +284,7 @@ function Admin() {
                 log.
               </p>
             </div>
-            {saved && (
-              <span className="rounded-full bg-success/15 px-3 py-1 text-sm font-semibold text-success">
-                Saved
-              </span>
-            )}
+            {saved && <StatusBadge label="Saved" />}
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Lab name">
@@ -411,7 +446,7 @@ function Admin() {
           >
             Save operational settings
           </button>
-          <div className="mt-6 border-t pt-5">
+          <div id="published-booking-slots" className="mt-6 scroll-mt-24 border-t pt-5">
             <div className="flex items-start gap-3">
               <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
                 <CalendarPlus className="size-5" />
@@ -492,13 +527,9 @@ function Admin() {
                   <button
                     type="button"
                     onClick={() => updateSlot(slot.id, { published: !slot.published })}
-                    className={`min-h-10 shrink-0 rounded-full px-3 text-xs font-semibold ${
-                      slot.published
-                        ? "bg-success/10 text-success"
-                        : "bg-muted text-muted-foreground"
-                    }`}
+                    className="min-h-10 shrink-0 rounded-md"
                   >
-                    {slot.published ? "Published" : "Draft"}
+                    <StatusBadge label={slot.published ? "Published" : "Draft"} />
                   </button>
                 </article>
               ))}

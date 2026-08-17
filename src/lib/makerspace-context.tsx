@@ -34,6 +34,22 @@ import {
   type Visit,
 } from "./makerspace-data";
 
+export type NotificationPreferences = {
+  projectActivity: boolean;
+  bookingUpdates: boolean;
+  equipmentUpdates: boolean;
+  systemAnnouncements: boolean;
+  emailBookingReminders: boolean;
+};
+
+const defaultNotificationPreferences: NotificationPreferences = {
+  projectActivity: true,
+  bookingUpdates: true,
+  equipmentUpdates: true,
+  systemAnnouncements: true,
+  emailBookingReminders: true,
+};
+
 type State = {
   profile: StudentProfile;
   role: AppRole;
@@ -50,6 +66,7 @@ type State = {
   equipmentCategories: string[];
   config: LabConfig;
   slots: BookingSlot[];
+  notificationPreferences: NotificationPreferences;
   completeOnboarding: (p: StudentProfile) => void;
   beginPrototypeSession: (role?: AppRole) => void;
   beginNewStudentSession: () => void;
@@ -83,6 +100,7 @@ type State = {
   updateUserActive: (id: string, active: boolean) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  updateNotificationPreferences: (patch: Partial<NotificationPreferences>) => void;
 };
 const Ctx = createContext<State | null>(null);
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -103,6 +121,7 @@ type SharedSnapshot = Pick<
   | "equipmentCategories"
   | "config"
   | "slots"
+  | "notificationPreferences"
 >;
 
 function readSnapshot(value: string | null): SharedSnapshot | null {
@@ -133,6 +152,9 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   ]);
   const [config, setConfig] = useState(initialConfig);
   const [slots, setSlots] = useState(initialBookingSlots);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
+    defaultNotificationPreferences,
+  );
   const hydrated = useRef(false);
   const skipInitialPersist = useRef(true);
   const lastSerialized = useRef("");
@@ -157,6 +179,9 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       );
       setConfig(snapshot.config ?? initialConfig);
       setSlots(snapshot.slots ?? initialBookingSlots);
+      setNotificationPreferences(
+        snapshot.notificationPreferences ?? defaultNotificationPreferences,
+      );
     };
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const snapshot = readSnapshot(saved);
@@ -195,6 +220,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      notificationPreferences,
     };
     const serialized = JSON.stringify(snapshot);
     if (serialized === lastSerialized.current) return;
@@ -214,6 +240,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     equipmentCategories,
     config,
     slots,
+    notificationPreferences,
   ]);
   const actor =
     users.find((user) => user.role === role && user.active) ??
@@ -257,6 +284,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      notificationPreferences,
       completeOnboarding(p) {
         setProfile(p);
         setOnboarded(true);
@@ -266,14 +294,9 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         setAuthenticated(true);
       },
       beginNewStudentSession() {
-        setProfile({
-          email: "new.student@mitwpu.edu.in",
-          fullName: "",
-          prn: "",
-          department: "",
-          programme: "",
-          academicYear: "",
-        });
+        // Development sign-in mirrors the institutional identity returned by Google.
+        // The profile remains uncompleted until the onboarding form is submitted.
+        setProfile(defaultProfile);
         setRole("Student");
         setAuthenticated(true);
         setOnboarded(false);
@@ -594,6 +617,9 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       markAllNotificationsRead() {
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       },
+      updateNotificationPreferences(patch) {
+        setNotificationPreferences((previous) => ({ ...previous, ...patch }));
+      },
     }),
     [
       profile,
@@ -611,6 +637,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      notificationPreferences,
       actor?.name,
       audit,
     ],

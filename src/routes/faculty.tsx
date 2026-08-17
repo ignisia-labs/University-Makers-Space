@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Archive, CheckCircle2, ClipboardCheck, XCircle } from "lucide-react";
+import { Activity, Archive, CheckCircle2, ClipboardCheck, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
@@ -84,6 +85,44 @@ function Faculty() {
         <Summary label="Archived decisions" value={buckets.history.length} tone="muted" />
       </section>
 
+      <DashboardQuickActions
+        actions={[
+          {
+            label: "Review Next Request",
+            description: buckets.pending.length
+              ? `Open the next of ${buckets.pending.length} projects awaiting your decision.`
+              : "Check the pending verification queue.",
+            icon: ClipboardCheck,
+            onClick: () => {
+              setView("pending");
+              if (buckets.pending[0]) openReview(buckets.pending[0]);
+            },
+          },
+          {
+            label: "Active Mentorships",
+            description: "Review projects currently verified under your mentorship.",
+            icon: CheckCircle2,
+            onClick: () => setView("active"),
+          },
+          {
+            label: "Decision Archive",
+            description: "Open previously rejected and archived project decisions.",
+            icon: Archive,
+            onClick: () => setView("history"),
+          },
+          {
+            label: "Recent Activity",
+            description: "Review your latest mentorship decisions and timestamps.",
+            icon: Activity,
+            onClick: () =>
+              document.getElementById("faculty-recent-activity")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              }),
+          },
+        ]}
+      />
+
       <div
         className="mt-6 flex gap-2 overflow-x-auto pb-1"
         role="tablist"
@@ -152,7 +191,7 @@ function Faculty() {
         )}
       </section>
 
-      <section className="mt-7">
+      <section id="faculty-recent-activity" className="mt-7 scroll-mt-24">
         <h2 className="font-semibold">Recent mentorship activity</h2>
         <div className="mt-3 space-y-2">
           {assignedProjects.some((item) => item.reviewedAt) ? (

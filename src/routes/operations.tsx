@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
@@ -161,7 +162,40 @@ function Operations() {
             />
           </section>
 
-          <section className="mt-6">
+          <DashboardQuickActions
+            actions={[
+              {
+                label: "Manage Live Attendance",
+                description: "Check teams in or out and keep occupancy accurate.",
+                icon: DoorOpen,
+                onClick: () =>
+                  document.getElementById("current-slot-operations")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  }),
+              },
+              {
+                label: "Review Booking Exceptions",
+                description: "Handle cancellations, no-shows, and current bookings.",
+                icon: CalendarClock,
+                onClick: () => setView("bookings"),
+              },
+              {
+                label: "Open Visit Register",
+                description: "Review project-slot and quick-visit attendance records.",
+                icon: Footprints,
+                onClick: () => setView("visits"),
+              },
+              {
+                label: "Update Equipment Health",
+                description: "Record maintenance, damage, or availability changes.",
+                icon: Boxes,
+                onClick: () => setView("equipment"),
+              },
+            ]}
+          />
+
+          <section id="current-slot-operations" className="mt-6 scroll-mt-24">
             <div className="flex items-end justify-between gap-4">
               <div>
                 <h2 className="font-semibold">Current slot operations</h2>
