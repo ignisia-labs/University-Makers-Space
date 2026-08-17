@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Boxes,
   CalendarClock,
@@ -13,8 +13,9 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 import { useMakerSpace } from "@/lib/makerspace-context";
 
 const studentNav = [
@@ -51,11 +52,21 @@ export function AppShell({
     role,
     notifications,
     authenticated,
+    onboarded,
+    hydrated,
     signOut,
     markNotificationRead,
     markAllNotificationsRead,
   } = useMakerSpace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+
+  // Send signed-out visitors back to the landing page rather than showing a wall.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!authenticated) navigate({ to: "/", replace: true });
+    else if (!onboarded) navigate({ to: "/onboarding", replace: true });
+  }, [hydrated, authenticated, onboarded, navigate]);
   const initials = profile.fullName
     .split(" ")
     .map((p) => p[0])
@@ -121,23 +132,11 @@ export function AppShell({
   }
   return (
     <div className="min-h-screen overflow-x-hidden bg-background relative">
-      {/* Floating Ambient Aura Blurs — Ignisia palette */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-        {/* Ignisia Teal Aura — top left */}
+      {/* Single, very subtle indigo ambience */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden>
         <div
-          className="absolute -top-[20%] -left-[10%] w-[60%] aspect-square rounded-full mix-blend-multiply filter blur-[140px] opacity-[0.07] animate-pulse"
-          style={{
-            background: "radial-gradient(circle, #2CC5B0 0%, transparent 70%)",
-            animationDuration: "14s",
-          }}
-        />
-        {/* Ignisia Indigo-Purple Aura — bottom right */}
-        <div
-          className="absolute -bottom-[20%] -right-[10%] w-[60%] aspect-square rounded-full mix-blend-multiply filter blur-[140px] opacity-[0.08] animate-pulse"
-          style={{
-            background: "radial-gradient(circle, #6D28D9 0%, transparent 70%)",
-            animationDuration: "18s",
-          }}
+          className="absolute -top-[25%] left-1/2 aspect-square w-[70%] -translate-x-1/2 rounded-full blur-[160px] opacity-[0.06]"
+          style={{ background: "radial-gradient(circle, #1E2B8A 0%, transparent 70%)" }}
         />
       </div>
 
@@ -204,42 +203,6 @@ export function AppShell({
               ))}
         </nav>
 
-        {/* Ignisia branding badge */}
-        {expanded && (
-          <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/60 to-violet-50/40 px-3 py-2">
-            {/* Ignisia logomark — simplified teal molecular node */}
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
-              <rect x="2" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="11" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="6.5" y="6.5" width="5" height="5" rx="1.5" fill="#2CC5B0" opacity="0.7" />
-              <rect x="2" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="11" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-            </svg>
-            <div className="min-w-0">
-              <p className="text-[9px] font-mono uppercase tracking-widest text-indigo-400/80">
-                an
-              </p>
-              <p className="-mt-0.5 font-serif text-xs font-semibold italic text-indigo-800">
-                Ignisia
-              </p>
-              <p className="text-[8px] font-mono uppercase tracking-widest text-indigo-400/80">
-                project
-              </p>
-            </div>
-          </div>
-        )}
-        {!expanded && (
-          <div className="mx-auto mb-2 flex size-9 items-center justify-center rounded-xl border border-indigo-100/80 bg-indigo-50/60">
-            <svg width="14" height="14" viewBox="0 0 18 18" fill="none">
-              <rect x="2" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="11" y="2" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="6.5" y="6.5" width="5" height="5" rx="1.5" fill="#2CC5B0" opacity="0.7" />
-              <rect x="2" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-              <rect x="11" y="11" width="5" height="5" rx="1.5" fill="#2CC5B0" />
-            </svg>
-          </div>
-        )}
-
         <div className="border-t border-sidebar-border p-3">
           {expanded && (
             <div className="mb-3 flex gap-1">
@@ -280,6 +243,7 @@ export function AppShell({
               Sign out
             </button>
           )}
+          {expanded && <IgnisiaCredit className="mt-3 px-3" />}
         </div>
       </aside>
 
@@ -454,7 +418,7 @@ export function AppShell({
         <main
           className={cn(
             "mx-auto max-w-5xl px-4 pt-5 sm:px-6 md:pb-12",
-            showSidebar ? "pb-28" : "pb-12",
+            showSidebar ? "pb-[calc(7rem+env(safe-area-inset-bottom))]" : "pb-12",
           )}
         >
           {children}
@@ -462,50 +426,70 @@ export function AppShell({
       </div>
 
       {showSidebar && (
-        <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
-          <ul
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${role === "Student" ? studentNav.length : (workspaceNavigation?.length ?? 1)}, minmax(0, 1fr))`,
-            }}
-          >
-            {role === "Student"
-              ? studentNav.map(({ to, label, icon: Icon }) => {
-                  const active = pathname === to;
-                  return (
-                    <li key={to}>
-                      <Link
-                        to={to}
-                        aria-label={label}
-                        className={cn(
-                          "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] font-medium",
-                          active ? "text-primary" : "text-muted-foreground",
-                        )}
-                      >
-                        <Icon className="size-5" />
-                        {label}
-                      </Link>
-                    </li>
-                  );
-                })
-              : workspaceNavigation?.map(({ id, label, icon: Icon }) => (
-                  <li key={id}>
-                    <button
-                      type="button"
-                      onClick={() => onWorkspaceChange?.(id)}
-                      aria-label={label}
-                      aria-current={activeWorkspace === id ? "page" : undefined}
-                      className={cn(
-                        "flex min-h-14 w-full flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium",
-                        activeWorkspace === id ? "text-primary" : "text-muted-foreground",
-                      )}
-                    >
-                      <Icon className="size-5" />
-                      <span className="max-w-full truncate">{label}</span>
-                    </button>
-                  </li>
-                ))}
-          </ul>
+        <nav
+          className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden"
+          aria-label="Primary"
+        >
+          <div className="glass-bar relative overflow-hidden rounded-[1.75rem] p-1.5">
+            <ul
+              className="relative grid"
+              style={{
+                gridTemplateColumns: `repeat(${role === "Student" ? studentNav.length : (workspaceNavigation?.length ?? 1)}, minmax(0, 1fr))`,
+              }}
+            >
+              {role === "Student"
+                ? studentNav.map(({ to, label, icon: Icon }) => {
+                    const active = pathname === to;
+                    return (
+                      <li key={to}>
+                        <Link
+                          to={to}
+                          aria-label={label}
+                          className={cn(
+                            "relative flex min-h-14 flex-col items-center justify-center gap-1 rounded-[1.35rem] text-[10px] font-medium transition-colors duration-300",
+                            active ? "text-primary-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {active && (
+                            <span
+                              className="absolute inset-0 rounded-[1.35rem] bg-primary shadow-[0_6px_20px_-6px_color-mix(in_oklch,var(--color-primary)_70%,transparent)]"
+                              aria-hidden
+                            />
+                          )}
+                          <Icon className="relative size-5" />
+                          <span className="relative">{label}</span>
+                        </Link>
+                      </li>
+                    );
+                  })
+                : workspaceNavigation?.map(({ id, label, icon: Icon }) => {
+                    const active = activeWorkspace === id;
+                    return (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          onClick={() => onWorkspaceChange?.(id)}
+                          aria-label={label}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "relative flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-[1.35rem] px-1 text-[10px] font-medium transition-colors duration-300",
+                            active ? "text-primary-foreground" : "text-muted-foreground",
+                          )}
+                        >
+                          {active && (
+                            <span
+                              className="absolute inset-0 rounded-[1.35rem] bg-primary"
+                              aria-hidden
+                            />
+                          )}
+                          <Icon className="relative size-5" />
+                          <span className="relative max-w-full truncate">{label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+            </ul>
+          </div>
         </nav>
       )}
     </div>

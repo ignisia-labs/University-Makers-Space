@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import bgVideo from "../../../Assets/gemini_generated_video_ab04e635.mp4";
 
@@ -11,23 +12,33 @@ const roleHomes = {
 } as const;
 
 export function HeroSection() {
-  const { authenticated, role, beginNewStudentSession } = useMakerSpace();
+  const { authenticated, role, onboarded, beginNewStudentSession } = useMakerSpace();
   const navigate = useNavigate();
+  const [signingIn, setSigningIn] = useState(false);
+
+  // Mimic the round-trip to Google before landing on onboarding or the dashboard.
+  useEffect(() => {
+    if (!signingIn) return;
+    const timer = window.setTimeout(() => {
+      beginNewStudentSession();
+      navigate({ to: onboarded ? "/dashboard" : "/onboarding" });
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [signingIn, onboarded, beginNewStudentSession, navigate]);
 
   const handleSignIn = () => {
     if (authenticated) {
       navigate({ to: roleHomes[role] });
       return;
     }
-
     if (import.meta.env.DEV) {
-      beginNewStudentSession();
-      navigate({ to: "/onboarding" });
+      setSigningIn(true);
       return;
     }
-
     window.location.assign("/api/auth/google");
   };
+
+  if (signingIn) return <SignInTransition />;
 
   return (
     <section className="relative w-full h-screen bg-black flex flex-col justify-center items-center overflow-hidden">
@@ -126,5 +137,51 @@ export function HeroSection() {
         </button>
       </div>
     </section>
+  );
+}
+
+function SignInTransition() {
+  return (
+    <section className="grid min-h-screen place-items-center bg-background px-6">
+      <div className="animate-in fade-in zoom-in-95 flex flex-col items-center text-center duration-500">
+        <span className="relative grid size-16 place-items-center">
+          <span className="absolute inset-0 animate-ping rounded-full bg-primary/15" />
+          <span className="absolute inset-0 rounded-full border border-primary/20" />
+          <GoogleMark />
+        </span>
+        <p className="mt-8 font-serif text-2xl font-light tracking-wide text-foreground">
+          Signing you in
+        </p>
+        <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+          MIT-WPU institutional account
+        </p>
+        <span className="mt-8 h-0.5 w-40 overflow-hidden rounded-full bg-border">
+          <span className="signin-progress block h-full rounded-full bg-primary" />
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="relative size-7" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M23.52 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.87Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.96-1.08 7.95-2.91l-3.88-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.26v3.09A12 12 0 0 0 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.62H1.26a12 12 0 0 0 0 10.76l4.01-3.09Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.26 6.62l4.01 3.09C6.22 6.86 8.87 4.75 12 4.75Z"
+      />
+    </svg>
   );
 }

@@ -7,6 +7,7 @@ import {
   FlaskConical,
   GraduationCap,
   Mail,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -18,11 +19,17 @@ export function ProjectDetailPanel({
   profile,
   reservations = [],
   onSubmitForVerification,
+  onEdit,
+  onDelete,
+  onVerify,
 }: {
   project: Project;
   profile: StudentProfile;
   reservations?: Reservation[];
   onSubmitForVerification?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onVerify?: () => void;
 }) {
   const memberEmails = new Set(
     project.members.map((member) => member.email?.toLowerCase()).filter(Boolean),
@@ -198,6 +205,44 @@ export function ProjectDetailPanel({
         >
           Submit for verification
         </button>
+      )}
+
+      {isLeader && (onEdit || onDelete || onVerify) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">
+            Changing the kit sends the project back for re-verification.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {onVerify && project.status !== "Verified" && (
+              <button
+                type="button"
+                onClick={onVerify}
+                title="Simulate team acceptance and mentor approval"
+                className="pressable inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
+              >
+                <ShieldCheck className="size-3.5" /> Verify
+              </button>
+            )}
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                className="pressable inline-flex min-h-11 items-center rounded-xl border border-border bg-card px-4 text-sm font-semibold hover:bg-secondary"
+              >
+                Edit project
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="pressable inline-flex min-h-11 items-center rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive hover:bg-destructive/10"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

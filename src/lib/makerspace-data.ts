@@ -118,6 +118,16 @@ export type Equipment = {
   lab: string;
   createdAt: string;
   updatedAt: string;
+  instructions?: string[];
+  uploadSupport?: { label: string; accept: string };
+};
+export type EquipmentUpload = {
+  id: string;
+  equipmentId: string;
+  equipmentName: string;
+  fileName: string;
+  ownerEmail: string;
+  uploadedAt: string;
 };
 export type Consumable = {
   id: string;
@@ -182,13 +192,15 @@ export type LabConfig = {
   maximumFutureBookingsPerProject?: number;
 };
 
+// An empty profile — the student fills this in during onboarding. Nothing about
+// the signed-in user is pre-filled anywhere in the app.
 export const defaultProfile: StudentProfile = {
-  email: "aarav.deshmukh@mitwpu.edu.in",
-  fullName: "Aarav Deshmukh",
-  prn: "1032220845",
-  department: "Computer Science & Engineering",
-  programme: "B.Tech",
-  academicYear: "Third Year",
+  email: "",
+  fullName: "",
+  prn: "",
+  department: "",
+  programme: "",
+  academicYear: "",
 };
 export const departments = [
   "Computer Science & Engineering",
@@ -251,191 +263,11 @@ export const resourceOptions = {
   ],
   Consumables: ["PLA Filament", "Acrylic Sheets", "Jumper Wires", "PCB Blanks", "MDF Board"],
 };
-export const initialProjects: Project[] = [
-  {
-    id: "p1",
-    name: "Autonomous Campus Rover",
-    description: "A LiDAR-guided rover that maps and patrols the campus perimeter autonomously.",
-    leader: "Aarav Deshmukh",
-    leaderEmail: defaultProfile.email,
-    members: [directoryStudents[0]!, directoryStudents[3]!],
-    mentor: "Prof. Amit Shirke — Robotics",
-    status: "Verified",
-    resources: ["Robotic Arm", "CAD Workstation", "Jumper Wires"],
-    consumables: ["Jumper Wires"],
-    invitedEmails: [],
-    createdAt: "12 Aug 2026",
-  },
-  {
-    id: "p2",
-    name: "IoT Air Quality Grid",
-    description: "Distributed ESP32 sensor nodes streaming live AQI data across the campus.",
-    leader: "Aarav Deshmukh",
-    members: [directoryStudents[1]!],
-    mentor: "Prof. Rohan Bhide — E&TC",
-    status: "Mentor Approval Pending",
-    resources: ["Soldering Station", "PCB Blanks", "Oscilloscope"],
-    consumables: ["PCB Blanks"],
-    invitedEmails: [],
-    teamInvitations: [
-      { email: "rehan.shaikh@mitwpu.edu.in", name: "Rehan Shaikh", status: "Accepted" },
-    ],
-    createdAt: "13 Aug 2026",
-  },
-  {
-    id: "p3",
-    name: "Modular Prosthetic Hand",
-    description: "3D printed low-cost prosthetic hand with servo-driven articulated fingers.",
-    leader: "Aarav Deshmukh",
-    members: [directoryStudents[2]!],
-    mentor: "Dr. Sanjana Rao — Mechanical",
-    status: "Team Acceptance Pending",
-    resources: ["FDM 3D Printer", "PLA Filament"],
-    consumables: ["PLA Filament"],
-    invitedEmails: ["tanvi.kulkarni@mitwpu.edu.in"],
-    teamInvitations: [
-      { email: "tanvi.kulkarni@mitwpu.edu.in", name: "Tanvi Kulkarni", status: "Pending" },
-    ],
-    createdAt: "14 Aug 2026",
-  },
-  {
-    id: "p4",
-    name: "Smart Greenhouse Controller",
-    description: "A sensor-driven prototype that regulates a compact campus greenhouse.",
-    leader: "Simran Kaur",
-    members: [directoryStudents[0]!, directoryStudents[1]!],
-    mentor: "Prof. Rohan Bhide — E&TC",
-    status: "Mentor Approval Pending",
-    resources: ["ESP32 Kit", "Ultrasonic Sensor", "Soldering Station"],
-    consumables: ["Jumper Wires", "PCB Blanks"],
-    invitedEmails: [],
-    createdAt: "15 Aug 2026",
-  },
-  {
-    id: "p5",
-    name: "Accessible Navigation Beacon",
-    description: "A BLE-assisted indoor navigation prototype for accessible campus movement.",
-    leader: "Maya Shah",
-    members: [directoryStudents[2]!],
-    mentor: "Prof. Rohan Bhide — E&TC",
-    status: "Verified",
-    resources: ["ESP32 Kit", "Electronics Bench 02"],
-    consumables: ["Jumper Wires"],
-    invitedEmails: [],
-    reviewedAt: "14 Aug 2026, 4:20 pm",
-    reviewedBy: "Prof. Rohan Bhide",
-    createdAt: "11 Aug 2026",
-  },
-  {
-    id: "p6",
-    name: "Solar Irrigation Monitor",
-    description: "A completed sensor prototype for monitoring irrigation flow and solar charging.",
-    leader: "Kabir Menon",
-    members: [directoryStudents[0]!],
-    mentor: "Prof. Rohan Bhide — E&TC",
-    status: "Archived",
-    resources: ["ESP32 Kit", "Oscilloscope"],
-    consumables: ["PCB Blanks"],
-    invitedEmails: [],
-    reviewedAt: "08 Aug 2026, 11:15 am",
-    reviewedBy: "Prof. Rohan Bhide",
-    createdAt: "02 Aug 2026",
-  },
-];
-export const initialReservations: Reservation[] = [
-  {
-    id: "r1",
-    projectId: "p1",
-    projectName: "Autonomous Campus Rover",
-    date: "Mon, 17 Aug",
-    slot: "10:30 – 11:30",
-    attendees: 3,
-    participantIds: ["leader", "s2", "s5"],
-    status: "Active",
-    resources: ["Robotic Arm", "CAD Workstation"],
-    attendance: {
-      leader: { status: "Expected" },
-      s2: { status: "Expected" },
-      s5: { status: "Expected" },
-    },
-  },
-  {
-    id: "r2",
-    projectId: "p1",
-    projectName: "Autonomous Campus Rover",
-    date: "Tue, 18 Aug",
-    slot: "14:30 – 15:30",
-    attendees: 2,
-    participantIds: ["leader", "s2"],
-    status: "Active",
-    resources: ["Robotic Arm", "CAD Workstation"],
-    attendance: { leader: { status: "Expected" }, s2: { status: "Expected" } },
-  },
-  {
-    id: "r3",
-    projectId: "p1",
-    projectName: "Autonomous Campus Rover",
-    date: "Wed, 12 Aug",
-    slot: "10:30 – 11:30",
-    attendees: 3,
-    participantIds: ["leader", "s2", "s5"],
-    status: "Completed",
-    resources: ["Robotic Arm", "CAD Workstation"],
-    attendance: {
-      leader: { status: "Exited", enteredAt: "10:32", exitedAt: "11:28" },
-      s2: { status: "Exited", enteredAt: "10:34", exitedAt: "11:28" },
-      s5: { status: "Exited", enteredAt: "10:36", exitedAt: "11:25" },
-    },
-  },
-  {
-    id: "r4",
-    projectId: "p2",
-    projectName: "IoT Air Quality Grid",
-    date: "Fri, 07 Aug",
-    slot: "14:30 – 15:30",
-    attendees: 2,
-    participantIds: ["leader", "s3"],
-    status: "Cancelled",
-    resources: ["Soldering Station", "Oscilloscope"],
-    cancelledReason: "Team member unavailable",
-    cancelledAt: "06 Aug 2026, 5:20 pm",
-  },
-  {
-    id: "r5",
-    projectId: "p1",
-    projectName: "Autonomous Campus Rover",
-    date: "Mon, 03 Aug",
-    slot: "09:30 – 10:30",
-    attendees: 2,
-    participantIds: ["leader", "s2"],
-    status: "No Show",
-    resources: ["CAD Workstation"],
-    noShowReason: "Team did not arrive during the attendance window",
-    noShowAt: "03 Aug 2026, 9:50 am",
-  },
-];
-export const initialVisits: Visit[] = [
-  {
-    id: "v1",
-    ownerEmail: defaultProfile.email,
-    type: "Project Slot",
-    title: "Autonomous Campus Rover",
-    date: "12 Aug 2026",
-    entry: "10:32",
-    exit: "11:28",
-    status: "Completed",
-  },
-  {
-    id: "v2",
-    ownerEmail: defaultProfile.email,
-    type: "Quick Visit",
-    title: "Component pickup",
-    date: "09 Aug 2026",
-    entry: "15:04",
-    exit: "15:21",
-    status: "Completed",
-  },
-];
+// The app starts with no projects, bookings or visits — everything is created
+// live in the app and persisted to localStorage so the full flow can be tested.
+export const initialProjects: Project[] = [];
+export const initialReservations: Reservation[] = [];
+export const initialVisits: Visit[] = [];
 export const equipmentCatalogue: Equipment[] = [
   {
     id: "e1",
@@ -451,6 +283,13 @@ export const equipmentCatalogue: Equipment[] = [
     lab: "Main MakerSpace",
     createdAt: "01 Aug 2026",
     updatedAt: "15 Aug 2026",
+    instructions: [
+      "Slice your model before your session — lab assistants can help with settings.",
+      "Check the bed is clean and level before starting a print.",
+      "Long prints (4h+) need lab assistant approval.",
+      "Never leave a first layer unattended.",
+    ],
+    uploadSupport: { label: "Upload your print file", accept: ".stl,.3mf,.obj,.gcode" },
   },
   {
     id: "e2",
@@ -468,6 +307,12 @@ export const equipmentCatalogue: Equipment[] = [
     lab: "Main MakerSpace",
     createdAt: "01 Aug 2026",
     updatedAt: "15 Aug 2026",
+    instructions: [
+      "Laser operation requires a trained lab assistant present at all times.",
+      "Only approved materials — no PVC, vinyl or unknown plastics.",
+      "Keep the fume extractor running for the full job.",
+    ],
+    uploadSupport: { label: "Upload your cut file", accept: ".svg,.dxf,.ai,.pdf" },
   },
   {
     id: "e3",
@@ -483,6 +328,11 @@ export const equipmentCatalogue: Equipment[] = [
     lab: "Electronics Zone",
     createdAt: "01 Aug 2026",
     updatedAt: "14 Aug 2026",
+    instructions: [
+      "Wear the provided safety glasses while soldering.",
+      "Set irons to 320 °C for lead-free solder unless told otherwise.",
+      "Return probes and leads to the bench rack after use.",
+    ],
   },
   {
     id: "e4",
@@ -498,6 +348,11 @@ export const equipmentCatalogue: Equipment[] = [
     lab: "Robotics Zone",
     createdAt: "02 Aug 2026",
     updatedAt: "15 Aug 2026",
+    instructions: [
+      "Complete the 15-minute induction before first use.",
+      "Keep the work envelope clear while the arm is powered.",
+      "Home the arm before ending your session.",
+    ],
   },
   {
     id: "e5",
@@ -505,14 +360,60 @@ export const equipmentCatalogue: Equipment[] = [
     category: "Workstations",
     status: "Available",
     image: eqWorkstation,
-    specs: ["i7 / 32 GB / RTX", "SolidWorks"],
-    description: "Design and simulation workstation.",
+    specs: ["i7 / 32 GB / RTX 4070", "SolidWorks · Fusion 360 · KiCad", "Dual 4K displays"],
+    description:
+      "GPU-accelerated design and simulation workstation with Wacom tablets for detailed modelling work.",
     totalQuantity: 8,
     availableQuantity: 8,
     visible: true,
     lab: "CAD Studio",
     createdAt: "02 Aug 2026",
     updatedAt: "12 Aug 2026",
+    instructions: [
+      "Save your work to your own cloud storage — pods are wiped nightly.",
+      "Licensed software must not be copied off the workstation.",
+    ],
+  },
+  {
+    id: "e6",
+    name: "Formlabs Form 3+",
+    category: "3D Printing",
+    status: "Available",
+    image: eq3dPrinter,
+    specs: ["SLA resin", "50-micron layer detail", "145 × 145 × 185 mm build"],
+    description:
+      "High-detail resin printer for precision parts, enclosures and smooth surface finishes.",
+    totalQuantity: 2,
+    availableQuantity: 2,
+    visible: true,
+    lab: "Main MakerSpace",
+    createdAt: "03 Aug 2026",
+    updatedAt: "15 Aug 2026",
+    instructions: [
+      "Resin printing requires gloves — collect a pair from the desk.",
+      "Prints are washed and cured by lab assistants after your session.",
+    ],
+    uploadSupport: { label: "Upload your print file", accept: ".stl,.form,.3mf" },
+  },
+  {
+    id: "e7",
+    name: "ESP32 IoT Dev Crate",
+    category: "Sensors & Actuators",
+    status: "Available",
+    image: eqRobotics,
+    specs: ["ESP32 + Raspberry Pi kits", "IMU · LIDAR · Ultrasonic suites", "Servo & BLDC drivers"],
+    description:
+      "Checkout crate of microcontrollers, sensor suites and actuators for embedded and IoT builds.",
+    totalQuantity: 12,
+    availableQuantity: 9,
+    visible: true,
+    lab: "Robotics Zone",
+    createdAt: "03 Aug 2026",
+    updatedAt: "14 Aug 2026",
+    instructions: [
+      "Sign the crate out and back in with a lab assistant.",
+      "Report damaged components — don't return them silently.",
+    ],
   },
 ];
 export const initialConsumables: Consumable[] = [
@@ -606,34 +507,9 @@ export const quickVisitPurposes = [
   "Return material",
   "Explore equipment",
 ];
-export const initialNotifications: Notification[] = [
-  {
-    id: "n1",
-    title: "Mentor approval pending",
-    body: "Prof. Rohan Bhide has your project for review.",
-    href: "/projects",
-    read: false,
-    createdAt: "Today",
-  },
-  {
-    id: "n2",
-    title: "Upcoming slot",
-    body: "Campus Rover is booked for 17 Aug at 10:30.",
-    href: "/book",
-    read: false,
-    createdAt: "Today",
-  },
-];
+export const initialNotifications: Notification[] = [];
+// Staff accounts the university provisions — students are added as they sign in.
 export const initialUsers: AppUser[] = [
-  {
-    id: "u1",
-    name: "Aarav Deshmukh",
-    email: defaultProfile.email,
-    prn: defaultProfile.prn,
-    role: "Student",
-    active: true,
-    firstSignInAt: "12 Aug 2026",
-  },
   {
     id: "u2",
     name: "Prof. Rohan Bhide",

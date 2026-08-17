@@ -125,10 +125,12 @@ function Operations() {
     const patch: Partial<Equipment> = {
       status: equipmentStatus,
       availableQuantity: equipmentStatus === "Available" ? equipmentItem.totalQuantity : 0,
-      availabilityReasonCategory:
-        equipmentStatus === "Available" ? undefined : equipmentReasonCategory,
-      availabilityReason:
-        equipmentStatus === "Available" ? undefined : equipmentReason.trim() || undefined,
+      ...(equipmentStatus !== "Available"
+        ? { availabilityReasonCategory: equipmentReasonCategory }
+        : {}),
+      ...(equipmentStatus !== "Available" && equipmentReason.trim()
+        ? { availabilityReason: equipmentReason.trim() }
+        : {}),
     };
     updateEquipment(equipmentItem.id, patch);
     setEquipmentItem(null);

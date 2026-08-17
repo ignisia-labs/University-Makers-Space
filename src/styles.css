@@ -247,6 +247,30 @@
   min-width: 2.75rem;
 }
 
+@keyframes signin-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.signin-progress {
+  animation: signin-progress 2s ease-in-out forwards;
+}
+
+/* Frosted "liquid glass" surface — used by the mobile tab bar. */
+@utility glass-bar {
+  background: color-mix(in oklch, var(--color-card) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid color-mix(in oklch, var(--color-border) 70%, transparent);
+  box-shadow:
+    0 8px 32px color-mix(in oklch, var(--color-primary) 12%, transparent),
+    0 1px 0 color-mix(in oklch, white 55%, transparent) inset;
+}
+
 @utility form-input {
   width: 100%;
   min-height: 2.75rem;
@@ -261,32 +285,5 @@
   &:focus-visible {
     border-color: var(--color-ring);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-ring) 18%, transparent);
-  }
-}
-
-/* ── Guided Journey step cards ─────────────────────────────────── */
-@keyframes journey-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.journey-step {
-  opacity: 0;
-  animation: journey-fade-up 0.5s ease forwards;
-}
-
-/* ── Resources infinite marquee ────────────────────────────────── */
-@keyframes marquee-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
   }
 }

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { academicYears, departments, programmes } from "@/lib/makerspace-data";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/onboarding")({
   validateSearch: z.object({ invite: z.string().optional() }),
@@ -22,7 +23,7 @@ export const Route = createFileRoute("/onboarding")({
 });
 
 type FormErrors = Partial<
-  Record<"fullName" | "prn" | "department" | "programme" | "academicYear", string>
+  Record<"email" | "fullName" | "prn" | "department" | "programme" | "academicYear", string>
 >;
 
 function Onboarding() {
@@ -47,6 +48,8 @@ function Onboarding() {
 
   const validate = () => {
     const next: FormErrors = {};
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim()))
+      next.email = "Enter your institutional email.";
     if (!form.fullName.trim()) next.fullName = "Enter your full name.";
     if (!form.prn.trim()) next.prn = "Enter your PRN.";
     if (!form.department) next.department = "Select your department.";
@@ -58,14 +61,14 @@ function Onboarding() {
 
   if (isComplete) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#F0EFFF] px-4 py-10">
-        <section className="w-full max-w-md p-8 bg-white border border-zinc-200 rounded-3xl shadow-sm text-center animate-in fade-in zoom-in-95 duration-500">
-          <span className="mx-auto grid size-12 place-items-center rounded-full bg-[#2CC5B0]/10 text-[#2CC5B0]">
+      <main className="grid min-h-screen place-items-center bg-background px-4 py-10">
+        <section className="card-surface animate-in fade-in zoom-in-95 w-full max-w-md p-8 text-center duration-500">
+          <span className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
             <CheckCircle2 className="size-6" />
           </span>
-          <h1 className="mt-5 text-2xl font-serif font-light text-zinc-900">Profile Saved</h1>
-          <div className="mt-4 inline-flex items-center gap-2 text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
-            <LoaderCircle className="size-3.5 animate-spin" /> Redirecting...
+          <h1 className="mt-5 font-serif text-2xl font-light tracking-wide">Profile saved</h1>
+          <div className="mt-4 inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <LoaderCircle className="size-3.5 animate-spin" /> Taking you to your dashboard
           </div>
         </section>
       </main>
@@ -73,12 +76,17 @@ function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F0EFFF] text-zinc-900 flex flex-col justify-center items-center px-4 py-12 sm:px-6">
-      <div className="w-full max-w-lg bg-white border border-zinc-200 rounded-[2.5rem] p-8 sm:p-10 shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* Clean, Elegant Serif Heading */}
-        <h1 className="text-3xl sm:text-4xl font-serif font-light text-[#0F172A] tracking-wide">
-          Complete Student Profile
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 sm:px-6">
+      <div className="card-surface animate-in fade-in slide-in-from-bottom-4 w-full max-w-lg p-8 duration-500 sm:p-10">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+          One last step
+        </p>
+        <h1 className="mt-3 font-serif text-3xl font-light tracking-wide sm:text-4xl">
+          Complete your profile
         </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          This is how mentors and lab staff will recognise you.
+        </p>
 
         {/* Form */}
         <form
@@ -101,58 +109,28 @@ function Onboarding() {
             }, 450);
           }}
         >
-          {/* Email (Read only) */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-400">
-              Institutional Email
-            </label>
-            <input
-              type="email"
-              value={form.email}
-              readOnly
-              className="w-full h-11 px-4 rounded-xl border border-zinc-200 bg-zinc-50/50 text-zinc-500 font-mono text-xs outline-none cursor-not-allowed"
-            />
-          </div>
-
-          {/* Full name input */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
-              Full Name
-            </label>
-            <input
-              type="text"
-              value={form.fullName}
-              onChange={(e) => set("fullName")(e.target.value)}
-              placeholder="e.g. Rahul Sharma"
-              className={`w-full h-11 px-4 rounded-xl border ${
-                errors.fullName
-                  ? "border-rose-400 focus:border-rose-500"
-                  : "border-zinc-200 focus:border-[#1E2B8A]"
-              } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all`}
-            />
-            {errors.fullName && (
-              <p className="text-[10px] font-mono text-rose-500">{errors.fullName}</p>
-            )}
-          </div>
-
-          {/* PRN input */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
-              PRN (Permanent Registration Number)
-            </label>
-            <input
-              type="text"
-              value={form.prn}
-              onChange={(e) => set("prn")(e.target.value)}
-              placeholder="Enter your PRN"
-              className={`w-full h-11 px-4 rounded-xl border ${
-                errors.prn
-                  ? "border-rose-400 focus:border-rose-500"
-                  : "border-zinc-200 focus:border-[#1E2B8A]"
-              } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all`}
-            />
-            {errors.prn && <p className="text-[10px] font-mono text-rose-500">{errors.prn}</p>}
-          </div>
+          <Field
+            label="Institutional Email"
+            type="email"
+            value={form.email}
+            onChange={set("email")}
+            placeholder="you@mitwpu.edu.in"
+            error={errors.email}
+          />
+          <Field
+            label="Full Name"
+            value={form.fullName}
+            onChange={set("fullName")}
+            placeholder="e.g. Rahul Sharma"
+            error={errors.fullName}
+          />
+          <Field
+            label="PRN (Permanent Registration Number)"
+            value={form.prn}
+            onChange={set("prn")}
+            placeholder="Enter your PRN"
+            error={errors.prn}
+          />
 
           {/* Custom Select for Department */}
           <CustomSelect
@@ -185,7 +163,7 @@ function Onboarding() {
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full min-h-12 inline-flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-900 text-xs font-bold tracking-widest text-white uppercase transition-all hover:bg-zinc-800 hover:border-zinc-800 active:scale-[0.98] disabled:cursor-wait cursor-pointer"
+            className="pressable inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary text-xs font-bold uppercase tracking-widest text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-wait"
           >
             {isSaving ? (
               <span className="flex items-center gap-2">
@@ -201,11 +179,48 @@ function Onboarding() {
   );
 }
 
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  error?: string | undefined;
+  type?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[10px] font-mono font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "h-11 w-full rounded-xl border bg-secondary/40 px-4 text-sm outline-none transition-all",
+          error
+            ? "border-destructive focus:border-destructive"
+            : "border-border focus:border-primary focus:ring-2 focus:ring-primary/15",
+        )}
+      />
+      {error && <p className="text-[10px] font-mono text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 interface CustomSelectProps {
   label: string;
   value: string;
   options: string[];
-  error?: string;
+  error?: string | undefined;
   onChange: (value: string) => void;
 }
 
@@ -224,35 +239,37 @@ function CustomSelect({ label, value, options, error, onChange }: CustomSelectPr
   }, []);
 
   return (
-    <div className="space-y-1.5 relative" ref={containerRef}>
-      <label className="text-[10px] font-mono tracking-wider uppercase text-zinc-500 font-semibold">
+    <div className="relative space-y-1.5" ref={containerRef}>
+      <label className="text-[10px] font-mono font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </label>
 
-      {/* Trigger Box */}
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full h-11 px-4 rounded-xl border flex items-center justify-between text-left ${
+        className={cn(
+          "flex h-11 w-full items-center justify-between rounded-xl border bg-secondary/40 px-4 text-left text-sm outline-none transition-all",
           error
-            ? "border-rose-400"
+            ? "border-destructive"
             : isOpen
-              ? "border-[#1E2B8A] ring-1 ring-[#1E2B8A]/10"
-              : "border-zinc-200"
-        } bg-[#F0EFFF]/40 text-sm text-zinc-800 outline-none transition-all cursor-pointer`}
+              ? "border-primary ring-2 ring-primary/15"
+              : "border-border hover:border-primary/40",
+        )}
       >
-        <span className={value ? "text-zinc-800" : "text-zinc-400"}>
+        <span className={value ? "text-foreground" : "text-muted-foreground"}>
           {value || `Select ${label.toLowerCase()}`}
         </span>
         <ChevronDown
-          className={`size-4 text-zinc-400 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+          className={cn(
+            "size-4 text-muted-foreground transition-transform duration-300",
+            isOpen && "rotate-180",
+          )}
         />
       </button>
 
-      {/* Dropdown Options Menu */}
       {isOpen && (
-        <div className="absolute z-20 w-full mt-1 bg-white border border-zinc-200 rounded-2xl shadow-lg max-h-56 overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-200 no-scrollbar">
-          <div className="p-1 space-y-0.5">
+        <div className="animate-in fade-in slide-in-from-top-1 absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-border bg-card shadow-lg duration-200">
+          <div className="space-y-0.5 p-1">
             {options.map((option) => {
               const isSelected = option === value;
               return (
@@ -263,11 +280,12 @@ function CustomSelect({ label, value, options, error, onChange }: CustomSelectPr
                     onChange(option);
                     setIsOpen(false);
                   }}
-                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-mono transition-all cursor-pointer ${
+                  className={cn(
+                    "w-full rounded-xl px-4 py-2.5 text-left text-xs font-mono transition-all",
                     isSelected
-                      ? "bg-[#1E2B8A]/10 text-[#1E2B8A] font-semibold"
-                      : "text-zinc-700 hover:bg-[#F0EFFF] hover:text-zinc-950"
-                  }`}
+                      ? "bg-primary/10 font-semibold text-primary"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
                 >
                   {option}
                 </button>
@@ -277,7 +295,7 @@ function CustomSelect({ label, value, options, error, onChange }: CustomSelectPr
         </div>
       )}
 
-      {error && <p className="text-[10px] font-mono text-rose-500 mt-1">{error}</p>}
+      {error && <p className="mt-1 text-[10px] font-mono text-destructive">{error}</p>}
     </div>
   );
 }

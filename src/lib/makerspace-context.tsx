@@ -25,6 +25,7 @@ import {
   type AuditEvent,
   type BookingSlot,
   type Equipment,
+  type EquipmentUpload,
   type LabConfig,
   type Consumable,
   type Notification,
@@ -55,6 +56,8 @@ type State = {
   role: AppRole;
   authenticated: boolean;
   onboarded: boolean;
+  /** False until the persisted session has been read, so guards don't redirect too early. */
+  hydrated: boolean;
   projects: Project[];
   reservations: Reservation[];
   visits: Visit[];
@@ -66,15 +69,21 @@ type State = {
   equipmentCategories: string[];
   config: LabConfig;
   slots: BookingSlot[];
+  uploads: EquipmentUpload[];
   notificationPreferences: NotificationPreferences;
+  addUpload: (upload: Omit<EquipmentUpload, "id" | "uploadedAt">) => void;
+  removeUpload: (id: string) => void;
   completeOnboarding: (p: StudentProfile) => void;
   beginPrototypeSession: (role?: AppRole) => void;
   beginNewStudentSession: () => void;
   signOut: () => void;
   addProject: (p: Omit<Project, "id" | "createdAt">) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
+  verifyProject: (id: string) => void;
   addReservation: (r: Omit<Reservation, "id">) => void;
   cancelReservation: (id: string, reason: string) => void;
+  completeReservation: (id: string) => void;
   markReservationNoShow: (id: string, reason: string) => void;
   setBookingAttendance: (
     id: string,
@@ -104,11 +113,20 @@ type State = {
 };
 const Ctx = createContext<State | null>(null);
 const uid = () => Math.random().toString(36).slice(2, 10);
-const STORAGE_KEY = "mitwpu-makerspace-mock-state-v1";
+// "isha.kulkarni@mitwpu.edu.in" → "Isha Kulkarni"
+const nameFromEmail = (email: string) =>
+  email
+    .split("@")[0]!
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join(" ");
+const STORAGE_KEY = "mitwpu-makerspace-mock-state-v3";
 
 type SharedSnapshot = Pick<
   State,
   | "profile"
+  | "authenticated"
   | "onboarded"
   | "projects"
   | "reservations"
@@ -121,6 +139,7 @@ type SharedSnapshot = Pick<
   | "equipmentCategories"
   | "config"
   | "slots"
+  | "uploads"
   | "notificationPreferences"
 >;
 
@@ -147,21 +166,23 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState(initialUsers);
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
   const [equipmentCategories, setEquipmentCategories] = useState(() => [
-    ...new Set(equipmentCatalogue.map((item) => item.category)),
-    "Sensors & Actuators",
+    ...new Set([...equipmentCatalogue.map((item) => item.category), "Sensors & Actuators"]),
   ]);
   const [config, setConfig] = useState(initialConfig);
   const [slots, setSlots] = useState(initialBookingSlots);
+  const [uploads, setUploads] = useState<EquipmentUpload[]>([]);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
     defaultNotificationPreferences,
   );
-  const hydrated = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  const hydratedRef = useRef(false);
   const skipInitialPersist = useRef(true);
   const lastSerialized = useRef("");
 
   useEffect(() => {
     const applySnapshot = (snapshot: SharedSnapshot) => {
       setProfile(snapshot.profile ?? defaultProfile);
+      setAuthenticated(snapshot.authenticated ?? false);
       setOnboarded(snapshot.onboarded ?? false);
       setProjects(snapshot.projects ?? initialProjects);
       setReservations(snapshot.reservations ?? initialReservations);
@@ -171,14 +192,17 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       setNotifications(snapshot.notifications ?? initialNotifications);
       setUsers(snapshot.users ?? initialUsers);
       setAuditLogs(snapshot.auditLogs ?? []);
-      setEquipmentCategories(
-        snapshot.equipmentCategories ?? [
-          ...new Set(equipmentCatalogue.map((item) => item.category)),
-          "Sensors & Actuators",
-        ],
-      );
+      setEquipmentCategories([
+        ...new Set(
+          snapshot.equipmentCategories ?? [
+            ...equipmentCatalogue.map((item) => item.category),
+            "Sensors & Actuators",
+          ],
+        ),
+      ]);
       setConfig(snapshot.config ?? initialConfig);
       setSlots(snapshot.slots ?? initialBookingSlots);
+      setUploads(snapshot.uploads ?? []);
       setNotificationPreferences(
         snapshot.notificationPreferences ?? defaultNotificationPreferences,
       );
@@ -187,7 +211,8 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     const snapshot = readSnapshot(saved);
     if (snapshot) applySnapshot(snapshot);
     lastSerialized.current = saved ?? "";
-    hydrated.current = true;
+    hydratedRef.current = true;
+    setHydrated(true);
 
     const syncAcrossTabs = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY || !event.newValue) return;
@@ -201,13 +226,14 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hydrated.current) return;
+    if (!hydratedRef.current) return;
     if (skipInitialPersist.current) {
       skipInitialPersist.current = false;
       return;
     }
     const snapshot: SharedSnapshot = {
       profile,
+      authenticated,
       onboarded,
       projects,
       reservations,
@@ -220,6 +246,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      uploads,
       notificationPreferences,
     };
     const serialized = JSON.stringify(snapshot);
@@ -228,6 +255,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     lastSerialized.current = serialized;
   }, [
     profile,
+    authenticated,
     onboarded,
     projects,
     reservations,
@@ -240,6 +268,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     equipmentCategories,
     config,
     slots,
+    uploads,
     notificationPreferences,
   ]);
   const actor =
@@ -273,6 +302,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       role,
       authenticated,
       onboarded,
+      hydrated,
       projects,
       reservations,
       visits,
@@ -284,10 +314,42 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      uploads,
       notificationPreferences,
+      addUpload(upload) {
+        setUploads((prev) => [
+          { ...upload, id: uid(), uploadedAt: new Date().toLocaleString("en-IN") },
+          ...prev,
+        ]);
+        audit("Uploaded file", upload.fileName, { entityType: "Equipment Upload" });
+      },
+      removeUpload(id) {
+        setUploads((prev) => prev.filter((upload) => upload.id !== id));
+      },
       completeOnboarding(p) {
         setProfile(p);
         setOnboarded(true);
+        // Register the real student so staff workspaces reflect actual sign-ins.
+        setUsers((prev) =>
+          prev.some((user) => user.email.toLowerCase() === p.email.toLowerCase())
+            ? prev
+            : [
+                {
+                  id: uid(),
+                  name: p.fullName,
+                  email: p.email,
+                  prn: p.prn,
+                  role: "Student",
+                  active: true,
+                  firstSignInAt: new Date().toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  }),
+                },
+                ...prev,
+              ],
+        );
       },
       beginPrototypeSession(nextRole = "Student") {
         setRole(nextRole);
@@ -295,14 +357,16 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       },
       beginNewStudentSession() {
         // Development sign-in mirrors the institutional identity returned by Google.
-        // The profile remains uncompleted until the onboarding form is submitted.
-        setProfile(defaultProfile);
+        // A returning user keeps their persisted profile and onboarding state.
         setRole("Student");
         setAuthenticated(true);
-        setOnboarded(false);
+        if (!onboarded) setProfile(defaultProfile);
       },
       signOut() {
+        // A deliberate sign-out clears the identity, so the next sign-in starts at onboarding.
         setAuthenticated(false);
+        setOnboarded(false);
+        setProfile(defaultProfile);
         setRole("Student");
         window.location.href = "/";
       },
@@ -316,6 +380,59 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       updateProject(id, patch) {
         setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
         audit("Updated project", id);
+      },
+      verifyProject(id) {
+        const reviewedAt = new Date().toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        // The override simulates the whole chain: every invited teammate accepts
+        // (their onboarding auto-completes), then the mentor approves.
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id !== id) return p;
+            const memberEmails = new Set(
+              p.members.map((member) => member.email?.toLowerCase()).filter(Boolean),
+            );
+            const joiningMembers = p.invitedEmails
+              .filter((email) => !memberEmails.has(email.toLowerCase()))
+              .map((email) => ({
+                id: uid(),
+                name: nameFromEmail(email),
+                prn: `10322${String(Math.floor(10000 + Math.random() * 90000))}`,
+                department: "MIT-WPU",
+                email,
+              }));
+            return {
+              ...p,
+              members: [...p.members, ...joiningMembers],
+              invitedEmails: [],
+              ...(p.teamInvitations
+                ? {
+                    teamInvitations: p.teamInvitations.map((invitation) =>
+                      invitation.status === "Pending"
+                        ? { ...invitation, status: "Accepted" as const }
+                        : invitation,
+                    ),
+                  }
+                : {}),
+              status: "Verified" as const,
+              reviewedAt,
+              reviewedBy: p.mentor.split(" — ")[0]!,
+            };
+          }),
+        );
+        audit("Verified project", id, { entityType: "Project", newValue: "Verified" });
+      },
+      deleteProject(id) {
+        setProjects((prev) => prev.filter((p) => p.id !== id));
+        setReservations((prev) =>
+          prev.filter((r) => !(r.projectId === id && r.status === "Active")),
+        );
+        audit("Deleted project", id, { entityType: "Project" });
       },
       addReservation(r) {
         setReservations((prev) => [
@@ -346,6 +463,35 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
           ),
         );
         audit("Cancelled booking", id, { entityType: "Booking", reason });
+      },
+      completeReservation(id) {
+        const booking = reservations.find((item) => item.id === id);
+        setReservations((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, status: "Completed" } : r)),
+        );
+        // A completed session is a real visit — record it so history and lab time are accurate.
+        if (booking) {
+          const now = new Date();
+          const [entry = "", exit = ""] = booking.slot.split(/\s*–\s*/);
+          setVisits((prev) => [
+            {
+              id: `booking-${booking.id}`,
+              ownerEmail: profile.email,
+              type: "Project Slot",
+              title: booking.projectName,
+              date: now.toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              }),
+              entry,
+              exit,
+              status: "Completed",
+            },
+            ...prev.filter((visit) => visit.id !== `booking-${booking.id}`),
+          ]);
+        }
+        audit("Completed session", id, { entityType: "Booking" });
       },
       markReservationNoShow(id, reason) {
         const timestamp = new Date().toLocaleString("en-IN");
@@ -627,6 +773,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       role,
       authenticated,
       onboarded,
+      hydrated,
       projects,
       reservations,
       visits,
@@ -638,6 +785,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       equipmentCategories,
       config,
       slots,
+      uploads,
       notificationPreferences,
       actor?.name,
       audit,

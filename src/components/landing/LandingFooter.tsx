@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 
 export function LandingFooter() {
   const currentYear = new Date().getFullYear();
@@ -47,7 +48,7 @@ export function LandingFooter() {
           style={{
             fontSize: "clamp(48px, 12vw, 150px)",
             letterSpacing: "-0.04em",
-            WebkitTextStroke: "1px #e2dfd5",
+            WebkitTextStroke: "1px #DBD9F2",
           }}
         >
           MAKERSPACE
@@ -55,16 +56,9 @@ export function LandingFooter() {
       </div>
 
       {/* Copyright */}
-      <div className="w-full max-w-7xl flex flex-col sm:flex-row items-center justify-between pt-6 border-t border-zinc-100 gap-3 text-[10px] font-mono text-zinc-400">
+      <div className="flex w-full max-w-7xl flex-col items-center justify-between gap-3 border-t border-zinc-100 pt-6 text-[10px] font-mono text-zinc-400 sm:flex-row">
         <span>© {currentYear} MIT World Peace University. All rights reserved.</span>
-        <a
-          href="https://ignisia.tech"
-          target="_blank"
-          rel="noreferrer"
-          className="hover:text-[#1E2B8A] transition-colors"
-        >
-          Built by Ignisia
-        </a>
+        <IgnisiaCredit />
       </div>
     </footer>
   );

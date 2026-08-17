@@ -22,7 +22,6 @@ export function ResponsiveModal({
   title,
   description,
   size = "default",
-  desktopScrollable = true,
   children,
 }: {
   open: boolean;
@@ -30,7 +29,6 @@ export function ResponsiveModal({
   title: string;
   description?: string;
   size?: "default" | "wide";
-  desktopScrollable?: boolean;
   children: ReactNode;
 }) {
   const isMobile = useIsMobile();
@@ -38,12 +36,14 @@ export function ResponsiveModal({
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="max-h-[92vh] overflow-x-hidden">
-          <DrawerHeader className="text-left">
+        <DrawerContent className="max-h-[92dvh] overflow-x-hidden">
+          <DrawerHeader className="shrink-0 text-left">
             <DrawerTitle>{title}</DrawerTitle>
             {description && <DrawerDescription>{description}</DrawerDescription>}
           </DrawerHeader>
-          <div className="min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-8">{children}</div>
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
+            {children}
+          </div>
         </DrawerContent>
       </Drawer>
     );
@@ -53,16 +53,18 @@ export function ResponsiveModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "max-h-[92vh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto",
-          size === "wide" ? "sm:max-w-4xl" : "sm:max-w-lg",
-          !desktopScrollable && "lg:overflow-y-hidden",
+          // The body scrolls, not the dialog, so headers stay put and nothing gets clipped.
+          "flex max-h-[92dvh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden",
+          size === "wide" ? "sm:max-w-5xl lg:max-w-6xl" : "sm:max-w-xl",
         )}
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
-        <div className="min-w-0 overflow-x-hidden">{children}</div>
+        <div className="-mx-1 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-1 pb-1">
+          {children}
+        </div>
       </DialogContent>
     </Dialog>
   );
