@@ -5,12 +5,17 @@
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { cloudflare } from "@cloudflare/vite-plugin";
 
 export default defineConfig({
   // This repository ships the frontend only. Backend deployment packaging is owned
   // by the backend team and is intentionally not part of the frontend build.
   nitro: false,
   vite: {
+    // Explicit plugins array prevents Wrangler from trying to auto-modify the file
+    plugins: [
+      cloudflare({ viteEnvironment: { name: "ssr" } }),
+    ],
     // Keep symlinked dependency paths intact. This avoids generated imports resolving
     // through the workspace's apostrophe-containing absolute path during Nitro builds.
     resolve: { preserveSymlinks: true },
