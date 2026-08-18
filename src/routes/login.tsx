@@ -9,6 +9,7 @@ import { z } from "zod";
 export const Route = createFileRoute("/login")({
   validateSearch: z.object({
     error: z.string().optional(),
+    mode: z.enum(["email"]).optional(),
   }),
   component: Login,
 });
@@ -31,9 +32,13 @@ const prototypeRoles: AppRole[] = [
 
 function Login() {
   const navigate = useNavigate();
-  const { authenticated, role, beginPrototypeSession, beginNewStudentSession } = useMakerSpace();
+  const search = Route.useSearch();
+  const { authenticated, role, beginPrototypeSession, beginNewStudentSession, signInWithEmail } =
+    useMakerSpace();
   const [isChecking, setIsChecking] = useState(false);
   const [devMenuOpen, setDevMenuOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
 
   useEffect(() => {
     if (authenticated && !isChecking) {
@@ -50,7 +55,24 @@ function Login() {
       }, 450);
       return;
     }
-    window.location.assign("/api/auth/google");
+    navigate({ to: "/login", search: { mode: "email" } });
+  };
+
+  const handleEmailSignIn = () => {
+    const normalized = email.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+      setEmailError("Enter a valid institutional email.");
+      return;
+    }
+
+    setIsChecking(true);
+    const exists = signInWithEmail(normalized);
+    if (import.meta.env.DEV) {
+      beginNewStudentSession();
+      navigate({ to: "/onboarding" });
+      return;
+    }
+    navigate({ to: exists ? "/dashboard" : "/onboarding" });
   };
 
   const previewWorkspace = (previewRole: AppRole) => {
@@ -61,6 +83,53 @@ function Login() {
       navigate({ to: roleHomes[previewRole] });
     }, 200);
   };
+
+  if (search.mode === "email") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-6 py-12 text-white">
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-xs font-mono uppercase tracking-[0.28em] text-white/60">MIT-WPU MakerSpace</p>
+          <h1 className="mt-4 text-3xl font-semibold text-white">Sign in</h1>
+          <p className="mt-2 text-sm text-white/70">
+            Use your institutional email to continue to your workspace.
+          </p>
+
+          <label className="mt-6 block text-sm font-medium text-white/80" htmlFor="email-input">
+            Email address
+          </label>
+          <input
+            id="email-input"
+            type="email"
+            value={email}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setEmailError("");
+            }}
+            placeholder="name@mitwpu.edu.in"
+            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-base text-white outline-none ring-0 placeholder:text-white/35 focus:border-white/30"
+          />
+          {emailError && <p className="mt-2 text-sm text-rose-300">{emailError}</p>}
+
+          <button
+            type="button"
+            onClick={handleEmailSignIn}
+            disabled={isChecking}
+            className="mt-6 w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:opacity-60"
+          >
+            {isChecking ? "Signing in..." : "Continue"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/login" })}
+            className="mt-3 w-full rounded-full border border-white/15 px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
+          >
+            Back
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative w-full h-screen bg-black flex flex-col justify-center items-center overflow-hidden">

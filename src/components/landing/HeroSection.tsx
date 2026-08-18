@@ -38,7 +38,7 @@ export function HeroSection() {
       setStage("email");
       return;
     }
-    window.location.assign("/api/auth/google");
+    navigate({ to: "/login", search: { mode: "email" } });
   };
 
   if (stage === "loading") return <SignInTransition />;
