@@ -98,7 +98,9 @@ export type Visit = {
   entry: string;
   exit: string | null;
   status: "Requested" | "Active" | "Completed";
+  expectedDuration?: string;
 };
+export type EquipmentUnitStatus = "Available" | "In Use" | "Under Maintenance";
 export type EquipmentCategory = string;
 export type Equipment = {
   id: string;
@@ -120,6 +122,8 @@ export type Equipment = {
   updatedAt: string;
   instructions?: string[];
   uploadSupport?: { label: string; accept: string };
+  /** Live status per physical unit; length matches totalQuantity. */
+  units?: EquipmentUnitStatus[];
 };
 export type EquipmentUpload = {
   id: string;

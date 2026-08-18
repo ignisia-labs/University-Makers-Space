@@ -46,6 +46,7 @@ function ProjectsPage() {
     updateProject,
     deleteProject,
     verifyProject,
+    acceptProjectInvitation,
   } = useMakerSpace();
   const { create } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -61,6 +62,9 @@ function ProjectsPage() {
       isLeaderOf(project) ||
       project.members.some((member) => member.email?.toLowerCase() === profile.email.toLowerCase()),
   );
+  const invitations = projects.filter((project) =>
+    project.invitedEmails.some((invited) => invited.toLowerCase() === profile.email.toLowerCase()),
+  );
 
   useEffect(() => {
     if (create) {
@@ -75,6 +79,44 @@ function ProjectsPage() {
       subtitle={`${visibleProjects.length} ${visibleProjects.length === 1 ? "project" : "projects"}`}
     >
       <div className="mx-auto max-w-3xl">
+        {invitations.length > 0 && (
+          <section className="mb-6" aria-label="Invitations">
+            <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-primary">
+              Invitations
+            </p>
+            <div className="card-surface divide-y divide-border overflow-hidden border-primary/25">
+              {invitations.map((project) => (
+                <div
+                  key={project.id}
+                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6"
+                >
+                  <div className="min-w-0">
+                    <h2 className="truncate font-serif text-lg font-light tracking-wide">
+                      {project.name}
+                    </h2>
+                    <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                      {project.description}
+                    </p>
+                    <p className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                      Invited by {project.leader} · {project.mentor}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      acceptProjectInvitation(project.id, profile);
+                      toast.success(`You joined ${project.name}`);
+                    }}
+                    className="pressable inline-flex min-h-11 shrink-0 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    Join project
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {visibleProjects.length > 0 && (
           <div className="flex justify-end">
             <button

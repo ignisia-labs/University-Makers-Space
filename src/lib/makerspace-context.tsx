@@ -58,6 +58,8 @@ type State = {
   onboarded: boolean;
   /** False until the persisted session has been read, so guards don't redirect too early. */
   hydrated: boolean;
+  /** Every student profile that has completed onboarding on this device. */
+  accounts: StudentProfile[];
   projects: Project[];
   reservations: Reservation[];
   visits: Visit[];
@@ -76,6 +78,8 @@ type State = {
   completeOnboarding: (p: StudentProfile) => void;
   beginPrototypeSession: (role?: AppRole) => void;
   beginNewStudentSession: () => void;
+  /** Email-first sign-in. Returns true when the account already exists (skip onboarding). */
+  signInWithEmail: (email: string) => boolean;
   signOut: () => void;
   addProject: (p: Omit<Project, "id" | "createdAt">) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
@@ -121,11 +125,12 @@ const nameFromEmail = (email: string) =>
     .filter(Boolean)
     .map((part) => part[0]!.toUpperCase() + part.slice(1))
     .join(" ");
-const STORAGE_KEY = "mitwpu-makerspace-mock-state-v3";
+const STORAGE_KEY = "mitwpu-makerspace-mock-state-v4";
 
 type SharedSnapshot = Pick<
   State,
   | "profile"
+  | "accounts"
   | "authenticated"
   | "onboarded"
   | "projects"
@@ -154,6 +159,7 @@ function readSnapshot(value: string | null): SharedSnapshot | null {
 
 export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState(defaultProfile);
+  const [accounts, setAccounts] = useState<StudentProfile[]>([]);
   const [role, setRole] = useState<AppRole>("Student");
   const [authenticated, setAuthenticated] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
@@ -182,6 +188,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const applySnapshot = (snapshot: SharedSnapshot) => {
       setProfile(snapshot.profile ?? defaultProfile);
+      setAccounts(snapshot.accounts ?? []);
       setAuthenticated(snapshot.authenticated ?? false);
       setOnboarded(snapshot.onboarded ?? false);
       setProjects(snapshot.projects ?? initialProjects);
@@ -233,6 +240,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     }
     const snapshot: SharedSnapshot = {
       profile,
+      accounts,
       authenticated,
       onboarded,
       projects,
@@ -255,6 +263,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     lastSerialized.current = serialized;
   }, [
     profile,
+    accounts,
     authenticated,
     onboarded,
     projects,
@@ -299,6 +308,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const value = useMemo<State>(
     () => ({
       profile,
+      accounts,
       role,
       authenticated,
       onboarded,
@@ -329,6 +339,11 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       completeOnboarding(p) {
         setProfile(p);
         setOnboarded(true);
+        // Remember this account so the next sign-in with the same email skips onboarding.
+        setAccounts((prev) => [
+          p,
+          ...prev.filter((account) => account.email.toLowerCase() !== p.email.toLowerCase()),
+        ]);
         // Register the real student so staff workspaces reflect actual sign-ins.
         setUsers((prev) =>
           prev.some((user) => user.email.toLowerCase() === p.email.toLowerCase())
@@ -381,8 +396,23 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
           setOnboarded(false);
         }
       },
+      signInWithEmail(email) {
+        const normalized = email.trim().toLowerCase();
+        const account = accounts.find((candidate) => candidate.email.toLowerCase() === normalized);
+        setRole("Student");
+        setAuthenticated(true);
+        if (account) {
+          setProfile(account);
+          setOnboarded(true);
+          return true;
+        }
+        setProfile({ ...defaultProfile, email: email.trim() });
+        setOnboarded(false);
+        return false;
+      },
       signOut() {
-        // A deliberate sign-out clears the identity, so the next sign-in starts at onboarding.
+        // Sign-out ends the session; the account itself survives, so signing back in
+        // with the same email skips onboarding.
         setAuthenticated(false);
         setOnboarded(false);
         setProfile(defaultProfile);
@@ -485,8 +515,35 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       },
       completeReservation(id) {
         const booking = reservations.find((item) => item.id === id);
+        const exitTime = new Date().toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+        // Completing the session walks everyone out — every attendee is marked exited.
         setReservations((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: "Completed" } : r)),
+          prev.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  status: "Completed",
+                  attendance: Object.fromEntries(
+                    r.participantIds.map((participantId) => {
+                      const current = r.attendance?.[participantId];
+                      return [
+                        participantId,
+                        {
+                          status: "Exited" as const,
+                          ...(current?.enteredAt ? { enteredAt: current.enteredAt } : {}),
+                          exitedAt: current?.exitedAt ?? exitTime,
+                          markedBy: profile.fullName,
+                        },
+                      ];
+                    }),
+                  ),
+                }
+              : r,
+          ),
         );
         // A completed session is a real visit — record it so history and lab time are accurate.
         if (booking) {
@@ -542,34 +599,41 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
           ? projects.find((item) => item.id === booking.projectId)
           : undefined;
         setReservations((prev) =>
-          prev.map((r) =>
-            r.id === id
-              ? {
-                  ...r,
-                  attendance: {
-                    ...r.attendance,
-                    ...Object.fromEntries(
-                      participantIds.map((participantId) => {
-                        const current = r.attendance?.[participantId];
-                        return [
-                          participantId,
-                          status === "Entered"
-                            ? { status, enteredAt: timestamp, markedBy }
-                            : status === "Exited"
-                              ? {
-                                  status,
-                                  ...(current?.enteredAt ? { enteredAt: current.enteredAt } : {}),
-                                  exitedAt: timestamp,
-                                  markedBy,
-                                }
-                              : { status, markedBy },
-                        ];
-                      }),
-                    ),
-                  },
-                }
-              : r,
-          ),
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const nextAttendance = {
+              ...r.attendance,
+              ...Object.fromEntries(
+                participantIds.map((participantId) => {
+                  const current = r.attendance?.[participantId];
+                  return [
+                    participantId,
+                    status === "Entered"
+                      ? { status, enteredAt: timestamp, markedBy }
+                      : status === "Exited"
+                        ? {
+                            status,
+                            ...(current?.enteredAt ? { enteredAt: current.enteredAt } : {}),
+                            exitedAt: timestamp,
+                            markedBy,
+                          }
+                        : { status, markedBy },
+                  ];
+                }),
+              ),
+            };
+            // Once everyone has left, the session is over — it moves to past automatically.
+            const allExited =
+              r.participantIds.length > 0 &&
+              r.participantIds.every(
+                (participantId) => nextAttendance[participantId]?.status === "Exited",
+              );
+            return {
+              ...r,
+              attendance: nextAttendance,
+              ...(allExited && r.status === "Active" ? { status: "Completed" as const } : {}),
+            };
+          }),
         );
         if (booking && project && status !== "Expected") {
           const time = new Date().toLocaleTimeString("en-IN", {
@@ -789,6 +853,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     }),
     [
       profile,
+      accounts,
       role,
       authenticated,
       onboarded,

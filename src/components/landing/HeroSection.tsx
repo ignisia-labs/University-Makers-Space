@@ -12,19 +12,22 @@ const roleHomes = {
 } as const;
 
 export function HeroSection() {
-  const { authenticated, role, onboarded, beginNewStudentSession } = useMakerSpace();
+  const { authenticated, role, signInWithEmail } = useMakerSpace();
   const navigate = useNavigate();
-  const [signingIn, setSigningIn] = useState(false);
+  const [stage, setStage] = useState<"idle" | "email" | "loading">("idle");
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
 
-  // Mimic the round-trip to Google before landing on onboarding or the dashboard.
+  // Mimic the round-trip to Google, then land on the dashboard for a known
+  // account or on onboarding for a new one.
   useEffect(() => {
-    if (!signingIn) return;
+    if (stage !== "loading") return;
     const timer = window.setTimeout(() => {
-      beginNewStudentSession();
-      navigate({ to: onboarded ? "/dashboard" : "/onboarding" });
+      const exists = signInWithEmail(email);
+      navigate({ to: exists ? "/dashboard" : "/onboarding" });
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [signingIn, onboarded, beginNewStudentSession, navigate]);
+  }, [stage, email, signInWithEmail, navigate]);
 
   const handleSignIn = () => {
     if (authenticated) {
@@ -32,13 +35,33 @@ export function HeroSection() {
       return;
     }
     if (import.meta.env.DEV) {
-      setSigningIn(true);
+      setStage("email");
       return;
     }
     window.location.assign("/api/auth/google");
   };
 
-  if (signingIn) return <SignInTransition />;
+  if (stage === "loading") return <SignInTransition />;
+  if (stage === "email") {
+    return (
+      <EmailGate
+        email={email}
+        error={emailError}
+        onChange={(value) => {
+          setEmail(value);
+          setEmailError("");
+        }}
+        onBack={() => setStage("idle")}
+        onContinue={() => {
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
+            setEmailError("Enter a valid institutional email.");
+            return;
+          }
+          setStage("loading");
+        }}
+      />
+    );
+  }
 
   return (
     <section className="relative w-full h-screen bg-black flex flex-col justify-center items-center overflow-hidden">
@@ -136,6 +159,70 @@ export function HeroSection() {
           <span className="relative z-10">Sign In</span>
         </button>
       </div>
+    </section>
+  );
+}
+
+function EmailGate({
+  email,
+  error,
+  onChange,
+  onBack,
+  onContinue,
+}: {
+  email: string;
+  error: string;
+  onChange: (value: string) => void;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <section className="grid min-h-screen place-items-center bg-background px-6">
+      <form
+        className="card-surface animate-in fade-in zoom-in-95 w-full max-w-sm p-8 duration-300"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onContinue();
+        }}
+      >
+        <div className="flex items-center gap-3">
+          <GoogleMark />
+          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Sign in with Google
+          </p>
+        </div>
+        <h1 className="mt-5 font-serif text-2xl font-light tracking-wide">Welcome</h1>
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+          Use your MIT-WPU institutional email to continue.
+        </p>
+        <input
+          type="email"
+          autoFocus
+          value={email}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="you@mitwpu.edu.in"
+          className={
+            "mt-5 h-12 w-full rounded-xl border bg-secondary/40 px-4 text-sm outline-none transition-all " +
+            (error
+              ? "border-destructive focus:border-destructive"
+              : "border-border focus:border-primary focus:ring-2 focus:ring-primary/15")
+          }
+        />
+        {error && <p className="mt-1.5 text-[10px] font-mono text-destructive">{error}</p>}
+        <button
+          type="submit"
+          className="pressable mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-3 w-full text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Back
+        </button>
+      </form>
     </section>
   );
 }

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowRight, Check, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Dashboard() {
-  const { profile, projects, reservations, visits } = useMakerSpace();
+  const { profile, projects, reservations, visits, acceptProjectInvitation } = useMakerSpace();
   const data = useMemo(
     () => getJourneyData(profile, projects, reservations),
     [profile, projects, reservations],
@@ -49,6 +50,9 @@ function Dashboard() {
   }, [pickedId, lockedId, data.myProjects]);
 
   const firstName = profile.fullName.trim().split(" ")[0] || "there";
+  const invitations = projects.filter((project) =>
+    project.invitedEmails.some((invited) => invited.toLowerCase() === profile.email.toLowerCase()),
+  );
 
   return (
     <AppShell title={`Hi, ${firstName}`} subtitle={profile.department}>
@@ -58,6 +62,14 @@ function Dashboard() {
           labTime={formatMinutes(labMinutes)}
           visits={completedVisits.length}
         />
+
+        {invitations.map((project) => (
+          <InvitationCard
+            key={project.id}
+            project={project}
+            onJoin={() => acceptProjectInvitation(project.id, profile)}
+          />
+        ))}
 
         <Journey
           data={data}
@@ -101,6 +113,36 @@ function StatStrip({
           </p>
         </div>
       ))}
+    </section>
+  );
+}
+
+function InvitationCard({ project, onJoin }: { project: Project; onJoin: () => void }) {
+  return (
+    <section className="card-surface mt-5 overflow-hidden border-primary/25">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:px-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Team invitation
+          </p>
+          <p className="mt-1.5 font-serif text-lg font-light tracking-wide sm:text-xl">
+            {project.name}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {project.leader} invited you to join this project.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onJoin();
+            toast.success(`You joined ${project.name}`);
+          }}
+          className="pressable inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          Join project
+        </button>
+      </div>
     </section>
   );
 }

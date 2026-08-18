@@ -188,6 +188,7 @@ function UpcomingSession({
   onCancel: () => void;
   onComplete: () => void;
 }) {
+  const hasEntered = Object.values(booking.attendance ?? {}).some((record) => record.enteredAt);
   const attendees = booking.participantIds.map((id) => {
     if (id === "leader") return project?.leader ?? "Team leader";
     return project?.members.find((member) => member.id === id)?.name ?? "Team member";
@@ -252,7 +253,9 @@ function UpcomingSession({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4 sm:px-8">
         <p className="text-xs text-muted-foreground">
-          One session at a time — cancel to book a different slot.
+          {hasEntered
+            ? "Session in progress — mark it completed when your team is done."
+            : "One session at a time — cancel to book a different slot."}
         </p>
         {canManage && (
           <div className="flex flex-wrap gap-2">
@@ -263,13 +266,16 @@ function UpcomingSession({
             >
               Cancel session
             </button>
-            <button
-              type="button"
-              onClick={onComplete}
-              className="pressable min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-all duration-200 hover:bg-primary/90"
-            >
-              Mark completed
-            </button>
+            {/* Completion only unlocks once the lab assistant has permitted entry. */}
+            {hasEntered && (
+              <button
+                type="button"
+                onClick={onComplete}
+                className="pressable min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-all duration-200 hover:bg-primary/90"
+              >
+                Mark completed
+              </button>
+            )}
           </div>
         )}
       </div>
