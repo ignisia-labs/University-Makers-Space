@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { AboutSection } from "@/components/landing/AboutSection";
 import { EquipmentSection } from "@/components/landing/EquipmentSection";
+import { StaffAccess } from "@/components/landing/StaffAccess";
 import { LandingFooter } from "@/components/landing/LandingFooter";
 
 export const Route = createFileRoute("/")({
@@ -29,6 +30,9 @@ function LandingPage() {
 
         {/* Immersive Equipment Grid */}
         <EquipmentSection />
+
+        {/* Discreet staff entry points (prototype) */}
+        <StaffAccess />
       </main>
 
       {/* Done - Minimalist Footer */}

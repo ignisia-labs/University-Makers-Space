@@ -1,363 +1,269 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, Archive, CheckCircle2, ClipboardCheck, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Boxes, CalendarClock, FolderKanban, ShieldCheck, Undo2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { DashboardQuickActions } from "@/components/DashboardQuickActions";
-import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
+import type { Project, Reservation } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import type { Project } from "@/lib/makerspace-data";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/faculty")({ component: Faculty });
+export const Route = createFileRoute("/faculty")({
+  head: () => ({
+    meta: [
+      { title: "Faculty — MIT-WPU MakerSpace" },
+      { name: "description", content: "Review, verify and follow your mentees' MakerSpace work." },
+    ],
+  }),
+  component: FacultyPage,
+});
 
-type View = "pending" | "active" | "history";
-const tabs: { id: View; label: string; icon: typeof ClipboardCheck }[] = [
-  { id: "pending", label: "Pending review", icon: ClipboardCheck },
-  { id: "active", label: "Active projects", icon: CheckCircle2 },
-  { id: "history", label: "Project archive", icon: Archive },
-];
-const prototypeFacultyName = "Prof. Rohan Bhide";
+const workspaces = [
+  { id: "projects", label: "Projects", icon: FolderKanban },
+  { id: "sessions", label: "Sessions", icon: CalendarClock },
+  { id: "equipment", label: "Equipment", icon: Boxes },
+] as const;
 
-function Faculty() {
-  const { projects, updateProject } = useMakerSpace();
-  const [view, setView] = useState<View>("pending");
-  const [project, setProject] = useState<Project | null>(null);
-  const [rejecting, setRejecting] = useState(false);
-  const [reason, setReason] = useState("");
-  const [reasonError, setReasonError] = useState("");
+type WorkspaceId = (typeof workspaces)[number]["id"];
 
-  const assignedProjects = useMemo(
-    () =>
-      projects.filter((item) =>
-        item.mentor.toLowerCase().includes(prototypeFacultyName.toLowerCase()),
-      ),
-    [projects],
+function FacultyPage() {
+  const { profile, projects, reservations, verifyProject, updateProject } = useMakerSpace();
+  const [workspace, setWorkspace] = useState<WorkspaceId>("projects");
+  const [scope, setScope] = useState<"mine" | "all">("mine");
+
+  const isMine = (project: Project) =>
+    Boolean(profile.fullName) && project.mentor.includes(profile.fullName);
+  const mineCount = projects.filter(isMine).length;
+  const visible = projects.filter(
+    (project) => project.status !== "Archived" && (scope === "all" || isMine(project)),
   );
-  const buckets = useMemo(
-    () => ({
-      pending: assignedProjects.filter((item) => item.status === "Mentor Approval Pending"),
-      active: assignedProjects.filter((item) => item.status === "Verified"),
-      history: assignedProjects.filter((item) => ["Rejected", "Archived"].includes(item.status)),
-    }),
-    [assignedProjects],
-  );
-  const visible = buckets[view];
-
-  function openReview(item: Project) {
-    setProject(item);
-    setRejecting(false);
-    setReason("");
-    setReasonError("");
-  }
-  function approve() {
-    if (!project) return;
-    updateProject(project.id, {
-      status: "Verified",
-      reviewedAt: new Date().toLocaleString("en-IN"),
-      reviewedBy: prototypeFacultyName,
-    });
-    setProject(null);
-  }
-  function reject() {
-    if (!project) return;
-    if (!reason.trim()) {
-      setReasonError("A reason is required so the team knows what to revise.");
-      return;
-    }
-    updateProject(project.id, {
-      status: "Rejected",
-      rejectionReason: reason.trim(),
-      reviewedAt: new Date().toLocaleString("en-IN"),
-      reviewedBy: prototypeFacultyName,
-    });
-    setProject(null);
-    setRejecting(false);
-  }
+  const visibleIds = new Set(visible.map((project) => project.id));
+  const sessions = reservations.filter((reservation) => visibleIds.has(reservation.projectId));
 
   return (
     <AppShell
-      title="Faculty workspace"
-      subtitle={`${buckets.pending.length} project${buckets.pending.length === 1 ? "" : "s"} awaiting review`}
+      title={`Hi, ${profile.fullName.replace(/^(Dr\.|Prof\.)\s*/i, "").split(" ")[0] || "Mentor"}`}
+      subtitle="Faculty mentor workspace"
+      workspaceNavigation={workspaces}
+      activeWorkspace={workspace}
+      onWorkspaceChange={(id) => setWorkspace(id as WorkspaceId)}
     >
-      <section className="grid gap-3 sm:grid-cols-3" aria-label="Faculty project summary">
-        <Summary label="Pending review" value={buckets.pending.length} tone="warning" />
-        <Summary label="Active projects" value={buckets.active.length} tone="success" />
-        <Summary label="Archived decisions" value={buckets.history.length} tone="muted" />
-      </section>
-
-      <DashboardQuickActions
-        actions={[
-          {
-            label: "Review Next Request",
-            description: buckets.pending.length
-              ? `Open the next of ${buckets.pending.length} projects awaiting your decision.`
-              : "Check the pending verification queue.",
-            icon: ClipboardCheck,
-            onClick: () => {
-              setView("pending");
-              if (buckets.pending[0]) openReview(buckets.pending[0]);
-            },
-          },
-          {
-            label: "Active Mentorships",
-            description: "Review projects currently verified under your mentorship.",
-            icon: CheckCircle2,
-            onClick: () => setView("active"),
-          },
-          {
-            label: "Decision Archive",
-            description: "Open previously rejected and archived project decisions.",
-            icon: Archive,
-            onClick: () => setView("history"),
-          },
-          {
-            label: "Recent Activity",
-            description: "Review your latest mentorship decisions and timestamps.",
-            icon: Activity,
-            onClick: () =>
-              document.getElementById("faculty-recent-activity")?.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-              }),
-          },
-        ]}
-      />
-
-      <div
-        className="mt-6 flex gap-2 overflow-x-auto pb-1"
-        role="tablist"
-        aria-label="Project directories"
-      >
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={view === id}
-            onClick={() => setView(id)}
-            className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-sm font-semibold ${
-              view === id
-                ? "bg-primary text-primary-foreground"
-                : "border bg-card text-muted-foreground"
-            }`}
+      <div className="mx-auto max-w-3xl">
+        <div className="flex items-center justify-between gap-3">
+          <div
+            role="tablist"
+            aria-label="Project scope"
+            className="inline-flex rounded-full border border-border bg-card p-1"
           >
-            <Icon className="size-4" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <section className="mt-4 space-y-3">
-        {visible.length ? (
-          visible.map((item) => (
-            <article key={item.id} className="card-surface p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-semibold">{item.name}</h2>
-                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                    {item.description}
-                  </p>
-                </div>
-                <StatusBadge label={item.status} />
-              </div>
-              <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-                <span>
-                  <strong className="text-foreground">Leader:</strong> {item.leader}
-                </span>
-                <span>
-                  <strong className="text-foreground">Team:</strong> {item.members.length + 1}{" "}
-                  {item.members.length === 0 ? "member" : "members"}
-                </span>
-                <span>
-                  <strong className="text-foreground">Submitted:</strong> {item.createdAt}
-                </span>
-              </div>
-              {item.rejectionReason && (
-                <p className="mt-3 rounded-xl bg-warning/10 p-3 text-sm text-warning-foreground">
-                  <strong>Review note:</strong> {item.rejectionReason}
-                </p>
-              )}
+            {(
+              [
+                { id: "mine", label: `My mentees (${mineCount})` },
+                { id: "all", label: "All projects" },
+              ] as const
+            ).map((item) => (
               <button
+                key={item.id}
                 type="button"
-                onClick={() => openReview(item)}
-                className="mt-4 min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+                role="tab"
+                aria-selected={scope === item.id}
+                onClick={() => setScope(item.id)}
+                className={cn(
+                  "min-h-10 rounded-full px-4 text-xs font-semibold uppercase tracking-wider transition-colors",
+                  scope === item.id
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
               >
-                {item.status === "Mentor Approval Pending" ? "Review project" : "View project"}
+                {item.label}
               </button>
-            </article>
-          ))
-        ) : (
-          <EmptyState view={view} />
-        )}
-      </section>
-
-      <section id="faculty-recent-activity" className="mt-7 scroll-mt-24">
-        <h2 className="font-semibold">Recent mentorship activity</h2>
-        <div className="mt-3 space-y-2">
-          {assignedProjects.some((item) => item.reviewedAt) ? (
-            assignedProjects
-              .filter((item) => item.reviewedAt)
-              .slice(0, 5)
-              .map((item) => (
-                <article
-                  key={item.id}
-                  className="card-surface flex flex-wrap items-center justify-between gap-3 p-4"
-                >
-                  <div>
-                    <p className="text-sm font-semibold">{item.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Reviewed by {item.reviewedBy ?? prototypeFacultyName} · {item.reviewedAt}
-                    </p>
-                  </div>
-                  <StatusBadge label={item.status} />
-                </article>
-              ))
-          ) : (
-            <div className="card-surface p-5 text-sm text-muted-foreground">
-              Approval and rejection activity will appear here.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <ResponsiveModal
-        open={!!project}
-        onOpenChange={(open) => !open && setProject(null)}
-        title={project?.name ?? "Project review"}
-        description="Review the submitted project, team and resource requirements."
-      >
-        {project && (
-          <div className="space-y-5">
-            <p className="text-sm leading-6 text-muted-foreground">{project.description}</p>
-            <ReviewDetail label="Project leader" value={project.leader} />
-            <ReviewDetail
-              label="Team roster"
-              value={[
-                project.leader,
-                ...project.members.map((member) => `${member.name} (${member.prn})`),
-              ].join(", ")}
-            />
-            <ReviewDetail
-              label="Expected equipment"
-              value={
-                project.resources
-                  .filter((resource) => !project.consumables?.includes(resource))
-                  .join(", ") || "None specified"
-              }
-            />
-            <ReviewDetail
-              label="Expected consumables"
-              value={project.consumables?.join(", ") || "None specified"}
-            />
-            <ReviewDetail label="Submission date" value={project.createdAt} />
-            {project.reviewedAt && (
-              <ReviewDetail
-                label="Latest decision"
-                value={`${project.reviewedAt} · ${project.reviewedBy ?? prototypeFacultyName}`}
-              />
-            )}
-            {project.rejectionReason && (
-              <ReviewDetail label="Previous review note" value={project.rejectionReason} />
-            )}
-            {project.status === "Mentor Approval Pending" && (
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={approve}
-                  className="min-h-12 flex-1 rounded-xl bg-success px-4 font-semibold text-success-foreground"
-                >
-                  Approve project
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRejecting(true)}
-                  className="min-h-12 flex-1 rounded-xl border border-destructive/40 px-4 font-semibold text-destructive"
-                >
-                  Reject project
-                </button>
-              </div>
-            )}
+            ))}
           </div>
-        )}
-      </ResponsiveModal>
-
-      <ResponsiveModal
-        open={rejecting}
-        onOpenChange={(open) => {
-          setRejecting(open);
-          if (!open) setReasonError("");
-        }}
-        title="Reject project"
-        description="Explain what must be revised before the team resubmits."
-      >
-        <div className="space-y-3">
-          <label className="block text-sm font-medium" htmlFor="rejection-reason">
-            Required review reason
-          </label>
-          <textarea
-            id="rejection-reason"
-            value={reason}
-            onChange={(event) => {
-              setReason(event.target.value);
-              setReasonError("");
-            }}
-            placeholder="For example, clarify the equipment requirements and safety considerations."
-            className="min-h-28 w-full rounded-xl border bg-card p-3 text-sm"
-            aria-invalid={!!reasonError}
-          />
-          {reasonError && <p className="text-sm text-destructive">{reasonError}</p>}
-          <button
-            type="button"
-            onClick={reject}
-            className="min-h-12 w-full rounded-xl bg-destructive px-4 font-semibold text-destructive-foreground"
-          >
-            Reject with reason
-          </button>
         </div>
-      </ResponsiveModal>
+
+        <div className="mt-6">
+          {workspace === "projects" && (
+            <ProjectsBoard
+              projects={visible}
+              onVerify={(project) => {
+                verifyProject(project.id);
+                toast.success(`${project.name} verified`);
+              }}
+              onUnverify={(project) => {
+                updateProject(project.id, { status: "Mentor Approval Pending" });
+                toast.success(`${project.name} sent back for review`);
+              }}
+            />
+          )}
+          {workspace === "sessions" && <SessionsBoard sessions={sessions} projects={visible} />}
+          {workspace === "equipment" && <EquipmentBoard projects={visible} />}
+        </div>
+      </div>
     </AppShell>
   );
 }
 
-function Summary({
-  label,
-  value,
-  tone,
+/* ── Projects: review, verify, unverify ───────────────────────── */
+
+function ProjectsBoard({
+  projects,
+  onVerify,
+  onUnverify,
 }: {
-  label: string;
-  value: number;
-  tone: "warning" | "success" | "muted";
+  projects: Project[];
+  onVerify: (project: Project) => void;
+  onUnverify: (project: Project) => void;
 }) {
+  if (!projects.length) {
+    return (
+      <div className="card-surface px-6 py-14 text-center text-sm text-muted-foreground">
+        Projects that name you as mentor will appear here for review.
+      </div>
+    );
+  }
   return (
-    <article className={`card-surface p-4 ${tone === "warning" ? "border-warning/30" : ""}`}>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-    </article>
-  );
-}
-function ReviewDetail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-sm leading-6">{value}</p>
+    <div className="card-surface divide-y divide-border overflow-hidden">
+      {projects.map((project) => (
+        <article key={project.id} className="px-5 py-4 sm:px-6 sm:py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="min-w-0 truncate font-serif text-lg font-light tracking-wide">
+                  {project.name}
+                </h2>
+                <StatusBadge label={project.status} />
+              </div>
+              <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                {project.description}
+              </p>
+              <p className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                Lead · {project.leader} · {project.members.length + 1}{" "}
+                {project.members.length === 0 ? "member" : "members"} · {project.mentor}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {project.status === "Verified" ? (
+                <button
+                  type="button"
+                  onClick={() => onUnverify(project)}
+                  className="pressable inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-border bg-card px-3.5 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  <Undo2 className="size-3.5" /> Unverify
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onVerify(project)}
+                  className="pressable inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-3.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                >
+                  <ShieldCheck className="size-3.5" /> Verify
+                </button>
+              )}
+            </div>
+          </div>
+          {(project.resources.length > 0 || (project.consumables?.length ?? 0) > 0) && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {project.resources.map((resource) => (
+                <span
+                  key={resource}
+                  className="rounded-full border border-primary/20 bg-primary/[0.05] px-2.5 py-1 text-[11px] font-medium text-primary"
+                >
+                  {resource}
+                </span>
+              ))}
+              {(project.consumables ?? []).map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-border bg-secondary/60 px-2.5 py-1 text-[11px] text-muted-foreground"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+        </article>
+      ))}
     </div>
   );
 }
-function EmptyState({ view }: { view: View }) {
-  const content =
-    view === "pending"
-      ? [
-          "No projects are waiting for your decision.",
-          "New verification requests will appear here.",
-        ]
-      : view === "active"
-        ? ["No active mentored projects yet.", "Approved projects will be listed here."]
-        : ["No archived decisions yet.", "Rejected and archived projects will be retained here."];
+
+/* ── Sessions: when mentees were in the lab ───────────────────── */
+
+function SessionsBoard({ sessions, projects }: { sessions: Reservation[]; projects: Project[] }) {
+  if (!sessions.length) {
+    return (
+      <div className="card-surface px-6 py-14 text-center text-sm text-muted-foreground">
+        Lab sessions booked by your mentees will appear here.
+      </div>
+    );
+  }
+  const ordered = [...sessions].sort(
+    (a, b) => Number(b.status === "Active") - Number(a.status === "Active"),
+  );
   return (
-    <div className="card-surface p-8 text-center">
-      <XCircle className="mx-auto size-7 text-muted-foreground" />
-      <p className="mt-3 font-semibold">{content[0]}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{content[1]}</p>
+    <div className="card-surface divide-y divide-border overflow-hidden">
+      {ordered.map((session) => {
+        const project = projects.find((item) => item.id === session.projectId);
+        const attendance = Object.values(session.attendance ?? {});
+        const entered = attendance.filter((record) => record.enteredAt).length;
+        return (
+          <article key={session.id} className="px-5 py-4 sm:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{session.projectName}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {session.date} · {session.slot} · {session.attendees}{" "}
+                  {session.attendees === 1 ? "attendee" : "attendees"}
+                  {entered > 0 && ` · ${entered} checked in`}
+                </p>
+                {project && (
+                  <p className="mt-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                    Lead · {project.leader}
+                  </p>
+                )}
+              </div>
+              <StatusBadge
+                label={session.status === "Active" ? "Confirmed" : session.status}
+                className="shrink-0"
+              />
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Equipment: what mentees are using ────────────────────────── */
+
+function EquipmentBoard({ projects }: { projects: Project[] }) {
+  const usage = new Map<string, string[]>();
+  projects.forEach((project) => {
+    project.resources.forEach((resource) => {
+      usage.set(resource, [...(usage.get(resource) ?? []), project.name]);
+    });
+  });
+  const rows = [...usage.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  if (!rows.length) {
+    return (
+      <div className="card-surface px-6 py-14 text-center text-sm text-muted-foreground">
+        Equipment requested by your mentees' projects will appear here.
+      </div>
+    );
+  }
+  return (
+    <div className="card-surface divide-y divide-border overflow-hidden">
+      {rows.map(([resource, names]) => (
+        <div key={resource} className="flex items-start justify-between gap-4 px-5 py-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{resource}</p>
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{names.join(" · ")}</p>
+          </div>
+          <span className="shrink-0 rounded-full border border-primary/20 bg-primary/[0.05] px-2.5 py-1 text-[11px] font-mono text-primary">
+            {names.length} {names.length === 1 ? "project" : "projects"}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

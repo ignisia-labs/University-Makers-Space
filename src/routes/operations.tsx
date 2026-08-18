@@ -1,645 +1,427 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Boxes,
-  CalendarClock,
-  DoorClosed,
-  DoorOpen,
-  FolderKanban,
-  Footprints,
-  RadioTower,
-  Search,
-  UsersRound,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { Boxes, CalendarClock, DoorOpen, Footprints } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
+import type { Equipment, EquipmentStatus, Project, Reservation } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import {
-  directoryStudents,
-  type Equipment,
-  type EquipmentStatus,
-  type Reservation,
-} from "@/lib/makerspace-data";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/operations")({ component: Operations });
+export const Route = createFileRoute("/operations")({
+  head: () => ({
+    meta: [
+      { title: "Operations — MIT-WPU MakerSpace" },
+      { name: "description", content: "Entry desk, visits, equipment and slot overview." },
+    ],
+  }),
+  component: OperationsPage,
+});
 
-const equipmentStatuses: EquipmentStatus[] = [
-  "Available",
-  "Partially Available",
-  "In Use",
-  "Reserved",
-  "Unavailable",
-  "Under Maintenance",
-  "Damaged",
-  "Out of Service",
-];
-type OperationsView = "live" | "bookings" | "visits" | "equipment" | "projects";
-const operationsViews = [
-  { id: "live", label: "Live", icon: RadioTower },
-  { id: "bookings", label: "Bookings", icon: CalendarClock },
+const workspaces = [
+  { id: "entry", label: "Entry desk", icon: DoorOpen },
   { id: "visits", label: "Visits", icon: Footprints },
   { id: "equipment", label: "Equipment", icon: Boxes },
-  { id: "projects", label: "Projects", icon: FolderKanban },
-];
+  { id: "slots", label: "Slots", icon: CalendarClock },
+] as const;
 
-function Operations() {
-  const {
-    reservations,
-    projects,
-    visits,
-    equipment,
-    config,
-    setBookingAttendance,
-    addBookingParticipant,
-    markReservationNoShow,
-    cancelReservation,
-    updateEquipment,
-  } = useMakerSpace();
-  const [view, setView] = useState<OperationsView>("live");
-  const [action, setAction] = useState<{ booking: Reservation; type: "no-show" | "cancel" } | null>(
-    null,
-  );
-  const [reason, setReason] = useState("");
-  const [reasonError, setReasonError] = useState("");
-  const [equipmentItem, setEquipmentItem] = useState<Equipment | null>(null);
-  const [equipmentStatus, setEquipmentStatus] = useState<EquipmentStatus>("Available");
-  const [equipmentReason, setEquipmentReason] = useState("");
-  const [equipmentReasonCategory, setEquipmentReasonCategory] = useState<
-    "Maintenance" | "Damage" | "Temporary Issue" | "Other"
-  >("Maintenance");
+type WorkspaceId = (typeof workspaces)[number]["id"];
 
-  const active = reservations.filter((booking) => booking.status === "Active");
-  const entered = active.reduce(
-    (total, booking) =>
-      total +
-      Object.values(booking.attendance ?? {}).filter((record) => record.status === "Entered")
-        .length,
-    0,
-  );
-  const expected = active.reduce((total, booking) => total + booking.attendees, 0);
-  const participantsFor = (booking: Reservation) => {
-    const project = projects.find((item) => item.id === booking.projectId);
-    const projectPeople = project
-      ? [
-          { id: "leader", name: project.leader },
-          ...project.members.map((member) => ({ id: member.id, name: member.name })),
-        ]
-      : [];
-    const people = [
-      ...projectPeople,
-      ...directoryStudents
-        .filter((student) => !projectPeople.some((person) => person.id === student.id))
-        .map((student) => ({ id: student.id, name: student.name })),
-    ];
-    return people.filter((person) => booking.participantIds.includes(person.id));
-  };
-  const openEquipment = (item: Equipment) => {
-    setEquipmentItem(item);
-    setEquipmentStatus(
-      item.status === "Partially Available" ||
-        item.status === "In Use" ||
-        item.status === "Reserved" ||
-        item.status === "Unavailable"
-        ? "Available"
-        : item.status,
-    );
-    setEquipmentReason(item.availabilityReason ?? "");
-    setEquipmentReasonCategory(item.availabilityReasonCategory ?? "Maintenance");
-  };
-  function confirmBookingAction() {
-    if (!action) return;
-    if (!reason.trim()) {
-      setReasonError("A reason is required for an operational no-show or cancellation.");
-      return;
-    }
-    if (action.type === "no-show") markReservationNoShow(action.booking.id, reason.trim());
-    else cancelReservation(action.booking.id, reason.trim());
-    setAction(null);
-    setReason("");
-  }
-  function saveEquipmentStatus() {
-    if (!equipmentItem) return;
-    if (equipmentStatus !== "Available" && !equipmentReason.trim()) return;
-    const patch: Partial<Equipment> = {
-      status: equipmentStatus,
-      availableQuantity: equipmentStatus === "Available" ? equipmentItem.totalQuantity : 0,
-      ...(equipmentStatus !== "Available"
-        ? { availabilityReasonCategory: equipmentReasonCategory }
-        : {}),
-      ...(equipmentStatus !== "Available" && equipmentReason.trim()
-        ? { availabilityReason: equipmentReason.trim() }
-        : {}),
-    };
-    updateEquipment(equipmentItem.id, patch);
-    setEquipmentItem(null);
-  }
+function OperationsPage() {
+  const [workspace, setWorkspace] = useState<WorkspaceId>("entry");
 
   return (
     <AppShell
-      title={operationsViews.find((item) => item.id === view)?.label ?? "Live"}
-      subtitle="Lab Assistant console"
-      workspaceNavigation={operationsViews}
-      activeWorkspace={view}
-      onWorkspaceChange={(id) => setView(id as OperationsView)}
+      title="Operations"
+      subtitle="Lab assistant workspace"
+      workspaceNavigation={workspaces}
+      activeWorkspace={workspace}
+      onWorkspaceChange={(id) => setWorkspace(id as WorkspaceId)}
     >
-      {view === "live" && (
-        <>
-          <section className="grid gap-3 sm:grid-cols-3" aria-label="Live laboratory occupancy">
-            <Metric
-              value={`${entered} / ${config.capacity}`}
-              label="Present now"
-              note={`${expected} expected across current slots`}
-            />
-            <Metric
-              value={active.length}
-              label="Active slot bookings"
-              note="Expected teams today"
-            />
-            <Metric
-              value={equipment.filter((item) => item.status !== "Available").length}
-              label="Equipment alerts"
-              note="Items needing attention"
-            />
-          </section>
-
-          <DashboardQuickActions
-            actions={[
-              {
-                label: "Manage Live Attendance",
-                description: "Check teams in or out and keep occupancy accurate.",
-                icon: DoorOpen,
-                onClick: () =>
-                  document.getElementById("current-slot-operations")?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  }),
-              },
-              {
-                label: "Review Booking Exceptions",
-                description: "Handle cancellations, no-shows, and current bookings.",
-                icon: CalendarClock,
-                onClick: () => setView("bookings"),
-              },
-              {
-                label: "Open Visit Register",
-                description: "Review project-slot and quick-visit attendance records.",
-                icon: Footprints,
-                onClick: () => setView("visits"),
-              },
-              {
-                label: "Update Equipment Health",
-                description: "Record maintenance, damage, or availability changes.",
-                icon: Boxes,
-                onClick: () => setView("equipment"),
-              },
-            ]}
-          />
-
-          <section id="current-slot-operations" className="mt-6 scroll-mt-24">
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <h2 className="font-semibold">Current slot operations</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Mark individual attendance, then record exceptions with an accountable reason.
-                </p>
-              </div>
-              <span className="hidden text-sm text-muted-foreground sm:block">
-                Live capacity: {entered}/{config.capacity}
-              </span>
-            </div>
-            <div className="mt-3 space-y-4">
-              {active.length ? (
-                active.map((booking) => (
-                  <BookingOperations
-                    key={booking.id}
-                    booking={booking}
-                    participants={participantsFor(booking)}
-                    onAttendance={setBookingAttendance}
-                    onAddParticipant={addBookingParticipant}
-                    onException={(type) => {
-                      setAction({ booking, type });
-                      setReason("");
-                      setReasonError("");
-                    }}
-                  />
-                ))
-              ) : (
-                <EmptyOperations />
-              )}
-            </div>
-          </section>
-        </>
-      )}
-
-      {view === "equipment" && (
-        <section>
-          <div>
-            <h2 className="font-semibold">Equipment health</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Fast operational updates immediately change equipment availability in this prototype.
-            </p>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {equipment.map((item) => (
-              <article
-                key={item.id}
-                className="card-surface flex items-center justify-between gap-3 p-4"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{item.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.availableQuantity}/{item.totalQuantity} available
-                  </p>
-                  <div className="mt-2">
-                    <StatusBadge label={item.status} />
-                  </div>
-                  {item.availabilityReason && (
-                    <p className="mt-2 text-xs text-warning-foreground">
-                      {item.availabilityReason}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openEquipment(item)}
-                  className="min-h-10 shrink-0 rounded-xl border px-3 text-xs font-semibold"
-                >
-                  Update health
-                </button>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {view === "bookings" && (
-        <section className="space-y-3">
-          <div>
-            <h2 className="font-semibold">Booking operations</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Current, cancelled and no-show booking records.
-            </p>
-          </div>
-          {reservations.map((booking) => (
-            <article key={booking.id} className="card-surface p-5">
-              <div className="flex flex-wrap justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">{booking.projectName}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {booking.date} · {booking.slot} · {booking.attendees} expected
-                  </p>
-                </div>
-                <StatusBadge label={booking.status} />
-              </div>
-              {(booking.cancelledReason || booking.noShowReason) && (
-                <p className="mt-3 rounded-xl bg-muted p-3 text-sm">
-                  <strong>Operational record:</strong>{" "}
-                  {booking.cancelledReason ?? booking.noShowReason}
-                  <span className="block mt-1 text-xs text-muted-foreground">
-                    {booking.handledBy} · {booking.cancelledAt ?? booking.noShowAt}
-                  </span>
-                </p>
-              )}
-            </article>
-          ))}
-        </section>
-      )}
-
-      {view === "visits" && (
-        <section className="space-y-3">
-          <div>
-            <h2 className="font-semibold">Operational visits</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Project-slot and quick-visit attendance records.
-            </p>
-          </div>
-          {visits.map((visit) => (
-            <article
-              key={visit.id}
-              className="card-surface flex flex-wrap items-center justify-between gap-3 p-4"
-            >
-              <div>
-                <p className="font-semibold">{visit.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {visit.type} · {visit.date} · Entry {visit.entry}
-                  {visit.exit ? ` · Exit ${visit.exit}` : ""}
-                </p>
-              </div>
-              <StatusBadge label={visit.status} />
-            </article>
-          ))}
-        </section>
-      )}
-
-      {view === "projects" && (
-        <section className="space-y-3">
-          <div>
-            <h2 className="font-semibold">Project directory</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Operational context for teams using MakerSpace.
-            </p>
-          </div>
-          {projects.map((project) => (
-            <article key={project.id} className="card-surface p-5">
-              <div className="flex flex-wrap justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold">{project.name}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Team Leader: {project.leader} · {project.members.length + 1} members
-                  </p>
-                </div>
-                <StatusBadge label={project.status} />
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground">{project.resources.join(", ")}</p>
-            </article>
-          ))}
-        </section>
-      )}
-
-      <ResponsiveModal
-        open={!!action}
-        onOpenChange={(open) => !open && setAction(null)}
-        title={
-          action?.type === "no-show" ? "Mark booking as no-show" : "Cancel operational booking"
-        }
-        description="This action releases the booking from active operations and is recorded in the audit trail."
-      >
-        <div className="space-y-3">
-          <label htmlFor="operations-reason" className="block text-sm font-medium">
-            Required reason
-          </label>
-          <textarea
-            id="operations-reason"
-            value={reason}
-            onChange={(event) => {
-              setReason(event.target.value);
-              setReasonError("");
-            }}
-            className="min-h-28 w-full rounded-xl border bg-card p-3 text-sm"
-            placeholder="Describe what occurred during the slot."
-            aria-invalid={!!reasonError}
-          />
-          {reasonError && <p className="text-sm text-destructive">{reasonError}</p>}
-          <button
-            type="button"
-            onClick={confirmBookingAction}
-            className="min-h-12 w-full rounded-xl bg-destructive font-semibold text-destructive-foreground"
-          >
-            Confirm {action?.type === "no-show" ? "no-show" : "cancellation"}
-          </button>
-        </div>
-      </ResponsiveModal>
-
-      <ResponsiveModal
-        open={!!equipmentItem}
-        onOpenChange={(open) => !open && setEquipmentItem(null)}
-        title={`Update ${equipmentItem?.name ?? "equipment"}`}
-        description="Record a current operational health state. A non-available status needs a reason."
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            {equipmentStatuses.map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setEquipmentStatus(status)}
-                className={`min-h-11 rounded-xl border px-3 text-sm font-semibold ${equipmentStatus === status ? "border-primary bg-primary/10 text-primary" : ""}`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-          <label htmlFor="equipment-reason" className="block text-sm font-medium">
-            Operational note {equipmentStatus !== "Available" ? "(required)" : "(optional)"}
-          </label>
-          <select
-            aria-label="Availability reason category"
-            value={equipmentReasonCategory}
-            onChange={(event) =>
-              setEquipmentReasonCategory(
-                event.target.value as "Maintenance" | "Damage" | "Temporary Issue" | "Other",
-              )
-            }
-            className="form-input"
-          >
-            <option>Maintenance</option>
-            <option>Damage</option>
-            <option>Temporary Issue</option>
-            <option>Other</option>
-          </select>
-          <textarea
-            id="equipment-reason"
-            value={equipmentReason}
-            onChange={(event) => setEquipmentReason(event.target.value)}
-            className="min-h-24 w-full rounded-xl border bg-card p-3 text-sm"
-            placeholder="For example, awaiting calibration by supplier."
-          />
-          <button
-            type="button"
-            onClick={saveEquipmentStatus}
-            disabled={equipmentStatus !== "Available" && !equipmentReason.trim()}
-            className="min-h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Save equipment health
-          </button>
-        </div>
-      </ResponsiveModal>
+      <div className="mx-auto max-w-3xl">
+        {workspace === "entry" && <EntryDesk />}
+        {workspace === "visits" && <VisitsDesk />}
+        {workspace === "equipment" && <EquipmentDesk />}
+        {workspace === "slots" && <SlotsOverview />}
+      </div>
     </AppShell>
   );
 }
 
-function BookingOperations({
+/* ── Entry desk: permit / cancel entry for booked sessions ────── */
+
+function EntryDesk() {
+  const { reservations, projects, setBookingAttendance, cancelReservation, markReservationNoShow } =
+    useMakerSpace();
+  const active = reservations.filter((reservation) => reservation.status === "Active");
+  const [action, setAction] = useState<{ kind: "cancel" | "noshow"; booking: Reservation } | null>(
+    null,
+  );
+  const [reason, setReason] = useState("");
+
+  if (!active.length) {
+    return (
+      <div className="card-surface px-6 py-14 text-center text-sm text-muted-foreground">
+        Booked sessions will appear here for entry management.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {active.map((booking) => (
+        <EntryCard
+          key={booking.id}
+          booking={booking}
+          project={projects.find((project) => project.id === booking.projectId)}
+          onMark={(participantIds, status) => {
+            setBookingAttendance(booking.id, participantIds, status);
+            toast.success(status === "Entered" ? "Entry permitted" : "Exit recorded");
+          }}
+          onCancel={() => {
+            setAction({ kind: "cancel", booking });
+            setReason("");
+          }}
+          onNoShow={() => {
+            setAction({ kind: "noshow", booking });
+            setReason("");
+          }}
+        />
+      ))}
+
+      <ResponsiveModal
+        open={Boolean(action)}
+        onOpenChange={(open) => !open && setAction(null)}
+        title={action?.kind === "cancel" ? "Cancel this session?" : "Mark as no-show?"}
+        description={
+          action?.kind === "cancel"
+            ? "The reserved capacity is released and the team is notified."
+            : "Use when the team did not arrive during the attendance window."
+        }
+      >
+        <label className="block text-sm font-medium">
+          Reason
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Briefly note why"
+            className="form-input mt-2 min-h-24 resize-none py-3"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!reason.trim()}
+          onClick={() => {
+            if (!action) return;
+            if (action.kind === "cancel") cancelReservation(action.booking.id, reason.trim());
+            else markReservationNoShow(action.booking.id, reason.trim());
+            setAction(null);
+            toast.success(action.kind === "cancel" ? "Session cancelled" : "Marked no-show");
+          }}
+          className="pressable mt-5 min-h-12 w-full rounded-xl bg-destructive px-5 text-sm font-semibold text-destructive-foreground disabled:opacity-50"
+        >
+          Confirm
+        </button>
+      </ResponsiveModal>
+    </div>
+  );
+}
+
+function EntryCard({
   booking,
-  participants,
-  onAttendance,
-  onAddParticipant,
-  onException,
+  project,
+  onMark,
+  onCancel,
+  onNoShow,
 }: {
   booking: Reservation;
-  participants: { id: string; name: string }[];
-  onAttendance: (id: string, people: string[], status: "Expected" | "Entered" | "Exited") => void;
-  onAddParticipant: (bookingId: string, participantId: string) => void;
-  onException: (type: "no-show" | "cancel") => void;
+  project: Project | undefined;
+  onMark: (participantIds: string[], status: "Entered" | "Exited") => void;
+  onCancel: () => void;
+  onNoShow: () => void;
 }) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const entered = participants.filter(
-    (person) => booking.attendance?.[person.id]?.status === "Entered",
-  ).length;
-  const fallbackResults = search.trim()
-    ? directoryStudents.filter(
-        (student) =>
-          !booking.participantIds.includes(student.id) &&
-          `${student.name} ${student.email ?? ""} ${student.prn}`
-            .toLowerCase()
-            .includes(search.toLowerCase()),
-      )
-    : [];
-  const toggle = (personId: string) =>
-    setSelected((current) =>
-      current.includes(personId) ? current.filter((id) => id !== personId) : [...current, personId],
-    );
-  const apply = (status: "Entered" | "Exited", all = false) => {
-    const ids = all ? participants.map((person) => person.id) : selected;
-    if (!ids.length) return;
-    onAttendance(booking.id, ids, status);
-    setSelected([]);
-  };
+  const participantName = (id: string) =>
+    id === "leader"
+      ? (project?.leader ?? "Team leader")
+      : (project?.members.find((member) => member.id === id)?.name ?? "Team member");
+
   return (
-    <article className="card-surface p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{booking.projectName}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {booking.date} · {booking.slot} · {entered}/{booking.attendees} arrived
+    <section className="card-surface overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/50 px-5 py-4">
+        <div className="min-w-0">
+          <h2 className="truncate font-serif text-lg font-light tracking-wide">
+            {booking.projectName}
+          </h2>
+          <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+            {booking.date} · {booking.slot}
           </p>
         </div>
-        <StatusBadge label={booking.status} />
+        <StatusBadge label="Confirmed" />
       </div>
-      <div className="mt-4 divide-y rounded-xl border">
-        {participants.map((person) => {
-          const record = booking.attendance?.[person.id];
+
+      <ul className="divide-y divide-border/60 px-5">
+        {booking.participantIds.map((participantId) => {
+          const record = booking.attendance?.[participantId];
           const status = record?.status ?? "Expected";
           return (
-            <label
-              key={person.id}
-              className="flex min-h-12 cursor-pointer items-center justify-between gap-3 px-3"
+            <li
+              key={participantId}
+              className="flex min-h-12 items-center justify-between gap-3 py-2"
             >
-              <span className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(person.id)}
-                  onChange={() => toggle(person.id)}
-                  className="size-4 accent-primary"
-                  aria-label={`Select ${person.name}`}
-                />
-                <span>
-                  <span className="block text-sm font-medium">{person.name}</span>
-                  {(record?.enteredAt || record?.exitedAt) && (
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                      {record.enteredAt ? `Entered ${record.enteredAt}` : ""}
-                      {record.exitedAt ? ` · Exited ${record.exitedAt}` : ""}
-                      {record.markedBy ? ` · ${record.markedBy}` : ""}
-                    </span>
-                  )}
-                </span>
-              </span>
-              <StatusBadge label={status} />
-            </label>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{participantName(participantId)}</p>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  {status === "Entered"
+                    ? `In since ${record?.enteredAt ?? ""}`
+                    : status === "Exited"
+                      ? `Out at ${record?.exitedAt ?? ""}`
+                      : "Expected"}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1.5">
+                {status === "Expected" && (
+                  <button
+                    type="button"
+                    onClick={() => onMark([participantId], "Entered")}
+                    className="pressable min-h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                  >
+                    Permit entry
+                  </button>
+                )}
+                {status === "Entered" && (
+                  <button
+                    type="button"
+                    onClick={() => onMark([participantId], "Exited")}
+                    className="pressable min-h-9 rounded-lg border border-border bg-card px-3 text-xs font-semibold hover:bg-secondary"
+                  >
+                    Mark exit
+                  </button>
+                )}
+                {status === "Exited" && (
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                    Done
+                  </span>
+                )}
+              </div>
+            </li>
           );
         })}
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      </ul>
+
+      <div className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">
         <button
           type="button"
-          onClick={() => apply("Entered")}
-          disabled={!selected.length}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-40"
-        >
-          <DoorOpen className="size-4" />
-          Check in selected
-        </button>
-        <button
-          type="button"
-          onClick={() => apply("Entered", true)}
-          className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
-        >
-          Check in team
-        </button>
-        <button
-          type="button"
-          onClick={() => apply("Exited")}
-          disabled={!selected.length}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold disabled:opacity-40"
-        >
-          <DoorClosed className="size-4" />
-          Check out selected
-        </button>
-        <button
-          type="button"
-          onClick={() => apply("Exited", true)}
-          className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
-        >
-          Check out team
-        </button>
-        <button
-          type="button"
-          onClick={() => onException("no-show")}
-          className="min-h-11 rounded-xl border border-warning/50 px-3 text-sm font-semibold text-warning-foreground"
+          onClick={onNoShow}
+          className="pressable min-h-10 rounded-xl px-3 text-xs font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           No-show
         </button>
         <button
           type="button"
-          onClick={() => onException("cancel")}
-          className="min-h-11 rounded-xl border border-destructive/40 px-3 text-sm font-semibold text-destructive"
+          onClick={onCancel}
+          className="pressable min-h-10 rounded-xl border border-destructive/40 px-3 text-xs font-semibold text-destructive hover:bg-destructive/10"
         >
-          Cancel booking
+          Cancel session
         </button>
       </div>
-      <details className="mt-4 border-t border-border pt-4">
-        <summary className="cursor-pointer text-sm font-semibold text-primary">
-          Find another student
-        </summary>
-        <label className="relative mt-3 block">
-          <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search name, email or PRN"
-            className="form-input pl-10"
-          />
-        </label>
-        {fallbackResults.length > 0 && (
-          <div className="mt-2 divide-y rounded-xl border">
-            {fallbackResults.slice(0, 4).map((student) => (
-              <div
-                key={student.id}
-                className="flex min-h-12 items-center justify-between gap-3 px-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{student.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {student.prn} · {student.email}
+    </section>
+  );
+}
+
+/* ── Visits: permit and close quick visits ────────────────────── */
+
+function VisitsDesk() {
+  const { visits, updateVisit } = useMakerSpace();
+  const open = visits.filter((visit) => visit.status !== "Completed");
+  const done = visits.filter((visit) => visit.status === "Completed");
+  const now = () =>
+    new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+
+  return (
+    <div className="space-y-6">
+      <section>
+        <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-primary">
+          Open visits
+        </p>
+        {open.length ? (
+          <div className="card-surface divide-y divide-border overflow-hidden">
+            {open.map((visit) => (
+              <div key={visit.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{visit.title}</p>
+                  <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                    {visit.date} · in {visit.entry} · {visit.type} · {visit.status}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAddParticipant(booking.id, student.id);
-                    setSearch("");
-                  }}
-                  className="min-h-10 rounded-lg border px-3 text-xs font-semibold"
-                >
-                  Add to roster
-                </button>
+                <div className="flex shrink-0 gap-1.5">
+                  {visit.status === "Requested" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateVisit(visit.id, { status: "Active", entry: now() });
+                        toast.success("Visit permitted");
+                      }}
+                      className="pressable min-h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                    >
+                      Permit
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateVisit(visit.id, { status: "Completed", exit: now() });
+                        toast.success("Visit closed");
+                      }}
+                      className="pressable min-h-9 rounded-lg border border-border bg-card px-3 text-xs font-semibold hover:bg-secondary"
+                    >
+                      Mark exit
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
+        ) : (
+          <div className="card-surface px-6 py-10 text-center text-sm text-muted-foreground">
+            Quick-visit requests will appear here.
+          </div>
         )}
-      </details>
-    </article>
+      </section>
+
+      {done.length > 0 && (
+        <section>
+          <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-primary">
+            Completed
+          </p>
+          <div className="card-surface divide-y divide-border overflow-hidden">
+            {done.slice(0, 8).map((visit) => (
+              <div key={visit.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{visit.title}</p>
+                  <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                    {visit.date} · in {visit.entry} · out {visit.exit ?? "—"}
+                  </p>
+                </div>
+                <StatusBadge label={visit.type} className="shrink-0" />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
-function Metric({ value, label, note }: { value: string | number; label: string; note: string }) {
+
+/* ── Equipment: set live availability ─────────────────────────── */
+
+const quickStatuses: EquipmentStatus[] = ["Available", "In Use", "Under Maintenance"];
+
+function EquipmentDesk() {
+  const { equipment, updateEquipment } = useMakerSpace();
+
   return (
-    <article className="card-surface p-4">
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="mt-1 font-semibold text-sm">{label}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
-    </article>
+    <div className="card-surface divide-y divide-border overflow-hidden">
+      {equipment
+        .filter((item) => item.visible)
+        .map((item) => (
+          <EquipmentRow
+            key={item.id}
+            item={item}
+            onStatus={(status) => {
+              updateEquipment(item.id, {
+                status,
+                availableQuantity: status === "Available" ? item.totalQuantity : 0,
+                ...(status === "Under Maintenance"
+                  ? { availabilityReason: "Marked by lab assistant" }
+                  : {}),
+              });
+              toast.success(`${item.name} → ${status}`);
+            }}
+          />
+        ))}
+    </div>
   );
 }
-function EmptyOperations() {
+
+function EquipmentRow({
+  item,
+  onStatus,
+}: {
+  item: Equipment;
+  onStatus: (status: EquipmentStatus) => void;
+}) {
   return (
-    <div className="card-surface p-8 text-center">
-      <UsersRound className="mx-auto size-7 text-muted-foreground" />
-      <p className="mt-3 font-semibold">No active slots right now</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Upcoming bookings will become available here when their slot begins.
-      </p>
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{item.name}</p>
+        <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+          {item.category} · {item.lab} · {item.availableQuantity} of {item.totalQuantity} free
+        </p>
+      </div>
+      <div className="flex shrink-0 gap-1">
+        {quickStatuses.map((status) => (
+          <button
+            key={status}
+            type="button"
+            aria-pressed={item.status === status}
+            onClick={() => item.status !== status && onStatus(status)}
+            className={cn(
+              "min-h-9 rounded-lg border px-2.5 text-[11px] font-medium transition-colors",
+              item.status === status
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+            )}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Slots: every reservation, future and past ────────────────── */
+
+function SlotsOverview() {
+  const { reservations } = useMakerSpace();
+  const upcoming = reservations.filter((reservation) => reservation.status === "Active");
+  const past = reservations.filter((reservation) => reservation.status !== "Active");
+
+  const Group = ({ label, items }: { label: string; items: Reservation[] }) => (
+    <section>
+      <p className="mb-3 text-[10px] font-mono uppercase tracking-widest text-primary">{label}</p>
+      {items.length ? (
+        <div className="card-surface divide-y divide-border overflow-hidden">
+          {items.map((reservation) => (
+            <div key={reservation.id} className="flex items-center justify-between gap-3 px-5 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{reservation.projectName}</p>
+                <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  {reservation.date} · {reservation.slot} · {reservation.attendees}{" "}
+                  {reservation.attendees === 1 ? "attendee" : "attendees"}
+                  {reservation.resources.length > 0 && ` · ${reservation.resources.join(", ")}`}
+                </p>
+              </div>
+              <StatusBadge
+                label={reservation.status === "Active" ? "Confirmed" : reservation.status}
+                className="shrink-0"
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="card-surface px-6 py-10 text-center text-sm text-muted-foreground">
+          Nothing here yet.
+        </div>
+      )}
+    </section>
+  );
+
+  return (
+    <div className="space-y-6">
+      <Group label="Upcoming" items={upcoming} />
+      <Group label="Past" items={past} />
     </div>
   );
 }

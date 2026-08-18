@@ -1,1080 +1,179 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Boxes,
-  CalendarPlus,
-  FlaskConical,
-  LayoutDashboard,
-  PackagePlus,
-  Pencil,
-  Search,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import { useMemo, useState } from "react";
-import { AppShell } from "@/components/AppShell";
-import { DashboardQuickActions } from "@/components/DashboardQuickActions";
-import { ResponsiveModal } from "@/components/ResponsiveModal";
-import { StatusBadge } from "@/components/StatusBadge";
 import { useMakerSpace } from "@/lib/makerspace-context";
-import type {
-  BookingSlot,
-  Consumable,
-  Equipment,
-  EquipmentCategory,
-  EquipmentStatus,
-  LabConfig,
-} from "@/lib/makerspace-data";
+import { AppShell } from "@/components/AppShell";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/admin")({ component: Admin });
+export const Route = createFileRoute("/admin")({
+  head: () => ({
+    meta: [
+      { title: "Admin — MIT-WPU MakerSpace" },
+      { name: "description", content: "MakerSpace usage at a glance." },
+    ],
+  }),
+  component: AdminPage,
+});
 
-const equipmentStatuses: EquipmentStatus[] = [
-  "Available",
-  "Partially Available",
-  "In Use",
-  "Reserved",
-  "Unavailable",
-  "Under Maintenance",
-  "Damaged",
-  "Out of Service",
-];
-const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-type AdminView = "dashboard" | "equipment" | "consumables" | "config";
-const adminViews = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "equipment", label: "Equipment", icon: Boxes },
-  { id: "consumables", label: "Consumables", icon: FlaskConical },
-  { id: "config", label: "Lab Config", icon: Settings2 },
-] as const;
+function AdminPage() {
+  const { projects, reservations, visits, equipment, users, uploads, auditLogs } = useMakerSpace();
 
-function emptyEquipment(): Omit<Equipment, "id"> {
-  return {
-    name: "",
-    category: "Electronics",
-    status: "Available",
-    image: "",
-    specs: [],
-    description: "",
-    totalQuantity: 1,
-    availableQuantity: 1,
-    visible: true,
-    bookingVisible: true,
-    notes: "",
-    lab: "Main MakerSpace",
-    createdAt: new Date().toLocaleDateString("en-IN"),
-    updatedAt: new Date().toLocaleDateString("en-IN"),
-  };
-}
-function emptyConsumable(): Omit<Consumable, "id"> {
-  return { name: "", category: "Electronics", description: "", unit: "Unit", active: true };
-}
-
-function Admin() {
-  const {
-    config,
-    saveConfig,
-    equipment,
-    consumables,
-    updateEquipment,
-    addEquipment,
-    removeEquipment,
-    addConsumable,
-    updateConsumable,
-    removeConsumable,
-    reservations,
-    visits,
-    projects,
-    auditLogs,
-    equipmentCategories,
-    addEquipmentCategory,
-    slots,
-    addSlot,
-    updateSlot,
-  } = useMakerSpace();
-  const [view, setView] = useState<AdminView>("dashboard");
-  const [draft, setDraft] = useState(config);
-  const catalogue = view === "consumables" ? "consumables" : "equipment";
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
-  const [equipmentModal, setEquipmentModal] = useState<{
-    item: Omit<Equipment, "id">;
-    id?: string;
-  } | null>(null);
-  const [consumableModal, setConsumableModal] = useState<{
-    item: Omit<Consumable, "id">;
-    id?: string;
-  } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{
-    type: "equipment" | "consumable";
-    id: string;
-    name: string;
-  } | null>(null);
-  const [closureInput, setClosureInput] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [categoryInput, setCategoryInput] = useState("");
-  const [slotDraft, setSlotDraft] = useState({
-    date: "2026-08-22",
-    start: config.openingTime,
-    end: "09:30",
-    capacity: config.capacity,
-  });
-  const present = reservations.reduce(
-    (total, booking) =>
-      total +
-      Object.values(booking.attendance ?? {}).filter((record) => record.status === "Entered")
-        .length,
+  const students = users.filter((user) => user.role === "Student").length;
+  const activeProjects = projects.filter((project) => project.status !== "Archived");
+  const completedVisits = visits.filter((visit) => visit.status === "Completed" && visit.exit);
+  const labMinutes = completedVisits.reduce(
+    (total, visit) => total + minutesBetween(visit.entry, visit.exit),
     0,
   );
-  const activeBookings = reservations.filter((booking) => booking.status === "Active");
-  const bookedSeats = activeBookings.reduce((total, booking) => total + booking.attendees, 0);
-  const utilization = activeBookings.length
-    ? Math.round((bookedSeats / (activeBookings.length * config.capacity)) * 100)
-    : 0;
+  const unitsFree = equipment.reduce((total, item) => total + item.availableQuantity, 0);
+  const unitsTotal = equipment.reduce((total, item) => total + item.totalQuantity, 0);
 
-  const shownEquipment = useMemo(
-    () =>
-      equipment.filter(
-        (item) =>
-          (category === "All" || item.category === category) &&
-          `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [equipment, category, query],
+  const projectStatuses = countBy(activeProjects.map((project) => project.status));
+  const bookingStatuses = countBy(
+    reservations.map((r) => (r.status === "Active" ? "Confirmed" : r.status)),
   );
-  const shownConsumables = useMemo(
-    () =>
-      consumables.filter(
-        (item) =>
-          (category === "All" || item.category === category) &&
-          `${item.name} ${item.category}`.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [consumables, category, query],
-  );
-  const updateDraft = <K extends keyof LabConfig>(key: K, value: LabConfig[K]) =>
-    setDraft((current) => ({ ...current, [key]: value }));
-  function saveSettings() {
-    saveConfig(draft);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
-  }
-  function saveEquipment() {
-    if (!equipmentModal?.item.name.trim()) return;
-    if (equipmentModal.id) updateEquipment(equipmentModal.id, equipmentModal.item);
-    else addEquipment(equipmentModal.item);
-    setEquipmentModal(null);
-  }
-  function saveConsumable() {
-    if (!consumableModal?.item.name.trim()) return;
-    if (consumableModal.id) updateConsumable(consumableModal.id, consumableModal.item);
-    else addConsumable(consumableModal.item);
-    setConsumableModal(null);
-  }
-  function confirmDelete() {
-    if (!deleteTarget) return;
-    if (deleteTarget.type === "equipment") removeEquipment(deleteTarget.id);
-    else removeConsumable(deleteTarget.id);
-    setDeleteTarget(null);
-  }
-  function publishSlot() {
-    if (!slotDraft.date || !slotDraft.start || !slotDraft.end || slotDraft.capacity < 1) return;
-    const date = new Date(`${slotDraft.date}T12:00:00`);
-    const slot: Omit<BookingSlot, "id"> = {
-      dateId: `admin-${slotDraft.date}`,
-      day: date.toLocaleDateString("en-US", { weekday: "short" }),
-      date: date.toLocaleDateString("en-US", { day: "2-digit" }),
-      month: date.toLocaleDateString("en-US", { month: "short" }),
-      label: `${slotDraft.start} – ${slotDraft.end}`,
-      capacity: slotDraft.capacity,
-      published: true,
-    };
-    addSlot(slot);
-  }
 
   return (
-    <AppShell
-      title={adminViews.find((item) => item.id === view)?.label ?? "Dashboard"}
-      subtitle="MakerSpace administration"
-      workspaceNavigation={adminViews}
-      activeWorkspace={view}
-      onWorkspaceChange={(id) => {
-        setView(id as AdminView);
-        setCategory("All");
-        setQuery("");
-      }}
-    >
-      {view === "dashboard" && (
-        <section id="admin-overview">
-          <h2 className="font-semibold">Operational overview</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <AdminMetric
-              label="Current occupancy"
-              value={`${present}/${config.capacity}`}
-              note="Entered and not exited"
-            />
-            <AdminMetric
-              label="Booking utilization"
-              value={`${utilization}%`}
-              note={`${bookedSeats} seats across active slots`}
-            />
-            <AdminMetric
-              label="Unavailable equipment"
-              value={equipment.filter((item) => item.status !== "Available").length}
-              note="Operational attention required"
-            />
-            <AdminMetric
-              label="Upcoming booking volume"
-              value={activeBookings.length}
-              note={`${visits.filter((visit) => visit.status === "Active").length} active visits`}
-            />
-          </div>
-          <div className="card-surface mt-3 p-4">
-            <p className="text-sm font-semibold">Pending operational issues</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {equipment.filter((item) => item.status !== "Available").length} equipment alerts ·{" "}
-              {reservations.filter((item) => item.status === "No Show").length} no-shows ·{" "}
-              {reservations.filter((item) => item.status === "Cancelled").length} cancellations
-            </p>
-          </div>
-          <DashboardQuickActions
-            actions={[
-              {
-                label: "Add Equipment",
-                description: "Create a new machine, tool, or workstation catalogue record.",
-                icon: PackagePlus,
-                onClick: () => setEquipmentModal({ item: emptyEquipment() }),
-              },
-              {
-                label: "Add Consumable",
-                description: "Register a selectable material or consumable resource.",
-                icon: FlaskConical,
-                onClick: () => setConsumableModal({ item: emptyConsumable() }),
-              },
-              {
-                label: "Publish Booking Slot",
-                description: "Create a session that becomes available to students.",
-                icon: CalendarPlus,
-                onClick: () => {
-                  setView("config");
-                  window.setTimeout(
-                    () =>
-                      document.getElementById("published-booking-slots")?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      }),
-                    0,
-                  );
-                },
-              },
-              {
-                label: "Edit Lab Configuration",
-                description: "Update hours, capacity, closures, and booking rules.",
-                icon: Settings2,
-                onClick: () => setView("config"),
-              },
-            ]}
-          />
-        </section>
-      )}
-
-      {view === "config" && (
-        <section id="admin-configuration" className="card-surface p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="font-semibold">Lab operational settings</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                These settings define booking availability and are recorded in the prototype audit
-                log.
+    <AppShell title="Admin" subtitle="MakerSpace at a glance">
+      <div className="mx-auto max-w-3xl space-y-8">
+        <section
+          aria-label="Headline numbers"
+          className="card-surface grid grid-cols-2 divide-x divide-border py-4 sm:grid-cols-4"
+        >
+          {[
+            { label: "Students", value: String(students) },
+            { label: "Projects", value: String(activeProjects.length) },
+            { label: "Sessions", value: String(reservations.length) },
+            { label: "Lab time", value: formatMinutes(labMinutes) },
+          ].map((stat) => (
+            <div key={stat.label} className="px-4 py-2 text-center">
+              <p className="font-serif text-2xl font-light sm:text-3xl">{stat.value}</p>
+              <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                {stat.label}
               </p>
             </div>
-            {saved && <StatusBadge label="Saved" />}
-          </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Lab name">
-              <input
-                value={draft.labName}
-                onChange={(event) => updateDraft("labName", event.target.value)}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Opening time">
-              <input
-                type="time"
-                value={draft.openingTime}
-                onChange={(event) => updateDraft("openingTime", event.target.value)}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Closing time">
-              <input
-                type="time"
-                value={draft.closingTime}
-                onChange={(event) => updateDraft("closingTime", event.target.value)}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Default slot duration (minutes)">
-              <input
-                type="number"
-                min="15"
-                value={draft.slotDuration}
-                onChange={(event) => updateDraft("slotDuration", Number(event.target.value))}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Capacity per slot">
-              <input
-                type="number"
-                min="1"
-                value={draft.capacity}
-                onChange={(event) => updateDraft("capacity", Number(event.target.value))}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Booking horizon (days)">
-              <input
-                type="number"
-                min="1"
-                value={draft.bookingHorizon}
-                onChange={(event) => updateDraft("bookingHorizon", Number(event.target.value))}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Cancellation window (hours)">
-              <input
-                type="number"
-                min="0"
-                value={draft.cancellationWindow}
-                onChange={(event) => updateDraft("cancellationWindow", Number(event.target.value))}
-                className="form-input"
-              />
-            </Field>
-            <Field label="Maximum future bookings per project">
-              <input
-                type="number"
-                min="1"
-                value={draft.maximumFutureBookingsPerProject ?? 1}
-                onChange={(event) =>
-                  updateDraft("maximumFutureBookingsPerProject", Number(event.target.value))
-                }
-                className="form-input"
-              />
-            </Field>
-          </div>
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div>
-              <p className="text-sm font-medium">Available days</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {weekDays.map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() =>
-                      updateDraft(
-                        "availableDays",
-                        draft.availableDays.includes(day)
-                          ? draft.availableDays.filter((item) => item !== day)
-                          : [...draft.availableDays, day],
-                      )
-                    }
-                    className={`min-h-10 rounded-xl border px-3 text-sm font-semibold ${draft.availableDays.includes(day) ? "border-primary bg-primary/10 text-primary" : ""}`}
-                  >
-                    {day}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Closure dates</p>
-              <div className="mt-2 flex gap-2">
-                <input
-                  type="date"
-                  value={closureInput}
-                  onChange={(event) => setClosureInput(event.target.value)}
-                  className="form-input"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (closureInput && !draft.closureDates.includes(closureInput))
-                      updateDraft("closureDates", [...draft.closureDates, closureInput]);
-                    setClosureInput("");
-                  }}
-                  className="min-h-11 rounded-xl border px-3 text-sm font-semibold"
-                >
-                  Add
-                </button>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {draft.closureDates.map((date) => (
-                  <button
-                    key={date}
-                    type="button"
-                    onClick={() =>
-                      updateDraft(
-                        "closureDates",
-                        draft.closureDates.filter((item) => item !== date),
-                      )
-                    }
-                    className="rounded-full border px-3 py-1 text-xs"
-                  >
-                    {date} ×
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <Field label="Quick-visit rules">
-              <textarea
-                value={draft.quickVisitRules}
-                onChange={(event) => updateDraft("quickVisitRules", event.target.value)}
-                className="form-input min-h-24 py-3"
-              />
-            </Field>
-            <Field label="Project verification requirements">
-              <textarea
-                value={draft.projectVerificationRequirements}
-                onChange={(event) =>
-                  updateDraft("projectVerificationRequirements", event.target.value)
-                }
-                className="form-input min-h-24 py-3"
-              />
-            </Field>
-          </div>
-          <button
-            type="button"
-            onClick={saveSettings}
-            className="mt-5 min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
-            Save operational settings
-          </button>
-          <div id="published-booking-slots" className="mt-6 scroll-mt-24 border-t pt-5">
-            <div className="flex items-start gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
-                <CalendarPlus className="size-5" />
-              </span>
-              <div>
-                <h3 className="font-semibold">Published booking slots</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Published sessions become available immediately in Student Slots and share live
-                  capacity with Lab Operations.
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Field label="Date">
-                <input
-                  type="date"
-                  value={slotDraft.date}
-                  onChange={(event) =>
-                    setSlotDraft((current) => ({ ...current, date: event.target.value }))
-                  }
-                  className="form-input"
-                />
-              </Field>
-              <Field label="Starts">
-                <input
-                  type="time"
-                  value={slotDraft.start}
-                  onChange={(event) =>
-                    setSlotDraft((current) => ({ ...current, start: event.target.value }))
-                  }
-                  className="form-input"
-                />
-              </Field>
-              <Field label="Ends">
-                <input
-                  type="time"
-                  value={slotDraft.end}
-                  onChange={(event) =>
-                    setSlotDraft((current) => ({ ...current, end: event.target.value }))
-                  }
-                  className="form-input"
-                />
-              </Field>
-              <Field label="Capacity">
-                <input
-                  type="number"
-                  min="1"
-                  value={slotDraft.capacity}
-                  onChange={(event) =>
-                    setSlotDraft((current) => ({
-                      ...current,
-                      capacity: Number(event.target.value),
-                    }))
-                  }
-                  className="form-input"
-                />
-              </Field>
-              <button
-                type="button"
-                onClick={publishSlot}
-                className="min-h-11 self-end rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-              >
-                Publish slot
-              </button>
-            </div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {slots.slice(0, 8).map((slot) => (
-                <article
-                  key={slot.id}
-                  className="flex min-h-14 items-center justify-between gap-3 rounded-xl border px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">
-                      {slot.day}, {slot.date} {slot.month} · {slot.label}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Capacity {slot.capacity}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => updateSlot(slot.id, { published: !slot.published })}
-                    className="min-h-10 shrink-0 rounded-md"
-                  >
-                    <StatusBadge label={slot.published ? "Published" : "Draft"} />
-                  </button>
-                </article>
-              ))}
-            </div>
-          </div>
-          <div className="mt-6 border-t pt-5">
-            <h3 className="font-semibold">Configuration history</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Recorded changes to MakerSpace operating rules.
-            </p>
-            <div className="mt-3 space-y-2">
-              {auditLogs.filter((event) => event.entityType === "Lab Configuration").length ? (
-                auditLogs
-                  .filter((event) => event.entityType === "Lab Configuration")
-                  .map((event) => (
-                    <div key={event.id} className="rounded-xl border p-3 text-sm">
-                      <strong>{event.action}</strong>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {event.actorName} · {event.timestamp}
-                      </span>
+          ))}
+        </section>
+
+        <div className="grid gap-6 sm:grid-cols-2">
+          <BreakdownCard title="Projects by status" data={projectStatuses} />
+          <BreakdownCard title="Sessions by outcome" data={bookingStatuses} />
+        </div>
+
+        <section className="card-surface p-5 sm:p-6">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Equipment utilisation
+          </p>
+          <div className="mt-4 space-y-3">
+            {equipment
+              .filter((item) => item.visible)
+              .map((item) => {
+                const used = item.totalQuantity - item.availableQuantity;
+                const percent = Math.round((used / Math.max(1, item.totalQuantity)) * 100);
+                return (
+                  <div key={item.id}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate text-sm font-medium">{item.name}</p>
+                      <p className="shrink-0 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                        {used} of {item.totalQuantity} in use
+                      </p>
                     </div>
-                  ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Configuration changes made during this session will appear here.
-                </p>
-              )}
-            </div>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          percent >= 100 ? "bg-warning" : "bg-primary",
+                        )}
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
           </div>
+          <p className="mt-4 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+            {unitsFree} of {unitsTotal} units free · {uploads.length}{" "}
+            {uploads.length === 1 ? "file" : "files"} queued
+          </p>
         </section>
-      )}
 
-      {(view === "equipment" || view === "consumables") && (
-        <section id="admin-resources">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="font-semibold">
-                {catalogue === "equipment" ? "Equipment catalogue" : "Consumables catalogue"}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {catalogue === "equipment"
-                  ? "Manage equipment details, quantities, visibility and operational attributes."
-                  : "Manage consumable details, categories and active status."}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                catalogue === "equipment"
-                  ? setEquipmentModal({ item: emptyEquipment() })
-                  : setConsumableModal({ item: emptyConsumable() })
-              }
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
-            >
-              <PackagePlus className="size-4" />
-              Add {catalogue === "equipment" ? "equipment" : "consumable"}
-            </button>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <label className="relative">
-              <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={`Search ${catalogue}`}
-                className="form-input pl-10"
-              />
-            </label>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="form-input sm:w-52"
-            >
-              <option>All</option>
-              {equipmentCategories.map((item) => (
-                <option key={item}>{item}</option>
+        <section className="card-surface p-5 sm:p-6">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Recent activity
+          </p>
+          {auditLogs.length ? (
+            <ol className="mt-4 space-y-3">
+              {auditLogs.slice(0, 8).map((event) => (
+                <li key={event.id} className="flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate text-sm">
+                    <span className="font-medium">{event.actorName}</span>{" "}
+                    <span className="text-muted-foreground">
+                      {event.action.toLowerCase()} · {event.entity}
+                    </span>
+                  </p>
+                  <p className="shrink-0 text-[10px] font-mono text-muted-foreground">
+                    {event.timestamp}
+                  </p>
+                </li>
               ))}
-            </select>
-          </div>
-          <div className="card-surface mt-4 p-4">
-            <p className="text-sm font-semibold">Configured categories</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {equipmentCategories.map((item) => (
-                <span key={item} className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
-                  {item}
-                </span>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={categoryInput}
-                onChange={(event) => setCategoryInput(event.target.value)}
-                placeholder="New configured category"
-                className="form-input"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  addEquipmentCategory(categoryInput);
-                  setCategoryInput("");
-                }}
-                disabled={!categoryInput.trim()}
-                className="min-h-11 shrink-0 rounded-xl border px-4 text-sm font-semibold disabled:opacity-50"
-              >
-                Add category
-              </button>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {catalogue === "equipment"
-              ? shownEquipment.map((item) => (
-                  <EquipmentCard
-                    key={item.id}
-                    item={item}
-                    onEdit={() => setEquipmentModal({ id: item.id, item: { ...item } })}
-                    onDelete={() =>
-                      setDeleteTarget({ type: "equipment", id: item.id, name: item.name })
-                    }
-                  />
-                ))
-              : shownConsumables.map((item) => (
-                  <ConsumableCard
-                    key={item.id}
-                    item={item}
-                    onEdit={() => setConsumableModal({ id: item.id, item: { ...item } })}
-                    onDelete={() =>
-                      setDeleteTarget({ type: "consumable", id: item.id, name: item.name })
-                    }
-                  />
-                ))}
-          </div>
-          {((catalogue === "equipment" && !shownEquipment.length) ||
-            (catalogue === "consumables" && !shownConsumables.length)) && (
-            <div className="card-surface mt-4 p-7 text-center text-sm text-muted-foreground">
-              No {catalogue} match the current search and category filter.
-            </div>
+            </ol>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Actions across the MakerSpace will appear here.
+            </p>
           )}
         </section>
-      )}
-
-      <ResponsiveModal
-        open={!!equipmentModal}
-        onOpenChange={(open) => !open && setEquipmentModal(null)}
-        title={equipmentModal?.id ? "Edit equipment" : "Add equipment"}
-        description="Set operational availability and student/booking visibility."
-      >
-        {equipmentModal && (
-          <EquipmentForm
-            item={equipmentModal.item}
-            onChange={(item) => setEquipmentModal({ ...equipmentModal, item })}
-            onSave={saveEquipment}
-            categories={equipmentCategories}
-          />
-        )}
-      </ResponsiveModal>
-      <ResponsiveModal
-        open={!!consumableModal}
-        onOpenChange={(open) => !open && setConsumableModal(null)}
-        title={consumableModal?.id ? "Edit consumable" : "Add consumable"}
-        description="Consumables are configured separately from bookable equipment."
-      >
-        {consumableModal && (
-          <ConsumableForm
-            item={consumableModal.item}
-            onChange={(item) => setConsumableModal({ ...consumableModal, item })}
-            onSave={saveConsumable}
-            categories={equipmentCategories}
-          />
-        )}
-      </ResponsiveModal>
-      <ResponsiveModal
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Remove ${deleteTarget?.type ?? "resource"}`}
-        description="This removes the resource from the simulated catalogue."
-      >
-        {deleteTarget && (
-          <div className="space-y-4">
-            <p className="text-sm">
-              Remove <strong>{deleteTarget.name}</strong>? Existing booking history remains
-              recorded.
-            </p>
-            <button
-              type="button"
-              onClick={confirmDelete}
-              className="min-h-12 w-full rounded-xl bg-destructive font-semibold text-destructive-foreground"
-            >
-              Remove from catalogue
-            </button>
-          </div>
-        )}
-      </ResponsiveModal>
-
-      {view === "dashboard" && (
-        <section id="admin-oversight" className="mt-7">
-          <h2 className="font-semibold">Operational oversight</h2>
-          <div className="mt-3 grid gap-3 lg:grid-cols-3">
-            <OversightList
-              title="Projects"
-              items={projects.slice(0, 4).map((item) => `${item.name} · ${item.status}`)}
-            />
-            <OversightList
-              title="Bookings"
-              items={reservations.slice(0, 4).map((item) => `${item.projectName} · ${item.status}`)}
-            />
-            <OversightList
-              title="Visits"
-              items={visits.slice(0, 4).map((item) => `${item.title} · ${item.status}`)}
-            />
-          </div>
-        </section>
-      )}
+      </div>
     </AppShell>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function BreakdownCard({ title, data }: { title: string; data: Map<string, number> }) {
+  const total = [...data.values()].reduce((sum, count) => sum + count, 0);
   return (
-    <label className="block text-sm font-medium">
-      <span>{label}</span>
-      <span className="mt-1.5 block">{children}</span>
-    </label>
-  );
-}
-function AdminMetric({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string | number;
-  note: string;
-}) {
-  return (
-    <article className="card-surface p-4">
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="mt-1 text-sm font-semibold">{label}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
-    </article>
-  );
-}
-function OversightList({ title, items }: { title: string; items: string[] }) {
-  return (
-    <article className="card-surface p-4">
-      <h3 className="font-semibold">{title}</h3>
-      <div className="mt-3 space-y-2">
-        {items.map((item, index) => (
-          <p
-            key={`${title}-${index}-${item}`}
-            className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground"
-          >
-            {item}
-          </p>
-        ))}
-      </div>
-    </article>
-  );
-}
-function EquipmentCard({
-  item,
-  onEdit,
-  onDelete,
-}: {
-  item: Equipment;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <article className="card-surface p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{item.name}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {item.category} · {item.availableQuantity}/{item.totalQuantity} available
-          </p>
-          <div className="mt-2">
-            <StatusBadge label={item.status} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit ${item.name}`}
-            className="grid size-10 place-items-center rounded-xl border"
-          >
-            <Pencil className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={`Remove ${item.name}`}
-            className="grid size-10 place-items-center rounded-xl border border-destructive/40 text-destructive"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
-      </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Student: {item.visible ? "Visible" : "Hidden"} · Booking:{" "}
-        {item.bookingVisible !== false ? "Allowed" : "Hidden"}
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {item.lab} · ID {item.id} · Updated {item.updatedAt}
-      </p>
-    </article>
-  );
-}
-function ConsumableCard({
-  item,
-  onEdit,
-  onDelete,
-}: {
-  item: Consumable;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <article className="card-surface p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold">{item.name}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {item.category} · {item.unit}
-          </p>
-          <div className="mt-2">
-            <StatusBadge label={item.active ? "Available" : "Unavailable"} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            aria-label={`Edit ${item.name}`}
-            className="grid size-10 place-items-center rounded-xl border"
-          >
-            <Pencil className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={`Remove ${item.name}`}
-            className="grid size-10 place-items-center rounded-xl border border-destructive/40 text-destructive"
-          >
-            <Trash2 className="size-4" />
-          </button>
-        </div>
-      </div>
-      <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-    </article>
-  );
-}
-function EquipmentForm({
-  item,
-  onChange,
-  onSave,
-  categories,
-}: {
-  item: Omit<Equipment, "id">;
-  onChange: (item: Omit<Equipment, "id">) => void;
-  onSave: () => void;
-  categories: string[];
-}) {
-  const set = <K extends keyof Omit<Equipment, "id">>(key: K, value: Omit<Equipment, "id">[K]) =>
-    onChange({ ...item, [key]: value });
-  return (
-    <div className="space-y-3">
-      <Field label="Equipment name">
-        <input
-          value={item.name}
-          onChange={(event) => set("name", event.target.value)}
-          className="form-input"
-        />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Category">
-          <select
-            value={item.category}
-            onChange={(event) => set("category", event.target.value as EquipmentCategory)}
-            className="form-input"
-          >
-            {categories.map((category) => (
-              <option key={category}>{category}</option>
+    <section className="card-surface p-5 sm:p-6">
+      <p className="text-[10px] font-mono uppercase tracking-widest text-primary">{title}</p>
+      {total ? (
+        <div className="mt-4 space-y-3">
+          {[...data.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([label, count]) => (
+              <div key={label}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm">{label}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{count}</p>
+                </div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${Math.round((count / total) * 100)}%` }}
+                  />
+                </div>
+              </div>
             ))}
-          </select>
-        </Field>
-        <Field label="Operational status">
-          <select
-            value={item.status}
-            onChange={(event) => set("status", event.target.value as EquipmentStatus)}
-            className="form-input"
-          >
-            {equipmentStatuses.map((status) => (
-              <option key={status}>{status}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Total quantity">
-          <input
-            type="number"
-            min="1"
-            value={item.totalQuantity}
-            onChange={(event) => set("totalQuantity", Number(event.target.value))}
-            className="form-input"
-          />
-        </Field>
-        <Field label="Available quantity">
-          <input
-            type="number"
-            min="0"
-            max={item.totalQuantity}
-            value={item.availableQuantity}
-            onChange={(event) => set("availableQuantity", Number(event.target.value))}
-            className="form-input"
-          />
-        </Field>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Lab / zone">
-          <input
-            value={item.lab}
-            onChange={(event) => set("lab", event.target.value)}
-            className="form-input"
-          />
-        </Field>
-        <Field label="Image reference">
-          <input
-            value={item.image}
-            onChange={(event) => set("image", event.target.value)}
-            placeholder="Asset path or image URL"
-            className="form-input"
-          />
-        </Field>
-      </div>
-      <Field label="Description">
-        <textarea
-          value={item.description}
-          onChange={(event) => set("description", event.target.value)}
-          className="form-input min-h-20 py-3"
-        />
-      </Field>
-      <Field label="Operational notes">
-        <textarea
-          value={item.notes ?? ""}
-          onChange={(event) => set("notes", event.target.value)}
-          className="form-input min-h-20 py-3"
-        />
-      </Field>
-      <div className="flex gap-5 text-sm">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={item.visible}
-            onChange={(event) => set("visible", event.target.checked)}
-          />
-          Visible to students
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={item.bookingVisible !== false}
-            onChange={(event) => set("bookingVisible", event.target.checked)}
-          />
-          Available in booking
-        </label>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Created {item.createdAt} · Updated {item.updatedAt}
-      </p>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={!item.name.trim()}
-        className="min-h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-50"
-      >
-        Save equipment
-      </button>
-    </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">No data yet.</p>
+      )}
+    </section>
   );
 }
-function ConsumableForm({
-  item,
-  onChange,
-  onSave,
-  categories,
-}: {
-  item: Omit<Consumable, "id">;
-  onChange: (item: Omit<Consumable, "id">) => void;
-  onSave: () => void;
-  categories: string[];
-}) {
-  const set = <K extends keyof Omit<Consumable, "id">>(key: K, value: Omit<Consumable, "id">[K]) =>
-    onChange({ ...item, [key]: value });
-  return (
-    <div className="space-y-3">
-      <Field label="Consumable name">
-        <input
-          value={item.name}
-          onChange={(event) => set("name", event.target.value)}
-          className="form-input"
-        />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Category">
-          <select
-            value={item.category}
-            onChange={(event) => set("category", event.target.value)}
-            className="form-input"
-          >
-            {categories.map((category) => (
-              <option key={category}>{category}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Issue unit">
-          <input
-            value={item.unit}
-            onChange={(event) => set("unit", event.target.value)}
-            className="form-input"
-          />
-        </Field>
-      </div>
-      <Field label="Description">
-        <textarea
-          value={item.description}
-          onChange={(event) => set("description", event.target.value)}
-          className="form-input min-h-24 py-3"
-        />
-      </Field>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={item.active}
-          onChange={(event) => set("active", event.target.checked)}
-        />
-        Active and requestable
-      </label>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={!item.name.trim()}
-        className="min-h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-50"
-      >
-        Save consumable
-      </button>
-    </div>
-  );
+
+function countBy(values: string[]) {
+  const map = new Map<string, number>();
+  values.forEach((value) => map.set(value, (map.get(value) ?? 0) + 1));
+  return map;
+}
+
+function minutesBetween(entry: string, exit: string | null) {
+  if (!exit) return 0;
+  const [entryHour = 0, entryMinute = 0] = entry.split(":").map(Number);
+  const [exitHour = 0, exitMinute = 0] = exit.split(":").map(Number);
+  return Math.max(0, exitHour * 60 + exitMinute - (entryHour * 60 + entryMinute));
+}
+
+function formatMinutes(total: number) {
+  if (!total) return "0h";
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (!hours) return `${minutes}m`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
 }

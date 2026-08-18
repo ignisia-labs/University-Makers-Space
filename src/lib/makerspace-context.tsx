@@ -354,13 +354,32 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       beginPrototypeSession(nextRole = "Student") {
         setRole(nextRole);
         setAuthenticated(true);
+        // Staff identities come pre-provisioned by the university — no onboarding.
+        if (nextRole !== "Student") {
+          const staff = users.find((user) => user.role === nextRole && user.active);
+          if (staff) {
+            setProfile({
+              email: staff.email,
+              fullName: staff.name,
+              prn: staff.prn ?? "",
+              department: "MIT-WPU MakerSpace",
+              programme: "Staff",
+              academicYear: "—",
+            });
+          }
+          setOnboarded(true);
+        }
       },
       beginNewStudentSession() {
         // Development sign-in mirrors the institutional identity returned by Google.
-        // A returning user keeps their persisted profile and onboarding state.
+        // A returning student keeps their persisted profile; a staff identity left
+        // over from a staff demo session is discarded.
         setRole("Student");
         setAuthenticated(true);
-        if (!onboarded) setProfile(defaultProfile);
+        if (!onboarded || profile.programme === "Staff") {
+          setProfile(defaultProfile);
+          setOnboarded(false);
+        }
       },
       signOut() {
         // A deliberate sign-out clears the identity, so the next sign-in starts at onboarding.
