@@ -1,10 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Settings } from "lucide-react";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import type { AppRole } from "@/lib/makerspace-data";
-import bgVideo from "../../Assets/gemini_generated_video_ab04e635.mp4";
-import { Settings } from "lucide-react";
-import { z } from "zod";
 
 export const Route = createFileRoute("/login")({
   validateSearch: z.object({
@@ -86,35 +85,39 @@ function Login() {
 
   if (search.mode === "email") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-6 py-12 text-white">
-        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
-          <p className="text-xs font-mono uppercase tracking-[0.28em] text-white/60">MIT-WPU MakerSpace</p>
-          <h1 className="mt-4 text-3xl font-semibold text-white">Sign in</h1>
-          <p className="mt-2 text-sm text-white/70">
+      <main className="grid min-h-screen place-items-center bg-background px-4 py-10 sm:px-6">
+        <section className="card-surface w-full max-w-md p-7 sm:p-8">
+          <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-primary">MIT-WPU MakerSpace</p>
+          <h1 className="mt-4 font-serif text-3xl font-light tracking-wide text-foreground sm:text-4xl">
+            Sign in
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Use your institutional email to continue to your workspace.
           </p>
 
-          <label className="mt-6 block text-sm font-medium text-white/80" htmlFor="email-input">
-            Email address
-          </label>
-          <input
-            id="email-input"
-            type="email"
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setEmailError("");
-            }}
-            placeholder="name@mitwpu.edu.in"
-            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-base text-white outline-none ring-0 placeholder:text-white/35 focus:border-white/30"
-          />
-          {emailError && <p className="mt-2 text-sm text-rose-300">{emailError}</p>}
+          <div className="mt-7 space-y-2">
+            <label className="text-[10px] font-mono font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="email-input">
+              Email address
+            </label>
+            <input
+              id="email-input"
+              type="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setEmailError("");
+              }}
+              placeholder="name@mitwpu.edu.in"
+              className="h-11 w-full rounded-xl border border-border bg-secondary/40 px-4 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            {emailError && <p className="text-[10px] font-mono text-destructive">{emailError}</p>}
+          </div>
 
           <button
             type="button"
             onClick={handleEmailSignIn}
             disabled={isChecking}
-            className="mt-6 w-full rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:opacity-60"
+            className="pressable mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isChecking ? "Signing in..." : "Continue"}
           </button>
@@ -122,102 +125,49 @@ function Login() {
           <button
             type="button"
             onClick={() => navigate({ to: "/login" })}
-            className="mt-3 w-full rounded-full border border-white/15 px-4 py-3 text-sm text-white/80 transition hover:bg-white/5"
+            className="pressable mt-3 inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-border bg-card px-5 text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
             Back
           </button>
-        </div>
+        </section>
       </main>
     );
   }
 
   return (
-    <main className="relative w-full h-screen bg-black flex flex-col justify-center items-center overflow-hidden">
-      {/* Full-Height Background Video */}
-      <div className="absolute inset-0 w-full h-full z-0 select-none pointer-events-none">
-        <video
-          src={bgVideo}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full object-cover scale-105"
-        />
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" />
-      </div>
-
-      {/* Main Container */}
-      <div className="relative z-10 w-full max-w-xl px-6 text-center flex flex-col items-center justify-center">
-        {/* Brand */}
-        <h1
-          className="whitespace-nowrap select-none leading-none"
-          style={{
-            fontFamily: "'Cormorant Garamond', 'Playfair Display', Georgia, serif",
-            fontWeight: 300,
-            fontSize: "clamp(2.8rem, 6vw, 5.5rem)",
-            letterSpacing: "0.04em",
-            color: "rgba(255,255,255,0.96)",
-            textShadow:
-              "0 2px 4px rgba(0,0,0,0.5), 0 8px 32px rgba(0,0,0,0.4), 0 24px 60px rgba(0,0,0,0.2)",
-          }}
-        >
+    <main className="grid min-h-screen place-items-center bg-background px-4 py-10 sm:px-6">
+      <section className="card-surface animate-in fade-in zoom-in-95 w-full max-w-md p-7 text-center duration-500 sm:p-8">
+        <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-primary">Welcome back</p>
+        <h1 className="mt-4 font-serif text-3xl font-light tracking-wide text-foreground sm:text-4xl">
           MIT-WPU MakerSpace
         </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Continue to your student workspace and manage your projects, bookings, and lab access.
+        </p>
 
-        {/* Liquid Glass Sign In Button */}
         <button
           type="button"
           onClick={signIn}
           disabled={isChecking}
-          className="mt-14 inline-flex items-center justify-center rounded-full relative overflow-hidden group transition-all duration-500 active:scale-95 hover:scale-[1.04] cursor-pointer"
-          style={{
-            minHeight: "3.5rem",
-            paddingLeft: "3.5rem",
-            paddingRight: "3.5rem",
-            fontSize: "0.75rem",
-            letterSpacing: "0.25em",
-            fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 600,
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.95)",
-            background: "rgba(255,255,255,0.1)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(255,255,255,0.22)",
-            borderTop: "1px solid rgba(255,255,255,0.38)",
-            boxShadow:
-              "0 8px 32px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.15) inset, 0 -1px 0 rgba(0,0,0,0.15) inset",
-          }}
+          className="pressable mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-1000 ease-out" />
-          <span
-            className="absolute inset-x-0 top-0 h-px"
-            style={{
-              background:
-                "linear-gradient(to right, transparent 10%, rgba(255,255,255,0.45) 50%, transparent 90%)",
-            }}
-          />
-          <span className="relative z-10">
-            {isChecking ? "Authenticating..." : "Sign In with MIT-WPU Email"}
-          </span>
+          {isChecking ? "Authenticating..." : "Sign In with MIT-WPU Email"}
         </button>
-      </div>
+      </section>
 
-      {/* DEV Preview Trigger at absolute corner */}
       {import.meta.env.DEV && (
         <div className="absolute bottom-6 right-6 z-20">
           <button
             onClick={() => setDevMenuOpen((o) => !o)}
-            className="flex items-center justify-center size-9 rounded-full bg-white/10 border border-white/20 hover:bg-white/20 text-white transition-all backdrop-blur-md cursor-pointer"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-all hover:bg-secondary hover:text-foreground"
           >
-            <Settings className="size-4 animate-spin-slow" />
+            <Settings className="size-4" />
           </button>
 
           {devMenuOpen && (
-            <div className="absolute bottom-12 right-0 bg-[#F0EFFF] border border-zinc-200 p-4 rounded-2xl shadow-xl w-60 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <p className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest pb-2 border-b border-zinc-100">
-                PROTOTYPE ROLES
+            <div className="absolute bottom-12 right-0 w-60 rounded-2xl border border-border bg-card p-4 shadow-xl">
+              <p className="border-b border-border pb-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                Prototype roles
               </p>
               <div className="mt-2 grid gap-1.5">
                 {prototypeRoles.map((previewRole) => (
