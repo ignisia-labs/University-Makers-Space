@@ -1,0 +1,488 @@
+openapi: 3.0.3
+info:
+  title: University Maker's Space API
+  version: 2.0.0
+  description: MIT-WPU Google Workspace identity, project verification, and capacity-safe booking API.
+servers:
+  - url: http://localhost:4000/api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: ums_refresh
+  parameters:
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Envelope:
+      type: object
+      required: [success, message, data]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data: {}
+        meta:
+          type: object
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+            hasNext: { type: boolean }
+            hasPrev: { type: boolean }
+    ErrorEnvelope:
+      type: object
+      required: [success, message, error]
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            details: { type: array, items: {} }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [STUDENT, FACULTY_MENTOR, LAB_ASSISTANT, ADMIN, SUPER_ADMIN]
+        avatarUrl: { type: string, nullable: true }
+        profileComplete: { type: boolean }
+        isActive: { type: boolean }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+    GoogleSignIn:
+      type: object
+      additionalProperties: false
+      required: [credential, csrfToken]
+      properties:
+        credential: { type: string, description: Google Identity Services ID token }
+        csrfToken: { type: string, minLength: 32 }
+    StudentOnboarding:
+      type: object
+      additionalProperties: false
+      required: [fullName, prn, departmentId, programmeId, academicYear]
+      properties:
+        fullName: { type: string, minLength: 2, maxLength: 100 }
+        prn: { type: string, pattern: "^\\d{10}$" }
+        departmentId: { type: string, format: uuid }
+        programmeId: { type: string, format: uuid }
+        academicYear: { type: integer, minimum: 1, maximum: 8 }
+        division: { type: string }
+        phone: { type: string }
+    BookingCreate:
+      type: object
+      additionalProperties: false
+      required: [labSlotId, projectId, participantIds, idempotencyKey]
+      properties:
+        labSlotId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        participantIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        equipment:
+          type: array
+          items:
+            type: object
+            required: [equipmentId, quantity]
+            properties:
+              equipmentId: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1 }
+        consumables:
+          type: array
+          items:
+            type: object
+            required: [consumableId, quantity]
+            properties:
+              consumableId: { type: string, format: uuid }
+              quantity: { type: number, exclusiveMinimum: 0 }
+        notes: { type: string, maxLength: 500, nullable: true }
+        idempotencyKey: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Missing, invalid, expired, or revoked session
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Forbidden:
+      description: Authenticated but missing the required permission
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: Uniqueness, state, capacity, availability, or concurrent transaction conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+paths:
+  /auth/google/config:
+    get:
+      security: []
+      summary: Get public Google Identity Services configuration
+      responses:
+        "200":
+          {
+            description: Configuration,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+  /auth/google/csrf:
+    get:
+      security: []
+      summary: Create the login CSRF token and matching cookie
+      responses:
+        "200":
+          {
+            description: CSRF token,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+        "429": { description: Rate limited }
+  /auth/google:
+    post:
+      security: []
+      summary: Sign in using an MIT-WPU Google Workspace ID token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GoogleSignIn" }
+      responses:
+        "200":
+          {
+            description: Signed in,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /auth/refresh:
+    post:
+      security:
+        - refreshCookie: []
+      summary: Atomically rotate the refresh token
+      responses:
+        "200":
+          {
+            description: Access token refreshed,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/logout:
+    post:
+      summary: Revoke the current session
+      responses:
+        "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/me:
+    get:
+      summary: Get the persisted current user and effective permissions
+      responses:
+        "200":
+          {
+            description: Current user,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/onboarding:
+    post:
+      summary: Complete a student's institutional profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentOnboarding" }
+      responses:
+        "201":
+          {
+            description: Profile completed,
+            content: { application/json: { schema: { $ref: "#/components/schemas/Envelope" } } },
+          }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /reference-data/departments:
+    get:
+      summary: List active departments for authenticated workflows
+      responses:
+        "200": { description: Active departments }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /reference-data/programmes:
+    get:
+      summary: List active programmes, optionally filtered by department
+      parameters:
+        - in: query
+          name: departmentId
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Active programmes }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /reference-data/academic-years:
+    get:
+      summary: List configured active academic-year choices
+      responses:
+        "200": { description: Active academic years }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /reference-data/labs:
+    get:
+      summary: List active labs and booking policy summaries
+      responses:
+        "200": { description: Active labs }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /reference-data/equipment-categories:
+    get:
+      summary: List active equipment categories, optionally filtered by lab
+      parameters:
+        - in: query
+          name: labId
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Active equipment categories }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users:
+    get:
+      summary: List users (user.read)
+      responses:
+        "200": { description: Users }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/provisioning:
+    get:
+      summary: List privileged identity claims (user.roles.manage)
+      responses: { "200": { description: Provisioning records } }
+    post:
+      summary: Pre-provision roles for an MIT-WPU email (user.roles.manage)
+      responses: { "201": { description: Provisioning record created } }
+  /users/provisioning/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Update a privileged identity claim (user.roles.manage)
+      responses: { "200": { description: Provisioning record updated } }
+  /users/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Get a user (user.read)
+      responses: { "200": { description: User } }
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Update or activate/deactivate a user (user.manage)
+      responses: { "200": { description: User updated } }
+    delete:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Deactivate a user and revoke sessions (user.manage)
+      responses: { "204": { description: User deactivated } }
+  /users/{id}/roles:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Replace roles and revoke sessions (user.roles.manage)
+      responses: { "200": { description: Roles updated } }
+  /projects:
+    get:
+      {
+        summary: List projects within the caller's scope,
+        responses: { "200": { description: Projects } },
+      }
+    post:
+      {
+        summary: Atomically submit a complete idempotent project aggregate,
+        responses: { "201": { description: Project created } },
+      }
+  /projects/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "200": { description: Project } }
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "200": { description: Project updated } }
+    delete:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "204": { description: Project archived } }
+  /projects/{id}/members:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Invite a Student by institutional email, including before first sign-in
+      responses: { "201": { description: Invitation created } }
+  /projects/{id}/members/{memberId}:
+    delete:
+      summary: Cancel an invitation or remove an accepted member
+      responses: { "200": { description: Project team updated } }
+  /projects/{id}/invitations/respond:
+    post:
+      summary: Idempotently accept or decline the signed-in student's invitation
+      responses: { "200": { description: Invitation response recorded } }
+  /projects/{id}/mentor-requests:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Request verification from a faculty mentor
+      responses: { "201": { description: Mentor request created } }
+  /projects/{id}/mentor-decision:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Approve or reject the pending mentor request
+      responses: { "200": { description: Decision recorded } }
+  /projects/mentor-requests/{requestId}/email-review:
+    post:
+      security: []
+      summary: Read a Faculty Mentor email review using its signed action token in the request body
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Review request }
+        "410": { description: Invalid or expired email action link }
+  /projects/mentor-requests/{requestId}/email-decision:
+    post:
+      security: []
+      summary: Approve or reject through a signed Faculty Mentor email action link
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, decision]
+              properties:
+                token: { type: string }
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string }
+      responses:
+        "200": { description: Decision recorded }
+        "409": { description: Review request already resolved }
+        "410": { description: Invalid or expired email action link }
+  /bookings:
+    get:
+      {
+        summary: List bookings within the caller's scope,
+        responses: { "200": { description: Bookings } },
+      }
+    post:
+      summary: Atomically reserve a lab slot and resources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingCreate" }
+      responses:
+        "201": { description: Booking and one-time QR secret }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /bookings/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "200": { description: Booking } }
+  /bookings/{id}/cancel:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Cancel an owned or managed booking without deleting history
+      responses: { "200": { description: Booking cancelled } }
+  /bookings/{id}/status:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Apply an allowed operational status transition (booking.manage)
+      responses: { "200": { description: Booking updated } }
+  /equipment:
+    get: { summary: List equipment, responses: { "200": { description: Equipment } } }
+    post:
+      {
+        summary: Create catalogue equipment (equipment.manage),
+        responses: { "201": { description: Equipment created } },
+      }
+  /equipment/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "200": { description: Equipment } }
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "200": { description: Equipment updated } }
+    delete:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses: { "204": { description: Equipment retired } }
+  /equipment/{id}/availability:
+    patch:
+      summary: Change operational equipment availability (equipment.availability.manage)
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                status:
+                  type: string
+                  enum:
+                    [
+                      AVAILABLE,
+                      PARTIALLY_AVAILABLE,
+                      IN_USE,
+                      RESERVED,
+                      UNAVAILABLE,
+                      UNDER_MAINTENANCE,
+                      DAMAGED,
+                      OUT_OF_SERVICE,
+                    ]
+                availableQuantity: { type: integer, minimum: 0 }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200": { description: Availability updated and audited }
+        "400": { description: Available quantity exceeds total quantity }
+        "403": { description: Missing equipment.availability.manage permission }
+        "404": { description: Equipment not found }
+  /events:
+    get: { summary: List events, responses: { "200": { description: Events } } }
+    post:
+      {
+        summary: Create an event (event.manage),
+        responses: { "201": { description: Event created } },
+      }
+  /events/{id}/registrations:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Register with a serializable capacity check
+      responses:
+        { "201": { description: Registered }, "409": { $ref: "#/components/responses/Conflict" } }
+  /notifications:
+    get:
+      {
+        summary: List the current user's notifications,
+        responses: { "200": { description: Notifications } },
+      }
+    post:
+      {
+        summary: Create a notification (notification.create),
+        responses: { "201": { description: Notification created } },
+      }
+  /uploads:
+    post:
+      {
+        summary: Upload a file (upload.create),
+        responses: { "201": { description: File uploaded } },
+      }

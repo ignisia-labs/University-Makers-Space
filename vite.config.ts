@@ -19,13 +19,73 @@ export default defineConfig({
     // Keep symlinked dependency paths intact. This avoids generated imports resolving
     // through the workspace's apostrophe-containing absolute path during Nitro builds.
     resolve: { preserveSymlinks: true },
-    // Some desktop/workspace file systems do not reliably emit native watch events.
-    // Polling keeps HMR dependable so source changes appear without restarting Vite.
+
+    // ─── Exclude the backend folder from ALL Vite scanning ────────────────────
+    // The backend/ folder lives inside the project root, but it is a separate
+    // Node.js/Express server with its own node_modules. Without this exclusion
+    // Vite's SSR scanner imports backend modules (ioredis, @prisma/client, etc.)
+    // into the browser/SSR bundle, causing ECONNREFUSED crashes and duplicate-React
+    // errors. These three settings together fully isolate the backend folder.
+    optimizeDeps: {
+      exclude: [
+        "ioredis",
+        "@prisma/client",
+        "bullmq",
+        "prisma",
+        "express",
+        "pino",
+        "pino-http",
+        "jsonwebtoken",
+        "google-auth-library",
+        "cloudinary",
+        "multer",
+        "compression",
+        "cookie-parser",
+        "cors",
+        "helmet",
+        "hpp",
+        "swagger-ui-express",
+        "yaml",
+        "tsx",
+      ],
+    },
+
+
     server: {
       host: "127.0.0.1",
       port: 5174,
       strictPort: true,
-      watch: { usePolling: true, interval: 300 },
+      // Ignore the backend folder and its node_modules from HMR file watching.
+      // This prevents ioredis / prisma / other Node.js-only packages from being
+      // pulled into the Vite dependency graph when their files change.
+      watch: {
+        usePolling: true,
+        interval: 300,
+        ignored: [
+          "**/backend/**",
+          "**/backend/node_modules/**",
+          "**/backend/dist/**",
+          "**/backend/prisma/**",
+        ],
+      },
+      // ─── API proxy ──────────────────────────────────────────────────────────
+      // Forwards /api/* and /health to the Express backend (port 4000).
+      // The frontend calls e.g. fetch("/api/v1/auth/me") — Vite transparently
+      // routes it to Express during development, eliminating CORS issues.
+      // Start the backend first: cd backend && npm run dev
+      // ─────────────────────────────────────────────────────────────────────────
+      proxy: {
+        "/api": {
+          target: "http://127.0.0.1:4000",
+          changeOrigin: true,
+          secure: false,
+        },
+        "/health": {
+          target: "http://127.0.0.1:4000",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
   },
   tanstackStart: {

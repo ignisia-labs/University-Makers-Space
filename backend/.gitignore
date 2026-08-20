@@ -1,0 +1,20 @@
+# Backend build output
+dist/
+node_modules/
+
+# Environment variables (never commit these!)
+.env
+.env.local
+.env.production
+
+# Prisma generated client (regenerated with `prisma generate`)
+# Keep schema and migrations, but not generated client binaries
+node_modules/.prisma/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
