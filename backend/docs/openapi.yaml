@@ -262,6 +262,49 @@ paths:
       responses:
         "200": { description: Users }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /users/search/students:
+    get:
+      summary: Search eligible Students by name, institutional email, or PRN
+      parameters:
+        - { in: query, name: search, required: true, schema: { type: string, minLength: 2 } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 20, default: 10 },
+          }
+      responses:
+        "200": { description: Paginated Student directory matches }
+        "400": { description: Search is shorter than the minimum length }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: Directory search rate limit exceeded }
+  /users/search/faculty-mentors:
+    get:
+      summary: Search active authorized Faculty Mentors by name or institutional email
+      parameters:
+        - { in: query, name: search, required: true, schema: { type: string, minLength: 2 } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 20, default: 10 },
+          }
+      responses:
+        "200": { description: Paginated Faculty Mentor directory matches }
+        "400": { description: Search is shorter than the minimum length }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { description: Directory search rate limit exceeded }
+  /users/me/student-profile:
+    patch:
+      summary: Update the signed-in Student's permitted profile fields
+      responses:
+        "200": { description: Student profile updated and audited }
+        "400": { description: Invalid PRN or academic selection }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: PRN already belongs to another Student }
   /users/provisioning:
     get:
       summary: List privileged identity claims (user.roles.manage)

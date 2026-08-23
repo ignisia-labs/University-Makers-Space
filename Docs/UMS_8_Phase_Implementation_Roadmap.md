@@ -52,13 +52,14 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Responsive landing page and the Student, Faculty Mentor, Lab Assistant, Admin, and Super Admin prototype workspaces.
 - Tab-scoped **Prototype view** role switch for reviewing mock workspaces. It remains intentionally available until Phase 8 and never grants backend permissions.
 - Local prototype flows for onboarding, projects, bookings, visits, equipment, notifications, user administration, and audit views.
-- Phase 1 authentication, session restoration, onboarding, reference-data, real profile rendering, role guards, and logout now use the backend API and PostgreSQL. Project, booking, visits, equipment operations, and privileged administration remain mock until their owning consecutive phases.
+- Phase 1 authentication, session restoration, onboarding, reference-data, real profile rendering, role guards, and logout use the backend API and PostgreSQL.
+- Phase 2 Student profile editing, project list/search/detail/create, team invitations, Faculty Mentor selection and decisions, expected-resource declarations, project notifications, and dashboard/Faculty queues use persisted backend data. Booking, visits, equipment operations, and privileged administration remain mock until their owning consecutive phases.
 
 ### Backend foundations that work through the API
 
 - Permission-based authorization and deny-by-default privileged-role provisioning.
 - User/session revocation behavior for account and role changes.
-- Scoped project CRUD, member invitation creation, mentor request, and mentor decision foundations.
+- Scoped, idempotent project creation and project editing; bounded directory search; member invitation lifecycle; Faculty Mentor request/decision lifecycle; expected-resource links; human-readable state derivation; audit; and notification/outbox creation.
 - Serializable, idempotent booking creation with slot locking and attendee-capacity checks. The current service also blocks/reserves equipment and consumables; that behavior conflicts with the RFP's advisory-only Version 1 equipment model and must be corrected in Phase 4.
 - Booking cancellation and controlled operational status transitions.
 - Equipment catalogue endpoints and audited Lab Assistant availability updates.
@@ -74,22 +75,18 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Backend TypeScript build passes.
 - Frontend production build passes.
 - Backend lint completes without errors. Frontend lint completes with zero errors and eleven existing Fast Refresh warnings.
-- Twenty-four backend unit/integration-style tests pass across six suites.
-- Prisma schema validates and all five migrations are applied to local PostgreSQL.
+- Thirty-one backend unit/integration-style tests pass across seven suites.
+- Prisma schema validates and all six migrations are applied to local PostgreSQL.
 - Live local health and Google configuration smoke tests pass. An unauthenticated protected reference-data request correctly returns 401.
 - Root/frontend and backend dependency audits report zero known vulnerabilities after the 2026-08-23 Undici and Prisma remediation; both dependency trees validate cleanly.
 
 ## 3. What is still mock or incomplete
 
-- Student project list/detail/create UI still uses in-memory data.
-- Invitation accept/decline and safe student/faculty search are missing.
-- Atomic project submission including team, mentor, requirements, notifications, and retry handling is missing.
-- Faculty approval UI is not connected end to end.
 - Lab schedules, closures, slot generation, and availability APIs/UI are missing.
 - Booking screens are not connected to real slot/project/booking APIs.
 - Quick Visits, manual Lab Assistant check-in/out, live occupancy, late arrival, overstay, and no-show workflows are missing.
-- Consumable requirement selection and most Admin configuration/reporting UI are missing; consumable inventory is not part of Version 1.
-- Workflow notifications, transactional email delivery, and near-real-time updates are missing.
+- Most Admin configuration/reporting UI is missing; consumable inventory remains outside Version 1.
+- In-app project workflow notifications and outbox records are connected; actual asynchronous email delivery and near-real-time updates remain assigned to Phase 7.
 - Service worker/offline UX, route splitting, accessibility/performance acceptance, CI/CD, staging, monitoring, backup/restore, load testing, and security acceptance are missing.
 - No RFP launch gate has yet been proven against a production-like environment.
 
@@ -97,22 +94,24 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 
 The evidence and reproduction steps are in `Docs/E2E_QA_AUDIT_2026-08-23.md`. These are implementation defects or verification gaps against requirements already present in the RFP; they do not add, remove, or change product scope.
 
-| Priority | Issue | Required closure | Owning phase |
-| --- | --- | --- | --- |
-| P0 | QA-001: frontend workflows issue no backend API requests | Establish the shared authenticated API/session integration in Phase 1, then replace each domain's mock data only when its owning phase is implemented. | Phase 1 foundation; domain completion in Phases 2–7 |
-| P0 | QA-002: non-institutional email is accepted by the prototype sign-in UI | Replace email simulation with Google Identity Services and server-verified institutional identity. | Phase 1 |
-| P1 | QA-003: verified identity is not carried into onboarding and email is editable | Render Google email read-only and submit only permitted onboarding fields. | Phase 1 |
-| P1 | QA-004: onboarding reference data is hardcoded and programmes are not department-filtered | Connect authenticated department, programme, academic-year, and PRN-policy reads. | Phase 1 |
-| P0 | QA-005: production UI authorization is not account/permission derived | Implement backend-derived session/role/permission guards while retaining the clearly isolated mock role switch until its required removal in Phase 8. | Phase 1; final mock removal in Phase 8 |
-| P1 | QA-006: project creation and audit updates are browser-local | Connect the full persisted project/team/mentor workflow and remove project production dependence on mock state. | Phase 2 |
-| P1 | QA-007: Admin and Super Admin data/actions are browser-local | Connect scoped operational administration, privileged user management, configuration, and audit views. | Phase 6 |
-| P2 | QA-008: development API error responses expose stack traces and absolute paths | Keep internal traces in centralized logs and return only stable client-safe error envelopes. | Phase 8 security acceptance |
-| P2 | QA-009: Super Admin shell renders blank identity and Student-only PRN chrome | Render the persisted privileged identity and role-appropriate shell. | Phase 6 |
-| P1 | QA-010: frontend lint gate fails | Clear errors and keep lint/build passing before Phase 1 is declared complete. | Phase 1 |
+| Priority | Issue                                                                                     | Required closure                                                                                                                                       | Owning phase                                        |
+| -------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| P0       | QA-001: frontend workflows issue no backend API requests                                  | Establish the shared authenticated API/session integration in Phase 1, then replace each domain's mock data only when its owning phase is implemented. | Phase 1 foundation; domain completion in Phases 2–7 |
+| P0       | QA-002: non-institutional email is accepted by the prototype sign-in UI                   | Replace email simulation with Google Identity Services and server-verified institutional identity.                                                     | Phase 1                                             |
+| P1       | QA-003: verified identity is not carried into onboarding and email is editable            | Render Google email read-only and submit only permitted onboarding fields.                                                                             | Phase 1                                             |
+| P1       | QA-004: onboarding reference data is hardcoded and programmes are not department-filtered | Connect authenticated department, programme, academic-year, and PRN-policy reads.                                                                      | Phase 1                                             |
+| P0       | QA-005: production UI authorization is not account/permission derived                     | Implement backend-derived session/role/permission guards while retaining the clearly isolated mock role switch until its required removal in Phase 8.  | Phase 1; final mock removal in Phase 8              |
+| P1       | QA-006: project creation and audit updates are browser-local                              | Connect the full persisted project/team/mentor workflow and remove project production dependence on mock state.                                        | Phase 2                                             |
+| P1       | QA-007: Admin and Super Admin data/actions are browser-local                              | Connect scoped operational administration, privileged user management, configuration, and audit views.                                                 | Phase 6                                             |
+| P2       | QA-008: development API error responses expose stack traces and absolute paths            | Keep internal traces in centralized logs and return only stable client-safe error envelopes.                                                           | Phase 8 security acceptance                         |
+| P2       | QA-009: Super Admin shell renders blank identity and Student-only PRN chrome              | Render the persisted privileged identity and role-appropriate shell.                                                                                   | Phase 6                                             |
+| P1       | QA-010: frontend lint gate fails                                                          | Clear errors and keep lint/build passing before Phase 1 is declared complete.                                                                          | Phase 1                                             |
 
 Priority order is Phase 1 integration and identity first, then the consecutive roadmap phases. No later phase may treat local prototype success as end-to-end acceptance. The **Prototype view** role switch must remain available for mock review through Phases 1–7 and be removed only in Phase 8.
 
 **Phase 1 closure evidence (2026-08-23):** QA-001 is closed for authentication, session restoration, onboarding, authenticated reference reads, persisted profile rendering, and logout; domain-specific API replacement remains assigned to Phases 2–7. QA-002 through QA-005 and QA-010 are closed. Real Student Google sign-in, immediate profile rendering, refresh restoration, real onboarding, Student-to-privileged route denial, logout, and signed-out landing guards passed in Safari. The five-role Prototype view remains visibly isolated and grants no backend permissions.
+
+**Phase 2 closure evidence (2026-08-23):** QA-006 is closed. Safari exercised persisted Student profile edits, bounded teammate/Faculty search, atomic project creation, invitation acceptance and cancellation, member removal, mentor changes, expected-resource edits, major-edit re-verification, notification read state, invitation deep links, Faculty rejection with a required reason, and Faculty approval. UI transitions, API writes, audit entries, and notification/outbox records matched the persisted database state. Temporary QA records were removed and the test account was restored. The Prototype view remains isolated for Phases 3–7.
 
 ## 4. What can be tested now
 
@@ -191,7 +190,7 @@ Swagger can exercise implemented backend foundations, but successful privileged 
 
 ### Phase 1 — Integration and identity foundation
 
-**Status:** Complete on `development-codex` (2026-08-23); Phase 2 is the next consecutive implementation phase.
+**Status:** Complete on `development-codex` (2026-08-23); Phase 2 is also complete and Phase 3 is next.
 
 Deliverables:
 
@@ -217,6 +216,8 @@ Exit gate:
 - Builds, lint, tests, Prisma validation, and migrations pass.
 
 ### Phase 2 — Projects, teams, and mentor verification
+
+**Status:** Complete on `development-codex` (2026-08-23); Phase 3 is the next consecutive implementation phase.
 
 **Goal:** Make the complete pre-booking project journey real and remove project-related in-memory state.
 
@@ -520,9 +521,10 @@ Do not skip an incomplete prerequisite phase or broaden the feature without expl
 
 Use pull requests/issues for active assignments. At minimum, record:
 
-| Phase | Work item  | Owner | Branch/PR | Status | Dependencies | Last updated |
-| ----- | ---------- | ----- | --------- | ------ | ------------ | ------------ |
-| 1     | Integration and identity foundation | Codex | `development-codex` | Complete | — | 2026-08-23 |
-| 2     | Unassigned | —     | —         | Ready  | Phase 1 complete | 2026-08-23 |
+| Phase | Work item                                           | Owner | Branch/PR           | Status   | Dependencies     | Last updated |
+| ----- | --------------------------------------------------- | ----- | ------------------- | -------- | ---------------- | ------------ |
+| 1     | Integration and identity foundation                 | Codex | `development-codex` | Complete | —                | 2026-08-23   |
+| 2     | Projects, teams, and mentor verification            | Codex | `development-codex` | Complete | Phase 1 complete | 2026-08-23   |
+| 3     | Lab configuration, schedules, and slot availability | —     | —                   | Ready    | Phase 2 complete | 2026-08-23   |
 
 Only the repository owner or designated technical lead should change a phase from **In progress** to **Complete**, after its exit gate has evidence.

@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   CalendarClock,
@@ -18,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { roleHomes, useAppSession } from "@/lib/auth-context";
+import { notificationsApi } from "@/lib/api";
+import { projectKeys, usePersistedNotifications } from "@/lib/project-queries";
 
 const studentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -48,10 +51,16 @@ export function AppShell({
   const [expanded, setExpanded] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsMounted, setNotificationsMounted] = useState(false);
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useMakerSpace();
-  const { profile, role, authenticated, onboarded, hydrated, signOut } = useAppSession();
+  const mockMakerSpace = useMakerSpace();
+  const { profile, role, authenticated, onboarded, hydrated, prototype, signOut } = useAppSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const persistedNotifications = usePersistedNotifications(!prototype && authenticated);
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id, true),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.notifications }),
+  });
 
   // Send signed-out visitors back to the landing page rather than showing a wall.
   useEffect(() => {
@@ -81,7 +90,36 @@ export function AppShell({
             : null;
 
   const showSidebar = role === "Student" || (workspaceNavigation?.length ?? 0) > 1;
+  const notifications = prototype
+    ? mockMakerSpace.notifications
+    : (persistedNotifications.data ?? []).map((item) => ({
+        id: item.id,
+        title: item.title,
+        body: item.body,
+        href: item.href ?? roleHomes[role],
+        read: item.isRead,
+        createdAt: new Date(item.createdAt).toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+      }));
   const unread = notifications.filter((item) => !item.read).length;
+  const markNotificationRead = (id: string) => {
+    if (prototype) mockMakerSpace.markNotificationRead(id);
+    else markReadMutation.mutate(id);
+  };
+  const markAllNotificationsRead = async () => {
+    if (prototype) {
+      mockMakerSpace.markAllNotificationsRead();
+      return;
+    }
+    await Promise.all(
+      notifications
+        .filter((item) => !item.read)
+        .map((item) => notificationsApi.markRead(item.id, true)),
+    );
+    await queryClient.invalidateQueries({ queryKey: projectKeys.notifications });
+  };
   const openNotifications = () => {
     setNotificationsMounted(true);
     window.requestAnimationFrame(() => setNotificationsOpen(true));
@@ -364,9 +402,9 @@ export function AppShell({
                       <div className="max-h-[min(60vh,30rem)] overflow-y-auto p-2">
                         {notifications.length ? (
                           notifications.map((item) => (
-                            <Link
+                            <a
                               key={item.id}
-                              to={item.href as "/projects"}
+                              href={item.href}
                               onClick={() => {
                                 markNotificationRead(item.id);
                                 closeNotifications();
@@ -393,7 +431,7 @@ export function AppShell({
                                   </span>
                                 </span>
                               </span>
-                            </Link>
+                            </a>
                           ))
                         ) : (
                           <p className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -405,7 +443,7 @@ export function AppShell({
                         <div className="border-t p-3">
                           <button
                             type="button"
-                            onClick={markAllNotificationsRead}
+                            onClick={() => void markAllNotificationsRead()}
                             disabled={!unread}
                             className="min-h-11 w-full rounded-xl text-sm font-semibold text-primary transition-colors hover:bg-primary/5 disabled:text-muted-foreground disabled:hover:bg-transparent"
                           >

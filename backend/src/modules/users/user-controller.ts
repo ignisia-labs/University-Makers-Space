@@ -55,6 +55,11 @@ export async function searchFacultyMentors(req: Request, res: Response) {
   return ok(res, "Faculty Mentor search results", result.data, result.meta);
 }
 
+export async function searchStudents(req: Request, res: Response) {
+  const result = await service.searchStudents(req.query, req.user!.id);
+  return ok(res, "Student search results", result.data, result.meta);
+}
+
 export async function updateOwnStudentProfile(req: Request, res: Response) {
   return ok(
     res,

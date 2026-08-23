@@ -10,6 +10,13 @@ import type { Project, Reservation } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import { PersistedProjectDetail } from "@/components/Projects/PersistedProjectDetail";
+import {
+  projectStatusLabel,
+  usePersistedProject,
+  usePersistedProjects,
+} from "@/lib/project-queries";
+import type { ProjectSummary } from "@/lib/api";
 
 export const Route = createFileRoute("/faculty")({
   head: () => ({
@@ -29,6 +36,158 @@ const workspaces = [
 type WorkspaceId = (typeof workspaces)[number]["id"];
 
 function FacultyPage() {
+  const { prototype } = useAppSession();
+  return prototype ? <PrototypeFacultyPage /> : <PersistedFacultyPage />;
+}
+
+function PersistedFacultyPage() {
+  const { profile } = useAppSession();
+  const [workspace, setWorkspace] = useState<WorkspaceId>("projects");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const projects = usePersistedProjects();
+  const rows = projects.data ?? [];
+  const pending = rows.filter(
+    (project) => project.mentorRequestStatus === "PENDING" && project.status !== "ARCHIVED",
+  );
+  const active = rows.filter((project) => project.status === "VERIFIED");
+  const historical = rows.filter((project) => ["REJECTED", "ARCHIVED"].includes(project.status));
+  const selected = rows.find((project) => project.id === selectedId);
+  const students = new Set(rows.map((project) => project.leader.id)).size;
+  return (
+    <AppShell
+      title={`Hi, ${profile.fullName.replace(/^(Dr\.|Prof\.)\s*/i, "").split(" ")[0] || "Mentor"}`}
+      subtitle="Faculty Mentor workspace"
+      workspaceNavigation={workspaces}
+      activeWorkspace={workspace}
+      onWorkspaceChange={(id) => setWorkspace(id as WorkspaceId)}
+    >
+      <div className="animate-in fade-in slide-in-from-bottom-2 mx-auto max-w-3xl duration-500">
+        <section
+          aria-label="Mentorship at a glance"
+          className="card-surface flex items-stretch divide-x divide-border px-2 py-4"
+        >
+          {[
+            { label: "Projects", value: rows.length },
+            { label: "Awaiting review", value: pending.length },
+            { label: "Students", value: students },
+            { label: "Verified", value: active.length },
+          ].map((stat) => (
+            <div key={stat.label} className="flex-1 px-2 text-center sm:px-5">
+              <p className="font-serif text-2xl font-light sm:text-3xl">{stat.value}</p>
+              <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                {stat.label}
+              </p>
+            </div>
+          ))}
+        </section>
+        {workspace === "projects" ? (
+          <div className="mt-8 space-y-8">
+            <PersistedFacultyGroup
+              label="Pending approval"
+              projects={pending}
+              empty="You're all caught up. No projects are currently waiting for your approval."
+              onOpen={setSelectedId}
+            />
+            <PersistedFacultyGroup
+              label="Active projects"
+              projects={active}
+              empty="Verified projects will appear here."
+              onOpen={setSelectedId}
+            />
+            <PersistedFacultyGroup
+              label="Historical projects"
+              projects={historical}
+              empty="Rejected and archived projects will appear here."
+              onOpen={setSelectedId}
+            />
+          </div>
+        ) : (
+          <div className="card-surface mt-8 px-6 py-14 text-center text-sm text-muted-foreground">
+            Faculty booking sessions connect in Phase 4.
+          </div>
+        )}
+      </div>
+      <ResponsiveModal
+        open={Boolean(selected)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
+        title={selected?.title ?? "Project"}
+        description="Review the team, Faculty Mentor request, and expected requirements."
+        size="wide"
+      >
+        {selected && <PersistedFacultyProjectDetail projectId={selected.id} />}
+      </ResponsiveModal>
+    </AppShell>
+  );
+}
+
+function PersistedFacultyProjectDetail({ projectId }: { projectId: string }) {
+  const detail = usePersistedProject(projectId);
+  if (detail.isLoading)
+    return <p className="py-8 text-center text-sm text-muted-foreground">Loading review…</p>;
+  if (!detail.data)
+    return (
+      <p className="py-8 text-center text-sm text-destructive">
+        Project review could not be loaded.
+      </p>
+    );
+  return <PersistedProjectDetail project={detail.data} />;
+}
+
+function PersistedFacultyGroup({
+  label,
+  projects,
+  empty,
+  onOpen,
+}: {
+  label: string;
+  projects: ProjectSummary[];
+  empty: string;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <section>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">{label}</p>
+        <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+          {projects.length} {projects.length === 1 ? "project" : "projects"}
+        </p>
+      </div>
+      {projects.length ? (
+        <div className="card-surface divide-y divide-border overflow-hidden">
+          {projects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => onOpen(project.id)}
+              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-secondary/60 sm:px-6"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="truncate font-serif text-lg font-light">{project.title}</h2>
+                  <StatusBadge label={projectStatusLabel(project.status)} />
+                </div>
+                <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                  {project.description}
+                </p>
+                <p className="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                  {project.leader.name} · {project.memberCount}{" "}
+                  {project.memberCount === 1 ? "member" : "members"}
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-primary">Review</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="card-surface px-6 py-10 text-center text-sm text-muted-foreground">
+          {empty}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PrototypeFacultyPage() {
   const { projects, reservations, verifyProject, updateProject } = useMakerSpace();
   const { profile } = useAppSession();
   const [workspace, setWorkspace] = useState<WorkspaceId>("projects");

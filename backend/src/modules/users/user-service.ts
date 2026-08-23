@@ -243,6 +243,54 @@ export async function searchFacultyMentors(query: Record<string, unknown>, viewe
   };
 }
 
+export async function searchStudents(query: Record<string, unknown>, viewerId: string) {
+  const page = Number(query.page ?? 1);
+  const limit = Math.min(Number(query.limit ?? 10), 20);
+  const search = String(query.search).trim();
+  const where: Prisma.UserWhereInput = {
+    id: { not: viewerId },
+    isActive: true,
+    deletedAt: null,
+    profileComplete: true,
+    roles: { has: Role.STUDENT },
+    OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+      { studentProfile: { prn: { contains: search, mode: "insensitive" } } },
+    ],
+  };
+  const [total, rows] = await prisma.$transaction([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        studentProfile: {
+          select: {
+            prn: true,
+            department: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+  return {
+    data: rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      prn: row.studentProfile!.prn,
+      department: row.studentProfile!.department,
+    })),
+    meta: meta(page, limit, total),
+  };
+}
+
 export async function updateOwnStudentProfile(
   userId: string,
   data: {

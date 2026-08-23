@@ -65,6 +65,8 @@ export const directorySearchSchema = z.object({
     .strict(),
 });
 
+export const studentDirectorySearchSchema = directorySearchSchema;
+
 export const updateOwnStudentProfileSchema = z.object({
   body: z
     .object({

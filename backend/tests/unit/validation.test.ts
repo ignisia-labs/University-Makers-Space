@@ -18,9 +18,15 @@ import { updateEquipmentAvailabilitySchema } from "../../src/modules/equipment/e
 import {
   createProjectSchema,
   invitationDecisionSchema,
+  mentorDecisionSchema,
+  updateProjectSchema,
 } from "../../src/modules/projects/project-schema.js";
 import { deriveProjectStatus } from "../../src/modules/projects/project-service.js";
 import { normalizePrn } from "../../src/modules/users/prn-policy.js";
+import {
+  studentDirectorySearchSchema,
+  updateOwnStudentProfileSchema,
+} from "../../src/modules/users/user-schema.js";
 
 describe("validators", () => {
   it("rejects a PRN that does not satisfy the configured institutional policy", () => {
@@ -67,6 +73,55 @@ describe("validators", () => {
       invitationDecisionSchema.safeParse({
         params: { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" },
         body: { decision: "MAYBE" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("enforces bounded directory search and rejects one-character enumeration", () => {
+    expect(
+      studentDirectorySearchSchema.safeParse({
+        query: { search: "aa", page: "1", limit: "20" },
+      }).success,
+    ).toBe(true);
+    expect(studentDirectorySearchSchema.safeParse({ query: { search: "a" } }).success).toBe(false);
+    expect(
+      studentDirectorySearchSchema.safeParse({
+        query: { search: "student", limit: "101" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("normalizes PRN during permitted Student profile edits", () => {
+    const parsed = updateOwnStudentProfileSchema.parse({
+      body: {
+        fullName: "Aarav Deshmukh",
+        prn: " mit-12ab34 ",
+        departmentId: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        programmeId: "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        academicYear: 3,
+      },
+    });
+    expect(parsed.body.prn).toBe("MIT-12AB34");
+  });
+
+  it("requires feedback when a Faculty Mentor rejects a project", () => {
+    const params = { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" };
+    expect(mentorDecisionSchema.safeParse({ params, body: { decision: "REJECTED" } }).success).toBe(
+      false,
+    );
+    expect(
+      mentorDecisionSchema.safeParse({
+        params,
+        body: { decision: "REJECTED", reason: "Clarify the safety plan." },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects empty project edits", () => {
+    expect(
+      updateProjectSchema.safeParse({
+        params: { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" },
+        body: {},
       }).success,
     ).toBe(false);
   });

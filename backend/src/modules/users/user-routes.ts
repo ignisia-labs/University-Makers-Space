@@ -13,6 +13,7 @@ import {
   updateRolesSchema,
   updateUserSchema,
   updateOwnStudentProfileSchema,
+  studentDirectorySearchSchema,
   userIdSchema,
 } from "./user-schema.js";
 
@@ -24,6 +25,13 @@ const directorySearchLimiter = rateLimit({
 });
 
 userRoutes.use(authenticate);
+userRoutes.get(
+  "/search/students",
+  authorize("project.create"),
+  directorySearchLimiter,
+  validate(studentDirectorySearchSchema),
+  asyncHandler(controller.searchStudents),
+);
 userRoutes.get(
   "/search/faculty-mentors",
   authorize("project.create"),

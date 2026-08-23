@@ -26,7 +26,7 @@ type MentorEmailActionToken = {
 const summaryInclude = {
   creator: { select: { id: true, name: true, email: true } },
   currentMentor: { select: { id: true, name: true, email: true } },
-  members: { select: { id: true, status: true, role: true } },
+  members: { select: { id: true, userId: true, email: true, status: true, role: true } },
   mentorRequests: {
     select: { status: true, requestedAt: true, respondedAt: true },
     orderBy: { requestedAt: "desc" },
@@ -140,9 +140,7 @@ type DetailProject = Prisma.ProjectGetPayload<{ include: typeof detailInclude }>
 function scopeFor(viewer: Viewer): Prisma.ProjectWhereInput {
   if (hasPermission(viewer.roles, "project.read.any")) return {};
   if (hasPermission(viewer.roles, "project.read.mentored")) {
-    return {
-      OR: [{ currentMentorId: viewer.id }, { mentorRequests: { some: { facultyId: viewer.id } } }],
-    };
+    return { currentMentorId: viewer.id };
   }
   return {
     OR: [
@@ -159,13 +157,59 @@ function scopeFor(viewer: Viewer): Prisma.ProjectWhereInput {
   };
 }
 
-function summaryDto(project: SummaryProject) {
+function projectStatusMessage(
+  project: Pick<SummaryProject, "status" | "rejectionReason">,
+  pendingMemberCount: number,
+  declinedMemberCount: number,
+  mentorRequestStatus: MentorRequestStatus | null,
+) {
+  if (project.status === ProjectStatus.VERIFIED) return "Project verified";
+  if (project.status === ProjectStatus.ARCHIVED) return "Project archived";
+  if (project.status === ProjectStatus.REJECTED) {
+    return project.rejectionReason
+      ? `Faculty Mentor requested changes: ${project.rejectionReason}`
+      : "Faculty Mentor requested changes";
+  }
+  if (declinedMemberCount > 0) {
+    return `${declinedMemberCount} member invitation${declinedMemberCount === 1 ? "" : "s"} declined`;
+  }
+  if (pendingMemberCount > 0) {
+    return `Waiting for ${pendingMemberCount} team member${pendingMemberCount === 1 ? "" : "s"}`;
+  }
+  if (mentorRequestStatus === MentorRequestStatus.APPROVED) return "Project verified";
+  return "Waiting for Faculty Mentor approval";
+}
+
+function viewerMetadata(project: SummaryProject, viewer: Viewer) {
+  if (project.creatorId === viewer.id) {
+    return { viewerRelationship: "LEADER", viewerMemberStatus: ProjectMemberStatus.ACCEPTED };
+  }
+  const membership = project.members.find(
+    (member) => member.userId === viewer.id || member.email === viewer.email,
+  );
+  if (membership) {
+    return { viewerRelationship: "MEMBER", viewerMemberStatus: membership.status };
+  }
+  if (project.currentMentorId === viewer.id) {
+    return { viewerRelationship: "MENTOR", viewerMemberStatus: null };
+  }
+  return { viewerRelationship: "OVERSIGHT", viewerMemberStatus: null };
+}
+
+function summaryDto(project: SummaryProject, viewer: Viewer) {
   const activeMembers = project.members.filter(
     (member) =>
       member.status !== ProjectMemberStatus.CANCELLED &&
       member.status !== ProjectMemberStatus.EXPIRED,
   );
   const nextBooking = project.bookings[0];
+  const pendingMemberCount = activeMembers.filter(
+    (member) => member.status === ProjectMemberStatus.PENDING,
+  ).length;
+  const declinedMemberCount = activeMembers.filter(
+    (member) => member.status === ProjectMemberStatus.DECLINED,
+  ).length;
+  const mentorRequestStatus = project.mentorRequests[0]?.status ?? null;
   return {
     id: project.id,
     labId: project.labId,
@@ -176,13 +220,16 @@ function summaryDto(project: SummaryProject) {
     leader: project.creator,
     mentor: project.currentMentor,
     memberCount: activeMembers.length,
-    pendingMemberCount: activeMembers.filter(
-      (member) => member.status === ProjectMemberStatus.PENDING,
-    ).length,
-    declinedMemberCount: activeMembers.filter(
-      (member) => member.status === ProjectMemberStatus.DECLINED,
-    ).length,
-    mentorRequestStatus: project.mentorRequests[0]?.status ?? null,
+    pendingMemberCount,
+    declinedMemberCount,
+    mentorRequestStatus,
+    statusMessage: projectStatusMessage(
+      project,
+      pendingMemberCount,
+      declinedMemberCount,
+      mentorRequestStatus,
+    ),
+    ...viewerMetadata(project, viewer),
     nextBooking: nextBooking
       ? {
           id: nextBooking.id,
@@ -195,22 +242,14 @@ function summaryDto(project: SummaryProject) {
   };
 }
 
-function detailDto(project: DetailProject) {
+function detailDto(project: DetailProject, viewer: Viewer) {
+  const summary = summaryDto(project, viewer);
   return {
-    id: project.id,
-    labId: project.labId,
-    title: project.title,
-    description: project.description,
+    ...summary,
     domain: project.domain,
     tags: project.tags,
-    status: project.status,
     rejectionReason: project.rejectionReason,
-    creatorId: project.creatorId,
-    leader: project.creator,
-    mentor: project.currentMentor,
     submittedAt: project.submittedAt?.toISOString() ?? null,
-    createdAt: project.createdAt.toISOString(),
-    updatedAt: project.updatedAt.toISOString(),
     members: project.members.map((member) => ({
       id: member.id,
       userId: member.userId,
@@ -293,7 +332,7 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
       take: limit,
     }),
   ]);
-  return { data: rows.map(summaryDto), meta: meta(page, limit, total) };
+  return { data: rows.map((row) => summaryDto(row, viewer)), meta: meta(page, limit, total) };
 }
 
 export async function get(id: string, viewer: Viewer) {
@@ -302,7 +341,7 @@ export async function get(id: string, viewer: Viewer) {
     include: detailInclude,
   });
   if (!project) throw new ApiError(404, "NOT_FOUND", "Project not found");
-  return detailDto(project);
+  return detailDto(project, viewer);
 }
 
 type CreateInput = {
@@ -524,7 +563,9 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
     throw new ApiError(409, "PROJECT_LOCKED", "Archived projects cannot be edited");
   }
 
-  const majorDetailsChanged = data.title !== undefined || data.description !== undefined;
+  const majorDetailsChanged =
+    (data.title !== undefined && data.title !== project!.title) ||
+    (data.description !== undefined && data.description !== project!.description);
   await prisma.$transaction(async (tx) => {
     if (data.equipmentIds) {
       const ids = [...new Set(data.equipmentIds)];
@@ -877,7 +918,11 @@ export async function decideMentorRequest(
   viewer: Viewer,
 ) {
   const request = await prisma.mentorRequest.findFirst({
-    where: { projectId, facultyId: viewer.id },
+    where: {
+      projectId,
+      facultyId: viewer.id,
+      project: { currentMentorId: viewer.id, deletedAt: null },
+    },
     include: { project: true },
     orderBy: { requestedAt: "desc" },
   });

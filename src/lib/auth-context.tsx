@@ -27,6 +27,7 @@ type AuthState = {
   permissions: string[];
   signInWithGoogleCredential: (credential: string) => Promise<"dashboard" | "onboarding">;
   completeStudentOnboarding: (input: OnboardingInput) => Promise<void>;
+  reloadCurrentUser: () => Promise<UserDto>;
   logout: () => Promise<void>;
 };
 
@@ -137,9 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       permissions,
       signInWithGoogleCredential,
       completeStudentOnboarding,
+      reloadCurrentUser: loadCurrentUser,
       logout,
     }),
-    [status, user, permissions, signInWithGoogleCredential, completeStudentOnboarding, logout],
+    [
+      status,
+      user,
+      permissions,
+      signInWithGoogleCredential,
+      completeStudentOnboarding,
+      loadCurrentUser,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -180,6 +190,7 @@ export function useAppSession() {
     hydrated: mock.hydrated && auth.status !== "loading",
     user: prototype ? null : auth.user,
     permissions: prototype ? [] : auth.permissions,
+    reloadCurrentUser: auth.reloadCurrentUser,
     signOut: prototype ? async () => mock.signOut() : auth.logout,
   };
 }

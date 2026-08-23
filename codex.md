@@ -4,14 +4,14 @@ This file is the persistent engineering context for this repository. Update it w
 
 ## Runtime and service topology
 
-| Concern | Implementation | Local endpoint |
-| --- | --- | --- |
-| Web application | React 19, TypeScript, Vite 8, TanStack Start/Router, React Query | `http://127.0.0.1:5174` |
-| API | Node.js, Express 4, TypeScript | `http://127.0.0.1:4000` |
-| API documentation | Swagger UI backed by `backend/docs/openapi.yaml` | `http://127.0.0.1:4000/api/docs` (non-production) |
-| Database | PostgreSQL accessed only through Prisma | `ums_dev` by default |
-| Cache/queues | Redis, ioredis, BullMQ | `redis://localhost:6379` by default |
-| Uploads | Multer memory uploads forwarded to Cloudinary | Cloudinary account required |
+| Concern           | Implementation                                                   | Local endpoint                                    |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| Web application   | React 19, TypeScript, Vite 8, TanStack Start/Router, React Query | `http://127.0.0.1:5174`                           |
+| API               | Node.js, Express 4, TypeScript                                   | `http://127.0.0.1:4000`                           |
+| API documentation | Swagger UI backed by `backend/docs/openapi.yaml`                 | `http://127.0.0.1:4000/api/docs` (non-production) |
+| Database          | PostgreSQL accessed only through Prisma                          | `ums_dev` by default                              |
+| Cache/queues      | Redis, ioredis, BullMQ                                           | `redis://localhost:6379` by default               |
+| Uploads           | Multer memory uploads forwarded to Cloudinary                    | Cloudinary account required                       |
 
 The frontend proxies `/api` and `/health` to port 4000 in development. It does **not** import backend code: Vite explicitly excludes `backend/` from scanning and watching. Backend service configuration belongs in `backend/.env` (ignored by Git). It needs database, Redis, JWT, Cloudinary, CORS origin, Google client, and PRN policy settings. `GOOGLE_CLIENT_SECRET` may be kept there for future OAuth flows, but the current Google ID-token verifier uses `GOOGLE_CLIENT_ID` only.
 
@@ -24,7 +24,7 @@ src/                         React/TanStack Start frontend
   routes/                    File-based route modules
   components/                Feature and shared UI components
   components/ui/             Radix/shadcn-style primitives
-  lib/                       API client, mock-state provider, utilities, errors
+  lib/                       API/query clients, mock-state provider, utilities, errors
   assets/                    Landing/equipment imagery
 backend/                     Independently-installed Express application
   src/app.ts                 Middleware and API router composition
@@ -45,21 +45,21 @@ backend/                     Independently-installed Express application
 
 Routes are file-based:
 
-| URL | Module | Purpose |
-| --- | --- | --- |
-| `/` | `index.tsx` | Public landing page |
-| `/login`, `/onboarding` | respective modules | Google sign-in and student profile completion |
-| `/dashboard`, `/profile`, `/settings`, `/notifications` | respective modules | Authenticated maker experience |
-| `/projects`, `/projects/$projectId` | project modules | Project list/detail and workflow |
-| `/invitations/$projectId` | invitation module | Team invitation response |
-| `/book`, `/equipment`, `/visits` | respective modules | Reservations, inventory, and visits |
-| `/faculty`, `/operations`, `/admin`, `/super-admin` | respective modules | Role-targeted operational consoles |
+| URL                                                     | Module             | Purpose                                       |
+| ------------------------------------------------------- | ------------------ | --------------------------------------------- |
+| `/`                                                     | `index.tsx`        | Public landing page                           |
+| `/login`, `/onboarding`                                 | respective modules | Google sign-in and student profile completion |
+| `/dashboard`, `/profile`, `/settings`, `/notifications` | respective modules | Authenticated maker experience                |
+| `/projects`, `/projects/$projectId`                     | project modules    | Project list/detail and workflow              |
+| `/invitations/$projectId`                               | invitation module  | Team invitation response                      |
+| `/book`, `/equipment`, `/visits`                        | respective modules | Reservations, inventory, and visits           |
+| `/faculty`, `/operations`, `/admin`, `/super-admin`     | respective modules | Role-targeted operational consoles            |
 
-`src/lib/api.ts` is the typed HTTP boundary. It adds the session-storage access token as a Bearer token, sends refresh cookies, normalizes API envelopes, and exposes endpoint groups (`authApi`, `referenceApi`, `projectsApi`, `bookingsApi`, `equipmentApi`, and related resource clients). Do not call `fetch` directly when an API client exists.
+`src/lib/api.ts` is the typed HTTP boundary. It adds the session-storage access token as a Bearer token, sends refresh cookies, normalizes API envelopes, and exposes endpoint groups (`authApi`, `usersApi`, `referenceApi`, `projectsApi`, `notificationsApi`, `bookingsApi`, `equipmentApi`, and related resource clients). `src/lib/project-queries.ts` centralizes Phase 2 React Query keys, hooks, invalidation, and human-readable project status labels. Do not call `fetch` directly when an API client exists.
 
-`src/lib/makerspace-context.tsx` is a separate, client-only prototype/demo state system. It owns profile, accounts, authentication/onboarding flags, projects, reservations, visits, equipment, consumables, notifications, users, audit events, configuration, slots, uploads, and notification preferences. It hydrates and cross-tab synchronizes the `mitwpu-makerspace-mock-state-v4` localStorage snapshot. This can coexist with the backend API but is not a replacement for persisted server state; identify which source a route uses before changing its behavior.
+`src/lib/makerspace-context.tsx` is a separate, client-only prototype/demo state system. It owns profile, accounts, authentication/onboarding flags, projects, reservations, visits, equipment, consumables, notifications, users, audit events, configuration, slots, uploads, and notification preferences. It hydrates and cross-tab synchronizes the `mitwpu-makerspace-mock-state-v4` localStorage snapshot. Production Phase 1–2 identity, profile, project, team, mentor, and project-notification routes use the API; mock implementations remain reachable only through the clearly isolated Prototype view. Keep the switch through Phase 7 and remove it in Phase 8.
 
-Important reusable frontend pieces: `AppShell` (navigation/layout), `ResponsiveModal`, `StatusBadge`, `DashboardQuickActions`, booking `SlotBookingModal`, project `ProjectDetailPanel`, and creation helpers `MentorSelect`, `ResourceSelection`, and `TeamMembers`. `components/ui/` provides composable Radix primitives. `lib/utils.ts` supplies class-name merging; `lib/project-resources.ts`, `error-capture.ts`, and `error-page.ts` support resources and failure handling.
+Important reusable frontend pieces: `AppShell` (navigation/layout and persisted notifications), `ResponsiveModal`, `StatusBadge`, `DashboardQuickActions`, booking `SlotBookingModal`, production project `PersistedProjectWizard` and `PersistedProjectDetail`, prototype `ProjectDetailPanel`, and creation helpers `MentorSelect`, `ResourceSelection`, and `TeamMembers`. `components/ui/` provides composable Radix primitives. `lib/utils.ts` supplies class-name merging; `lib/project-resources.ts`, `error-capture.ts`, and `error-page.ts` support resources and failure handling.
 
 ## Backend architecture and request pipeline
 
@@ -67,17 +67,17 @@ Important reusable frontend pieces: `AppShell` (navigation/layout), `ResponsiveM
 
 All versioned endpoints live under `/api/v1`. Most follow `authenticate → authorize (when needed) → validate (Zod) → async controller → service → Prisma`; controllers shape HTTP responses while services contain domain and transaction logic. Access is role-and-permission based: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `ADMIN`, and `SUPER_ADMIN`; the permission map is `backend/src/config/permissions.ts`.
 
-| Prefix | Key operations |
-| --- | --- |
-| `/auth` | Google config/CSRF/sign-in, refresh/logout, current identity, onboarding, profile policy |
-| `/users` | User and provisioning administration (role/active controls) |
-| `/equipment` | Read, create, update/delete inventory and update availability |
-| `/bookings` | List/get/create, cancel, and staff status transitions |
-| `/projects` | CRUD, membership invitations, mentor requests/decisions, email review/decision callback routes |
-| `/reference-data` | Departments, programmes, years, labs, categories, project resource choices |
-| `/events` | List/get/create/update/delete and register |
-| `/notifications` | List, create, mark read |
-| `/uploads` | Authenticated and rate-limited Cloudinary uploads |
+| Prefix            | Key operations                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `/auth`           | Google config/CSRF/sign-in, refresh/logout, current identity, onboarding, profile policy                     |
+| `/users`          | Bounded Student/Faculty directory search, own permitted profile update, and user/provisioning administration |
+| `/equipment`      | Read, create, update/delete inventory and update availability                                                |
+| `/bookings`       | List/get/create, cancel, and staff status transitions                                                        |
+| `/projects`       | CRUD, membership invitations, mentor requests/decisions, email review/decision callback routes               |
+| `/reference-data` | Departments, programmes, years, labs, categories, project resource choices                                   |
+| `/events`         | List/get/create/update/delete and register                                                                   |
+| `/notifications`  | List, create, mark read                                                                                      |
+| `/uploads`        | Authenticated and rate-limited Cloudinary uploads                                                            |
 
 `/health` is unauthenticated. `/api/docs` is available only outside production. API response and failure conventions are centralized in `utils/api-response.ts`, `api-error.ts`, `async-handler.ts`; pagination, caching, and DTO serialization are in `utils/pagination.ts`, `cache.ts`, and `serializers.ts`.
 
@@ -85,17 +85,23 @@ All versioned endpoints live under `/api/v1`. Most follow `authenticate → auth
 
 Prisma uses PostgreSQL UUIDs, relational foreign keys, explicit enums, indexes, and soft-delete fields on major operational entities.
 
-| Area | Models | Relationship/workflow summary |
-| --- | --- | --- |
-| Identity | `User`, `Session`, `UserProvisioning`, `StudentProfile` | Google identity maps to a user; refresh sessions are hashed/revocable; provisioning preassigns roles; students complete PRN/department/programme/year profile data. |
-| Reference/lab | `Department`, `Programme`, `AcademicYearOption`, `Lab`, `LabSchedule`, `LabClosure`, `LabSlot` | Configurable academic and lab availability data used by booking and onboarding. |
-| Inventory | `EquipmentCategory`, `Equipment`, `ConsumableCategory`, `Consumable` | Equipment has availability/status; categories and consumables scope project resources and bookings. |
-| Projects | `Project`, `ProjectMember`, `MentorRequest`, `ProjectEquipmentRequirement`, `ProjectConsumableRequirement` | Project moves through draft, team acceptance, mentor approval, verified/rejected/archive states. Membership invitations and mentor approvals are transactional. |
-| Reservations/visits | `Booking`, `BookingParticipant`, `BookingEquipment`, `BookingConsumable`, `QuickVisit`, `Visit` | Bookings reserve slots/resources and follow confirmed/active/completed/cancelled/no-show status; attendance records actual lab use. |
-| Community | `Event`, `EventRegistration`, `Notification`, `NotificationDelivery` | Events track organizer and registrations; notifications track in-app delivery/read state and optional channels. |
-| Governance/storage | `Upload`, `AuditLog` | Uploads are owned and soft-deleted; audit records preserve actor/action metadata. |
+| Area                | Models                                                                                                     | Relationship/workflow summary                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity            | `User`, `Session`, `UserProvisioning`, `StudentProfile`                                                    | Google identity maps to a user; refresh sessions are hashed/revocable; provisioning preassigns roles; students complete PRN/department/programme/year profile data.                                                                                                                                                                                            |
+| Reference/lab       | `Department`, `Programme`, `AcademicYearOption`, `Lab`, `LabSchedule`, `LabClosure`, `LabSlot`             | Configurable academic and lab availability data used by booking and onboarding.                                                                                                                                                                                                                                                                                |
+| Inventory           | `EquipmentCategory`, `Equipment`, `ConsumableCategory`, `Consumable`                                       | Equipment has availability/status; categories and consumables scope project resources and bookings.                                                                                                                                                                                                                                                            |
+| Projects            | `Project`, `ProjectMember`, `MentorRequest`, `ProjectEquipmentRequirement`, `ProjectConsumableRequirement` | Atomic/idempotent creation persists the accepted leader, invitations, mentor request, advisory expected resources, audit events, and notification deliveries. Projects move through draft, team acceptance, mentor approval, verified/rejected/archive states; major edits and mentor changes re-enter verification while resource-only edits retain approval. |
+| Reservations/visits | `Booking`, `BookingParticipant`, `BookingEquipment`, `BookingConsumable`, `QuickVisit`, `Visit`            | Bookings reserve slots/resources and follow confirmed/active/completed/cancelled/no-show status; attendance records actual lab use.                                                                                                                                                                                                                            |
+| Community           | `Event`, `EventRegistration`, `Notification`, `NotificationDelivery`                                       | Events track organizer and registrations; notifications track in-app delivery/read state and optional channels.                                                                                                                                                                                                                                                |
+| Governance/storage  | `Upload`, `AuditLog`                                                                                       | Uploads are owned and soft-deleted; audit records preserve actor/action metadata.                                                                                                                                                                                                                                                                              |
 
 Critical write paths use Prisma transactions: auth account/session lifecycle, project creation/member invitation/mentor decisions, booking conflict and status handling, and inventory availability. Preserve transaction boundaries when modifying state-changing services.
+
+Phase 2 directory reads are deliberately bounded: teammate and Faculty Mentor searches require a minimum query length, are server-filtered/paginated with a maximum of 20 results, and expose only the identification fields needed by the UI. The database enables `pg_trgm` and GIN indexes for case-insensitive Student name, email, and PRN search. Never replace this with an unrestricted directory download.
+
+The production project UI derives access from persisted ownership/membership/current-mentor relationships. Faculty project visibility is scoped to the current mentor. Requirement selection is advisory and does not reserve equipment, consumables, quantities, machines, or time. Actual booking connection remains Phase 4; asynchronous email sending remains Phase 7.
+
+Quality baseline after Phase 2 (2026-08-23): frontend lint/build and backend lint/build pass; backend tests are 31/31 across seven suites; Prisma validates with all six migrations applied; root/frontend and backend production audits report zero vulnerabilities; Safari Student and Faculty Phase 2 E2E flows pass against persisted data.
 
 Google sign-in returns the same persisted Student academic-profile shape as `/auth/me`, including department and programme relations, so the real identity renders immediately without a refresh.
 

@@ -10,6 +10,13 @@ import type { Project, Reservation, StudentProfile } from "@/lib/makerspace-data
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ApiError, projectsApi, type ProjectSummary } from "@/lib/api";
+import {
+  invalidateProjectData,
+  projectStatusLabel,
+  usePersistedProjects,
+} from "@/lib/project-queries";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -25,6 +32,167 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Dashboard() {
+  const { prototype } = useAppSession();
+  return prototype ? <PrototypeDashboard /> : <PersistedDashboard />;
+}
+
+function PersistedDashboard() {
+  const { profile } = useAppSession();
+  const queryClient = useQueryClient();
+  const projects = usePersistedProjects();
+  const invitationMutation = useMutation({
+    mutationFn: (projectId: string) => projectsApi.respondToInvitation(projectId, "ACCEPTED"),
+    onSuccess: async (_response, projectId) => {
+      await invalidateProjectData(queryClient, projectId);
+      toast.success("You joined the project team");
+    },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : "Could not accept the invitation"),
+  });
+  const rows = projects.data ?? [];
+  const active = rows.filter((project) => project.status !== "ARCHIVED");
+  const invitations = active.filter(
+    (project) =>
+      project.viewerRelationship === "MEMBER" && project.viewerMemberStatus === "PENDING",
+  );
+  const pending = active.filter((project) =>
+    ["TEAM_ACCEPTANCE_PENDING", "MENTOR_APPROVAL_PENDING"].includes(project.status),
+  );
+  const verified = active.filter((project) => project.status === "VERIFIED");
+  const firstName = profile.fullName.trim().split(" ")[0] || "there";
+  return (
+    <AppShell title={`Hi, ${firstName}`} subtitle={profile.department}>
+      <div className="animate-in fade-in slide-in-from-bottom-2 mx-auto max-w-3xl duration-500">
+        <StatStrip projects={active.length} labTime="0h" visits={0} />
+        {invitations.map((project) => (
+          <PersistedInvitationCard
+            key={project.id}
+            project={project}
+            pending={invitationMutation.isPending}
+            onJoin={() => invitationMutation.mutate(project.id)}
+          />
+        ))}
+        <section className="mt-10">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                Your projects
+              </p>
+              <h2 className="mt-2 font-serif text-2xl font-light tracking-wide">
+                Create → Get verified → Book → Visit
+              </h2>
+            </div>
+            <Link
+              to="/projects"
+              search={{ create: true }}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              <Plus className="size-4" /> Create project
+            </Link>
+          </div>
+          {projects.isLoading ? (
+            <div className="card-surface mt-5 p-8 text-center text-sm text-muted-foreground">
+              Loading your project journey…
+            </div>
+          ) : active.length ? (
+            <div className="card-surface mt-5 divide-y divide-border overflow-hidden">
+              {active.slice(0, 5).map((project) => (
+                <Link
+                  key={project.id}
+                  to="/projects/$projectId"
+                  params={{ projectId: project.id }}
+                  className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/60"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate font-serif text-lg font-light">{project.title}</h3>
+                      <StatusBadge label={projectStatusLabel(project.status)} />
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{project.statusMessage}</p>
+                  </div>
+                  <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="card-surface mt-5 p-8 text-center">
+              <p className="text-sm text-muted-foreground">Start your first MakerSpace project.</p>
+              <Link
+                to="/projects"
+                search={{ create: true }}
+                className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary"
+              >
+                <Plus className="size-4" /> Create project
+              </Link>
+            </div>
+          )}
+        </section>
+        <section className="mt-8 grid gap-4 sm:grid-cols-2">
+          <div className="card-surface p-5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              Pending verification
+            </p>
+            <p className="mt-2 font-serif text-3xl font-light">{pending.length}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Team responses and Faculty Mentor decisions remain visible in each project.
+            </p>
+          </div>
+          <div className="card-surface p-5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              Verified projects
+            </p>
+            <p className="mt-2 font-serif text-3xl font-light">{verified.length}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Only verified projects led by you are eligible for booking. Slot booking connects in
+              Phase 4.
+            </p>
+          </div>
+        </section>
+        <div className="mt-14 flex justify-center border-t border-border pt-8">
+          <IgnisiaCredit />
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function PersistedInvitationCard({
+  project,
+  pending,
+  onJoin,
+}: {
+  project: ProjectSummary;
+  pending: boolean;
+  onJoin: () => void;
+}) {
+  return (
+    <section className="card-surface mt-5 overflow-hidden border-primary/25">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:px-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Team invitation
+          </p>
+          <p className="mt-1.5 font-serif text-lg font-light tracking-wide sm:text-xl">
+            {project.title}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {project.leader.name} invited you to join this project.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onJoin}
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+        >
+          Join project
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PrototypeDashboard() {
   const { projects, reservations, visits, acceptProjectInvitation } = useMakerSpace();
   const { profile } = useAppSession();
   const data = useMemo(

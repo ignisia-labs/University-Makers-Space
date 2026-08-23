@@ -2,6 +2,39 @@
 
 Material product, architecture, requirement-status, and delivery decisions are appended here. The PRD/RFP remains authoritative; changelog entries describe implementation and verification state without changing requirements.
 
+## 2026-08-23 — Phase 2 projects, teams, and mentor verification
+
+**Branch:** `development-codex`
+
+### Completed
+
+- Connected production Student project list/search/detail/create, invitation deep links, dashboard states, Faculty queues, and permitted profile editing to persisted backend data while retaining the isolated **Prototype view** switch through Phase 7.
+- Added bounded, rate-limited Student directory search and integrated the existing bounded authorized Faculty Mentor search into debounced selectors without downloading either directory.
+- Completed atomic/idempotent project creation with the accepted Team Leader, invitation records, mentor request, expected equipment/consumable links, audit events, and notification/outbox records.
+- Completed human-readable project states plus invitation accept/decline/cancel, accepted-member removal, mentor changes, Faculty approve/reject with required feedback, archive, expected-resource edits, and RFP-aligned re-verification behavior.
+- Kept expected equipment and consumables advisory: Phase 2 selection creates requirement links and never reserves inventory, machines, quantities, or time.
+- Added the directory-search index migration and updated the OpenAPI contract, roadmap, and persistent Codex context.
+
+### Safari E2E verification
+
+- Passed Student profile edit, team/mentor search, three-step creation, invitation/deep-link acceptance, pending-state progression, approval, resource-only verified edit, major-edit re-verification, member removal, invitation cancellation, mentor change, workflow notifications, and connected dashboard states.
+- Passed Faculty pending/active/historical queues, full decision detail, required rejection reason/feedback, rejection transition, approval transition, and live queue/count updates.
+- Observed no failed MakerSpace API response or unhandled UI error. Test records were removed afterward, and the real account's Student role plus original optional profile values were restored and verified.
+
+### Verification
+
+- Frontend lint passed with 0 errors and 11 existing Fast Refresh warnings; production build passed.
+- Backend lint and TypeScript build passed; 31/31 tests passed across 7 suites.
+- Prisma schema validation passed; all 6 migrations are applied and the local database is up to date.
+- Root/frontend and backend production dependency audits report 0 vulnerabilities.
+- Live frontend and backend health checks passed.
+
+### Next
+
+- Begin Phase 3 — Lab configuration, schedules, and slot availability.
+- Actual asynchronous email delivery remains Phase 7; booking UI remains Phase 4; role-appropriate privileged shell cleanup remains QA-009 in Phase 6.
+- Keep the Prototype view role switch until its required Phase 8 removal.
+
 ## 2026-08-23 — Dependency security remediation
 
 **Branch:** `development-codex`

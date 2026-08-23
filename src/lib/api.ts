@@ -283,8 +283,10 @@ export const eventsApi = {
 };
 
 export const notificationsApi = {
-  list: (params?: Record<string, string>) => api.get(`/notifications${toQuery(params)}`),
-  markRead: (id: string, isRead: boolean) => api.patch(`/notifications/${id}/read`, { isRead }),
+  list: (params?: Record<string, string>) =>
+    api.get<NotificationDto[]>(`/notifications${toQuery(params)}`),
+  markRead: (id: string, isRead: boolean) =>
+    api.patch<NotificationDto>(`/notifications/${id}/read`, { isRead }),
 };
 
 export const usersApi = {
@@ -293,8 +295,14 @@ export const usersApi = {
   update: (id: string, data: unknown) => api.patch(`/users/${id}`, data),
   updateRoles: (id: string, roles: string[]) => api.patch(`/users/${id}/roles`, { roles }),
   delete: (id: string) => api.delete(`/users/${id}`),
-  searchFacultyMentors: (search: string) =>
-    api.get(`/users/search/faculty-mentors?search=${encodeURIComponent(search)}`),
+  searchStudents: (search: string, page = 1) =>
+    api.get<StudentDirectoryResult[]>(
+      `/users/search/students?search=${encodeURIComponent(search)}&page=${page}&limit=10`,
+    ),
+  searchFacultyMentors: (search: string, page = 1) =>
+    api.get<FacultyDirectoryResult[]>(
+      `/users/search/faculty-mentors?search=${encodeURIComponent(search)}&page=${page}&limit=10`,
+    ),
   listProvisioning: (params?: Record<string, string>) =>
     api.get(`/users/provisioning${toQuery(params)}`),
   createProvisioning: (data: unknown) => api.post("/users/provisioning", data),
@@ -391,10 +399,41 @@ export type ProjectSummary = {
   mentor?: { id: string; name: string; email: string } | null;
   memberCount: number;
   pendingMemberCount: number;
+  declinedMemberCount: number;
   mentorRequestStatus?: string | null;
+  statusMessage: string;
+  viewerRelationship: "LEADER" | "MEMBER" | "MENTOR" | "OVERSIGHT";
+  viewerMemberStatus?: string | null;
   nextBooking?: { id: string; startsAt: string; endsAt: string } | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type StudentDirectoryResult = {
+  id: string;
+  name: string;
+  email: string;
+  prn: string;
+  department?: { id: string; code: string; name: string } | null;
+};
+
+export type FacultyDirectoryResult = {
+  id: string;
+  name: string;
+  email: string;
+  department?: { id: string; code: string; name: string } | null;
+};
+
+export type NotificationDto = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  href?: string | null;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
 };
 
 export type ProjectDetail = ProjectSummary & {
