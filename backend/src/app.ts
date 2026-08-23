@@ -21,6 +21,7 @@ import { authRoutes } from "./modules/auth/auth-routes.js";
 import { bookingRoutes } from "./modules/bookings/booking-routes.js";
 import { equipmentRoutes } from "./modules/equipment/equipment-routes.js";
 import { eventRoutes } from "./modules/events/event-routes.js";
+import { labRoutes } from "./modules/labs/lab-routes.js";
 import { notificationRoutes } from "./modules/notifications/notification-routes.js";
 import { projectRoutes } from "./modules/projects/project-routes.js";
 import { referenceDataRoutes } from "./modules/reference-data/reference-data-routes.js";
@@ -63,6 +64,7 @@ export function createApp() {
   api.use("/users", userRoutes);
   api.use("/equipment", equipmentRoutes);
   api.use("/bookings", bookingRoutes);
+  api.use("/labs", labRoutes);
   api.use("/projects", projectRoutes);
   api.use("/reference-data", referenceDataRoutes);
   api.use("/events", eventRoutes);

@@ -25,6 +25,7 @@ export const permissions = [
   "event.read",
   "event.register",
   "event.manage",
+  "lab.availability.read",
   "lab.configure",
   "user.read",
   "user.manage",
@@ -49,6 +50,7 @@ const rolePermissions: Record<UserRole, ReadonlySet<Permission>> = {
     "notification.read.own",
     "event.read",
     "event.register",
+    "lab.availability.read",
     "upload.create",
   ]),
   [UserRole.FACULTY_MENTOR]: new Set([
@@ -59,6 +61,7 @@ const rolePermissions: Record<UserRole, ReadonlySet<Permission>> = {
     "notification.read.own",
     "event.read",
     "event.register",
+    "lab.availability.read",
     "upload.create",
   ]),
   [UserRole.LAB_ASSISTANT]: new Set([
@@ -72,6 +75,7 @@ const rolePermissions: Record<UserRole, ReadonlySet<Permission>> = {
     "notification.read.own",
     "event.read",
     "event.manage",
+    "lab.availability.read",
     "upload.create",
   ]),
   [UserRole.ADMIN]: new Set([
@@ -88,6 +92,7 @@ const rolePermissions: Record<UserRole, ReadonlySet<Permission>> = {
     "notification.create",
     "event.read",
     "event.manage",
+    "lab.availability.read",
     "lab.configure",
     "user.read",
     "user.manage",
