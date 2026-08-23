@@ -109,6 +109,15 @@ async function main() {
       create: { email: superAdminEmail, roles: [UserRole.SUPER_ADMIN] },
     });
   }
+
+  const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  if (adminEmail) {
+    await prisma.userProvisioning.upsert({
+      where: { email: adminEmail },
+      update: { roles: [UserRole.ADMIN], isActive: true },
+      create: { email: adminEmail, roles: [UserRole.ADMIN] },
+    });
+  }
 }
 
 main().finally(async () => prisma.$disconnect());

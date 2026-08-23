@@ -328,13 +328,17 @@ export async function dailyAvailability(
   const project = projectId ? await loadVisibleProject(prisma, projectId, labId, viewer) : null;
   const exceptions = await loadExceptions(prisma, labId, date, date);
   const policy = resolveDayPolicy(date, lab.schedules, exceptions);
-  await prisma.$transaction(
-    async (tx) => {
-      await lockLab(tx, labId);
-      await reconcileDate(tx, lab, exceptions, date);
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-  );
+  if (await slotsNeedReconciliation(lab, date, policy)) {
+    await prisma.$transaction(
+      async (tx) => {
+        await lockLab(tx, labId);
+        const currentLab = await loadLab(tx, labId);
+        const currentExceptions = await loadExceptions(tx, labId, date, date);
+        await reconcileDate(tx, currentLab, currentExceptions, date);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
   const slots = await prisma.labSlot.findMany({
     where: { labId, localDate: localDateDbValue(date), status: SlotStatus.OPEN },
     include: {
@@ -452,6 +456,39 @@ async function loadVisibleProject(
     hasPermission(viewer.roles, "project.read.any");
   if (!canRead) throw new ApiError(403, "FORBIDDEN", "You cannot view this project availability");
   return project;
+}
+
+async function slotsNeedReconciliation(
+  lab: PolicyLab,
+  date: string,
+  policy: ReturnType<typeof resolveDayPolicy>,
+) {
+  const desired = buildSlotBlueprints(date, policy, lab.slotDurationMinutes, lab.timeZone);
+  const current = await prisma.labSlot.findMany({
+    where: { labId: lab.id, localDate: localDateDbValue(date) },
+    select: {
+      startsAt: true,
+      endsAt: true,
+      bookingCapacity: true,
+      quickVisitCapacity: true,
+      policyVersion: true,
+      status: true,
+    },
+  });
+  if (desired.length === 0) return current.some((slot) => slot.status !== SlotStatus.CLOSED);
+  if (current.length !== desired.length) return true;
+  const currentByStart = new Map(current.map((slot) => [slot.startsAt.toISOString(), slot]));
+  return desired.some((slot) => {
+    const saved = currentByStart.get(slot.startsAt.toISOString());
+    return (
+      !saved ||
+      saved.endsAt.getTime() !== slot.endsAt.getTime() ||
+      saved.bookingCapacity !== lab.bookingCapacity ||
+      saved.quickVisitCapacity !== lab.quickVisitCapacity ||
+      saved.policyVersion !== lab.configurationVersion ||
+      saved.status !== SlotStatus.OPEN
+    );
+  });
 }
 
 async function lockLab(tx: Prisma.TransactionClient, labId: string) {

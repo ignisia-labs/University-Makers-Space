@@ -235,37 +235,37 @@ model StudentProfile {
 }
 
 model Lab {
-  id                      String               @id @default(uuid()) @db.Uuid
-  name                    String               @unique
-  code                    String               @unique
-  description             String?
-  timeZone                String               @default("Asia/Kolkata") @map("time_zone")
-  slotDurationMinutes     Int                  @default(60) @map("slot_duration_minutes")
-  bookingCapacity         Int                  @default(20) @map("booking_capacity")
-  quickVisitCapacity      Int                  @default(10) @map("quick_visit_capacity")
-  quickVisitsEnabled      Boolean              @default(true) @map("quick_visits_enabled")
-  bookingHorizonDays      Int                  @default(14) @map("booking_horizon_days")
-  cancellationWindowHours Int                  @default(2) @map("cancellation_window_hours")
-  maxFutureBookingsPerProject Int?             @map("max_future_bookings_per_project")
-  projectVerificationRequired Boolean          @default(true) @map("project_verification_required")
-  configurationVersion    Int                  @default(1) @map("configuration_version")
-  isActive                Boolean              @default(true) @map("is_active")
-  createdById             String?              @map("created_by_id") @db.Uuid
-  createdAt               DateTime             @default(now()) @map("created_at")
-  updatedAt               DateTime             @updatedAt @map("updated_at")
-  createdBy               User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  schedules               LabSchedule[]
-  dateExceptions          LabDateException[]
-  slots                   LabSlot[]
-  equipmentCategories     EquipmentCategory[]
-  equipment               Equipment[]
-  consumableCategories    ConsumableCategory[]
-  consumables             Consumable[]
-  projects                Project[]
-  bookings                Booking[]
-  quickVisits             QuickVisit[]
-  visits                  Visit[]
-  events                  Event[]
+  id                          String               @id @default(uuid()) @db.Uuid
+  name                        String               @unique
+  code                        String               @unique
+  description                 String?
+  timeZone                    String               @default("Asia/Kolkata") @map("time_zone")
+  slotDurationMinutes         Int                  @default(60) @map("slot_duration_minutes")
+  bookingCapacity             Int                  @default(20) @map("booking_capacity")
+  quickVisitCapacity          Int                  @default(10) @map("quick_visit_capacity")
+  quickVisitsEnabled          Boolean              @default(true) @map("quick_visits_enabled")
+  bookingHorizonDays          Int                  @default(14) @map("booking_horizon_days")
+  cancellationWindowHours     Int                  @default(2) @map("cancellation_window_hours")
+  maxFutureBookingsPerProject Int?                 @map("max_future_bookings_per_project")
+  projectVerificationRequired Boolean              @default(true) @map("project_verification_required")
+  configurationVersion        Int                  @default(1) @map("configuration_version")
+  isActive                    Boolean              @default(true) @map("is_active")
+  createdById                 String?              @map("created_by_id") @db.Uuid
+  createdAt                   DateTime             @default(now()) @map("created_at")
+  updatedAt                   DateTime             @updatedAt @map("updated_at")
+  createdBy                   User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  schedules                   LabSchedule[]
+  dateExceptions              LabDateException[]
+  slots                       LabSlot[]
+  equipmentCategories         EquipmentCategory[]
+  equipment                   Equipment[]
+  consumableCategories        ConsumableCategory[]
+  consumables                 Consumable[]
+  projects                    Project[]
+  bookings                    Booking[]
+  quickVisits                 QuickVisit[]
+  visits                      Visit[]
+  events                      Event[]
 
   @@index([isActive])
   @@map("labs")

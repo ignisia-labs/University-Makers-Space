@@ -261,6 +261,42 @@ export const bookingsApi = {
     api.patch(`/bookings/${id}/status`, { status, notes }),
 };
 
+export const labsApi = {
+  configuration: (labId: string) =>
+    api.get<LabConfiguration>(`/labs/${labId}/configuration`),
+  updateConfiguration: (labId: string, data: UpdateLabConfigurationInput) =>
+    api.put<LabConfiguration>(`/labs/${labId}/configuration`, data),
+  upsertDateException: (labId: string, data: DateExceptionInput) =>
+    api.put<LabDateException>(`/labs/${labId}/date-exceptions`, data),
+  deleteDateException: (labId: string, exceptionId: string) =>
+    api.delete(`/labs/${labId}/date-exceptions/${exceptionId}`),
+  regenerateSlots: (labId: string, fromDate?: string, toDate?: string) =>
+    api.post<SlotGenerationResult>(`/labs/${labId}/slots/regenerate`, {
+      ...(fromDate ? { fromDate } : {}),
+      ...(toDate ? { toDate } : {}),
+    }),
+  availabilityDates: (labId: string, projectId?: string, participantCount = 1) =>
+    api.get<AvailabilityDates>(
+      `/labs/${labId}/availability/dates${toQuery({
+        ...(projectId ? { projectId } : {}),
+        participantCount: String(participantCount),
+      })}`,
+    ),
+  dailyAvailability: (
+    labId: string,
+    date: string,
+    projectId?: string,
+    participantCount = 1,
+  ) =>
+    api.get<DailyAvailability>(
+      `/labs/${labId}/availability${toQuery({
+        date,
+        ...(projectId ? { projectId } : {}),
+        participantCount: String(participantCount),
+      })}`,
+    ),
+};
+
 export const equipmentApi = {
   list: (params?: Record<string, string>) => api.get(`/equipment${toQuery(params)}`),
   get: (id: string) => api.get(`/equipment/${id}`),
@@ -371,6 +407,138 @@ export type Lab = {
   slotDurationMinutes: number;
   bookingCapacity: number;
   quickVisitCapacity: number;
+};
+
+export type WeeklyLabSchedule = {
+  dayOfWeek: number;
+  isOpen: boolean;
+  opensAt: string;
+  closesAt: string;
+};
+
+export type LabDateException = {
+  id: string;
+  date: string;
+  isClosed: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  reason: string;
+  updatedAt: string;
+};
+
+export type LabConfiguration = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  timeZone: string;
+  slotDurationMinutes: number;
+  bookingCapacity: number;
+  quickVisitsEnabled: boolean;
+  quickVisitCapacity: number;
+  bookingHorizonDays: number;
+  cancellationWindowHours: number;
+  maxFutureBookingsPerProject: number | null;
+  projectVerificationRequired: boolean;
+  configurationVersion: number;
+  updatedAt: string;
+  bookingWindow: { fromDate: string; toDate: string };
+  weeklySchedule: WeeklyLabSchedule[];
+  dateExceptions: LabDateException[];
+};
+
+export type UpdateLabConfigurationInput = Omit<
+  LabConfiguration,
+  "id" | "code" | "updatedAt" | "bookingWindow" | "dateExceptions"
+>;
+
+export type DateExceptionInput = {
+  date: string;
+  isClosed: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  reason: string;
+};
+
+export type SlotGenerationResult = {
+  fromDate: string;
+  toDate: string;
+  created: number;
+  updated: number;
+  closed: number;
+  deleted: number;
+};
+
+export type AvailabilityDate = {
+  date: string;
+  label: string;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+  slotCount: number;
+  canFit: boolean;
+  reason: string | null;
+  source: "WEEKLY_SCHEDULE" | "DATE_EXCEPTION";
+};
+
+export type AvailabilityDates = {
+  lab: LabAvailabilitySummary;
+  fromDate: string;
+  toDate: string;
+  participantCount: number;
+  dates: AvailabilityDate[];
+};
+
+export type LabAvailabilitySummary = {
+  id: string;
+  code: string;
+  name: string;
+  timeZone: string;
+  slotDurationMinutes: number;
+  bookingCapacity: number;
+  bookingHorizonDays: number;
+};
+
+export type DailyAvailability = {
+  lab: LabAvailabilitySummary;
+  date: string;
+  label: string;
+  participantCount: number;
+  policy: {
+    isOpen: boolean;
+    opensAt: string | null;
+    closesAt: string | null;
+    source: "WEEKLY_SCHEDULE" | "DATE_EXCEPTION";
+    reason: string | null;
+  };
+  project: {
+    id: string;
+    title: string;
+    status: string;
+    eligibleForBooking: boolean;
+    eligibilityMessage: string;
+  } | null;
+  equipmentAdvisory: Array<{
+    equipmentId: string;
+    name: string;
+    requiredQuantity: number;
+    availableQuantity: number;
+    status: string;
+    available: boolean;
+  }>;
+  equipmentAdvisoryMessage: string;
+  slots: Array<{
+    id: string;
+    startsAt: string;
+    endsAt: string;
+    startTime: string;
+    endTime: string;
+    bookingCapacity: number;
+    placesUsed: number;
+    remainingCapacity: number;
+    canFit: boolean;
+    status: string;
+  }>;
 };
 export type EquipmentCategory = { id: string; labId: string; name: string };
 export type EquipmentSummary = {
