@@ -20,6 +20,7 @@ import {
 import * as service from "../../src/modules/projects/project-service.js";
 
 const leaderId = "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
+const memberId = "5f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const labId = "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const projectId = "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const bookingId = "9f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
@@ -61,6 +62,23 @@ const project = {
         studentProfile: { department: { id: labId, code: "CSE", name: "Engineering" } },
       },
     },
+    {
+      id: "cf5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      userId: memberId,
+      email: "member@mitwpu.edu.in",
+      role: ProjectMemberRole.MEMBER,
+      status: ProjectMemberStatus.ACCEPTED,
+      invitationExpiresAt: null,
+      invitationEmailStatus: null,
+      respondedAt: now,
+      createdAt: now,
+      user: {
+        id: memberId,
+        name: "Project Member",
+        email: "member@mitwpu.edu.in",
+        studentProfile: { department: { id: labId, code: "CSE", name: "Engineering" } },
+      },
+    },
   ],
   mentorRequests: [],
   equipmentRequirements: [],
@@ -68,10 +86,12 @@ const project = {
   bookings: [
     {
       id: bookingId,
+      createdById: leaderId,
       status: BookingStatus.CONFIRMED,
       slotStartsAtSnapshot: startsAt,
       slotEndsAtSnapshot: endsAt,
       createdAt: now,
+      participants: [],
     },
   ],
 };
@@ -99,10 +119,17 @@ describe("project booking projection", () => {
     expect(projectFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
-          bookings: {
+          bookings: expect.objectContaining({
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 20,
-          },
+            include: {
+              participants: {
+                where: { userId: leaderId },
+                select: { userId: true },
+                take: 1,
+              },
+            },
+          }),
         }),
       }),
     );
@@ -112,7 +139,34 @@ describe("project booking projection", () => {
         status: BookingStatus.CONFIRMED,
         startsAt: startsAt.toISOString(),
         endsAt: endsAt.toISOString(),
+        canView: true,
       },
     ]);
+  });
+
+  it("does not link a booking for a project member who was not selected to attend", async () => {
+    const result = await service.get(projectId, {
+      ...viewer,
+      id: memberId,
+      name: "Project Member",
+      email: "member@mitwpu.edu.in",
+    });
+
+    expect(result.bookings[0]).toMatchObject({ id: bookingId, canView: false });
+    expect(projectFindFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          bookings: expect.objectContaining({
+            include: {
+              participants: {
+                where: { userId: memberId },
+                select: { userId: true },
+                take: 1,
+              },
+            },
+          }),
+        }),
+      }),
+    );
   });
 });

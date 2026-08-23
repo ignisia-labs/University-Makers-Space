@@ -44,64 +44,75 @@ function summaryInclude(now: Date) {
   } satisfies Prisma.ProjectInclude;
 }
 
-const detailInclude = {
-  creator: {
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      studentProfile: { select: { department: { select: { id: true, code: true, name: true } } } },
+function detailInclude(viewerId: string) {
+  return {
+    creator: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        studentProfile: {
+          select: { department: { select: { id: true, code: true, name: true } } },
+        },
+      },
     },
-  },
-  currentMentor: { select: { id: true, name: true, email: true } },
-  members: {
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          studentProfile: {
-            select: { department: { select: { id: true, code: true, name: true } } },
+    currentMentor: { select: { id: true, name: true, email: true } },
+    members: {
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            studentProfile: {
+              select: { department: { select: { id: true, code: true, name: true } } },
+            },
+          },
+        },
+      },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    },
+    mentorRequests: {
+      include: { faculty: { select: { id: true, name: true, email: true } } },
+      orderBy: { requestedAt: "desc" },
+    },
+    equipmentRequirements: {
+      include: {
+        equipment: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            category: { select: { id: true, name: true } },
           },
         },
       },
     },
-    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-  },
-  mentorRequests: {
-    include: { faculty: { select: { id: true, name: true, email: true } } },
-    orderBy: { requestedAt: "desc" },
-  },
-  equipmentRequirements: {
-    include: {
-      equipment: {
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          category: { select: { id: true, name: true } },
+    consumableRequirements: {
+      include: {
+        consumable: {
+          select: {
+            id: true,
+            name: true,
+            unit: true,
+            category: { select: { id: true, name: true } },
+          },
         },
       },
     },
-  },
-  consumableRequirements: {
-    include: {
-      consumable: {
-        select: {
-          id: true,
-          name: true,
-          unit: true,
-          category: { select: { id: true, name: true } },
+    bookings: {
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+      include: {
+        participants: {
+          where: { userId: viewerId },
+          select: { userId: true },
+          take: 1,
         },
       },
     },
-  },
-  bookings: {
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 20,
-  },
-} satisfies Prisma.ProjectInclude;
+  } satisfies Prisma.ProjectInclude;
+}
 
 const mentorEmailActionSecret = crypto
   .createHash("sha256")
@@ -139,7 +150,7 @@ function assertMentorEmailActionToken(token: string, requestId: string) {
 }
 
 type SummaryProject = Prisma.ProjectGetPayload<{ include: ReturnType<typeof summaryInclude> }>;
-type DetailProject = Prisma.ProjectGetPayload<{ include: typeof detailInclude }>;
+type DetailProject = Prisma.ProjectGetPayload<{ include: ReturnType<typeof detailInclude> }>;
 
 function scopeFor(viewer: Viewer): Prisma.ProjectWhereInput {
   if (hasPermission(viewer.roles, "project.read.any")) return {};
@@ -302,6 +313,10 @@ function detailDto(project: DetailProject, viewer: Viewer) {
       status: booking.status,
       startsAt: booking.slotStartsAtSnapshot.toISOString(),
       endsAt: booking.slotEndsAtSnapshot.toISOString(),
+      canView:
+        booking.createdById === viewer.id ||
+        booking.participants.length > 0 ||
+        hasPermission(viewer.roles, "booking.read.operational"),
     })),
   };
 }
@@ -353,7 +368,7 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
 export async function get(id: string, viewer: Viewer) {
   const project = await prisma.project.findFirst({
     where: { id, deletedAt: null, AND: [scopeFor(viewer)] },
-    include: detailInclude,
+    include: detailInclude(viewer.id),
   });
   if (!project) throw new ApiError(404, "NOT_FOUND", "Project not found");
   return detailDto(project, viewer);

@@ -550,6 +550,9 @@ model Booking {
   @@index([createdById, status, slotStartsAtSnapshot, id])
   @@index([projectId, status, slotStartsAtSnapshot, id])
   @@index([labId, status, slotStartsAtSnapshot, id])
+  @@index([slotStartsAtSnapshot, id])
+  @@index([status, slotStartsAtSnapshot, id])
+  @@index([slotEndsAtSnapshot, status])
   @@map("bookings")
 }
 

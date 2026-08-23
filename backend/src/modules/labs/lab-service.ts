@@ -284,10 +284,11 @@ export async function availabilityDates(
   projectId: string | undefined,
   participantCount: number,
   viewer: Viewer,
+  now = new Date(),
 ) {
   const lab = await loadLab(prisma, labId);
   if (projectId) await loadVisibleProject(prisma, projectId, labId, viewer);
-  const fromDate = localToday(lab.timeZone);
+  const fromDate = localToday(lab.timeZone, now);
   const toDate = addLocalDays(fromDate, lab.bookingHorizonDays);
   const exceptions = await loadExceptions(prisma, labId, fromDate, toDate);
   return {
@@ -298,19 +299,21 @@ export async function availabilityDates(
     dates: enumerateLocalDates(fromDate, toDate).map((date) => {
       const policy = resolveDayPolicy(date, lab.schedules, exceptions);
       const slotCount = policy.isOpen
-        ? Math.floor(
-            ((policy.closesAtMinute ?? 0) - (policy.opensAtMinute ?? 0)) / lab.slotDurationMinutes,
-          )
+        ? buildSlotBlueprints(date, policy, lab.slotDurationMinutes, lab.timeZone).filter(
+            (slot) => slot.startsAt > now,
+          ).length
         : 0;
+      const hasFutureSlots = policy.isOpen && slotCount > 0;
       return {
         date,
         label: dateLabel(date),
-        isOpen: policy.isOpen,
+        isOpen: hasFutureSlots,
         opensAt: policy.opensAtMinute === null ? null : minuteToTime(policy.opensAtMinute),
         closesAt: policy.closesAtMinute === null ? null : minuteToTime(policy.closesAtMinute),
         slotCount,
-        canFit: policy.isOpen && participantCount <= lab.bookingCapacity,
-        reason: policy.reason,
+        canFit: hasFutureSlots && participantCount <= lab.bookingCapacity,
+        reason:
+          policy.isOpen && !hasFutureSlots ? "No future slots remain for this date" : policy.reason,
         source: policy.source,
       };
     }),
@@ -337,19 +340,28 @@ export async function dailyAvailability(
   const project = projectId ? await loadVisibleProject(prisma, projectId, labId, viewer) : null;
   const exceptions = await loadExceptions(prisma, labId, date, date);
   const policy = resolveDayPolicy(date, lab.schedules, exceptions);
-  if (await slotsNeedReconciliation(lab, date, policy)) {
+  if (await slotsNeedReconciliation(prisma, lab, date, policy)) {
     await prisma.$transaction(
       async (tx) => {
         await lockLab(tx, labId);
         const currentLab = await loadLab(tx, labId);
         const currentExceptions = await loadExceptions(tx, labId, date, date);
-        await reconcileDate(tx, currentLab, currentExceptions, date);
+        const currentPolicy = resolveDayPolicy(date, currentLab.schedules, currentExceptions);
+        if (await slotsNeedReconciliation(tx, currentLab, date, currentPolicy)) {
+          await reconcileDate(tx, currentLab, currentExceptions, date);
+        }
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
   }
+  const requestedAt = new Date();
   const slots = await prisma.labSlot.findMany({
-    where: { labId, localDate: localDateDbValue(date), status: SlotStatus.OPEN },
+    where: {
+      labId,
+      localDate: localDateDbValue(date),
+      startsAt: { gt: requestedAt },
+      status: SlotStatus.OPEN,
+    },
     include: {
       bookings: {
         where: { status: { in: capacityBookingStatuses } },
@@ -467,12 +479,13 @@ async function loadVisibleProject(
 }
 
 async function slotsNeedReconciliation(
+  client: DbClient,
   lab: PolicyLab,
   date: string,
   policy: ReturnType<typeof resolveDayPolicy>,
 ) {
   const desired = buildSlotBlueprints(date, policy, lab.slotDurationMinutes, lab.timeZone);
-  const current = await prisma.labSlot.findMany({
+  const current = await client.labSlot.findMany({
     where: { labId: lab.id, localDate: localDateDbValue(date) },
     select: {
       startsAt: true,

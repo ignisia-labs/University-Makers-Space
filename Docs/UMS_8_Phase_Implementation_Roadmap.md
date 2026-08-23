@@ -2,9 +2,9 @@
 
 **Project:** MIT-WPU University Maker's Space (UMS)
 
-**Baseline branch:** `backend-harsh`
+**Baseline branch:** `development-codex`
 
-**Roadmap version:** 1.1 — RFP-conformance correction
+**Roadmap version:** 1.2 — Phase 4 implementation and verification
 
 **Last updated:** 2026-08-23 (Asia/Kolkata)
 
@@ -54,15 +54,16 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Local prototype flows for onboarding, projects, bookings, visits, equipment, notifications, user administration, and audit views.
 - Phase 1 authentication, session restoration, onboarding, reference-data, real profile rendering, role guards, and logout use the backend API and PostgreSQL.
 - Phase 2 Student profile editing, project list/search/detail/create, team invitations, Faculty Mentor selection and decisions, expected-resource declarations, project notifications, and dashboard/Faculty queues use persisted backend data.
-- Phase 3 Admin lab policy, weekly schedules, date exceptions, slot generation, and Student availability use persisted backend data. Booking confirmation, visits, equipment operations, and the remaining privileged administration stay mock until their owning consecutive phases.
+- Phase 3 Admin lab policy, weekly schedules, date exceptions, slot generation, and Student availability use persisted backend data.
+- Phase 4 Student booking selection, confirmation, detail/history, cancellation, capacity-conflict recovery, and Dashboard upcoming-booking priority use persisted backend data. Visits, equipment operations, and the remaining privileged administration stay mock until their owning consecutive phases.
 
 ### Backend foundations that work through the API
 
 - Permission-based authorization and deny-by-default privileged-role provisioning.
 - User/session revocation behavior for account and role changes.
 - Scoped, idempotent project creation and project editing; bounded directory search; member invitation lifecycle; Faculty Mentor request/decision lifecycle; expected-resource links; human-readable state derivation; audit; and notification/outbox creation.
-- Serializable, idempotent booking creation with slot locking and attendee-capacity checks. The current service also blocks/reserves equipment and consumables; that behavior conflicts with the RFP's advisory-only Version 1 equipment model and must be corrected in Phase 4.
-- Booking cancellation and controlled operational status transitions.
+- Idempotent booking creation at PostgreSQL `READ COMMITTED` with explicit project/slot row locks, attendee-capacity checks, immutable snapshots/history, bounded retries, atomic Redis mutation limits, notification/outbox records, and stable actionable conflicts.
+- Idempotent booking cancellation and controlled operational status transitions with capacity release, immutable actor/reason/time facts, audit, and notification/outbox records.
 - Equipment catalogue endpoints and audited Lab Assistant availability updates.
 - Notification, user administration, and provisioning foundations.
 - Authenticated reference reads for departments, programmes, academic years, labs, and equipment categories.
@@ -70,22 +71,22 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Structured response envelopes, request IDs, Zod validation, Redis-backed rate limiting, logs, and Prisma error mapping.
 - Versioned Prisma migrations and seed data for local development.
 - Events and general uploads exist in the codebase but are Future Scope and do not count toward Version 1 completion.
-- QR-related booking fields/behavior exist in the current backend but are Future Scope and must not be exposed as a Version 1 requirement or attendance workflow.
+- Version 1 booking-time resource allocations and QR/barcode fields have been removed; equipment remains advisory and QR/barcode entry remains Future Scope.
 
 ### Automated evidence currently available
 
 - Backend TypeScript build passes.
 - Frontend production build passes.
 - Backend lint completes without errors. Frontend lint completes with zero errors and eleven existing Fast Refresh warnings.
-- Forty-five backend unit/integration-style tests pass across nine suites.
-- Prisma schema validates and all seven migrations are applied to local PostgreSQL.
+- Seventy-six backend unit/integration-style tests pass across twelve suites.
+- Prisma schema validates and all ten migrations are applied to local PostgreSQL; a fresh empty database also migrated successfully from migration 1 through migration 10.
+- The guarded real-PostgreSQL Phase 4 harness passes capacity, idempotency, cancellation, project-limit, snapshot, audit/outbox, removed-artifact, and cleanup checks. A 40-request hot-slot burst produced exactly 20 confirmations and 20 capacity conflicts for capacity 20 without overbooking.
 - Live local health and Google configuration smoke tests pass. An unauthenticated protected reference-data request correctly returns 401.
 - Root/frontend and backend dependency audits report zero known vulnerabilities after the 2026-08-23 Undici and Prisma remediation; both dependency trees validate cleanly.
 
 ## 3. What is still mock or incomplete
 
-- Lab configuration and availability are implemented; manual browser acceptance remains open.
-- The booking screen reads real project/slot availability, but booking confirmation is intentionally disabled until Phase 4.
+- Lab configuration/availability and end-to-end capacity booking are implemented; their final authenticated manual browser acceptance remains open.
 - Quick Visits, manual Lab Assistant check-in/out, live occupancy, late arrival, overstay, and no-show workflows are missing.
 - Most Admin configuration/reporting UI is missing; consumable inventory remains outside Version 1.
 - In-app project workflow notifications and outbox records are connected; actual asynchronous email delivery and near-real-time updates remain assigned to Phase 7.
@@ -132,7 +133,7 @@ npx prisma migrate deploy
 npm run prisma:seed
 ```
 
-PostgreSQL and Redis must be running. Configure the real Google web client ID, local secrets, database URL, Redis URL, and `FRONTEND_URL=http://localhost:8081` in `backend/.env`. Google Cloud must allow `http://localhost:8081` as an authorized JavaScript origin.
+PostgreSQL and Redis must be running. Configure the real Google web client ID, local secrets, database URL, Redis URL, and `FRONTEND_URL=http://localhost:5174` in `backend/.env`. Google Cloud must allow `http://localhost:5174` as an authorized JavaScript origin.
 
 Run the backend:
 
@@ -149,7 +150,7 @@ npm run dev
 
 Useful URLs:
 
-- Frontend: `http://localhost:8081`
+- Frontend: `http://localhost:5174`
 - Backend health: `http://localhost:4000/health`
 - Swagger UI: `http://localhost:4000/api/docs`
 
@@ -186,7 +187,7 @@ npx prisma migrate status
 
 ### API-only testing caveat
 
-Swagger can exercise implemented backend foundations, but successful privileged operations require a genuinely provisioned account and correct persisted state. The Prototype view switch does not grant API permissions. Booking APIs require valid configured slots, a verified project, accepted participants, and attendee capacity. Current equipment/consumable blocking and QR behavior are known RFP deviations scheduled for correction in Phase 4.
+Swagger can exercise implemented backend foundations, but successful privileged operations require a genuinely provisioned account and correct persisted state. The Prototype view switch does not grant API permissions. Booking APIs require valid configured slots, a verified project led by the caller, accepted participants, and attendee capacity. Equipment/consumables remain advisory and no Version 1 booking or Quick Visit QR credential is created.
 
 ## 5. The agreed eight phases
 
@@ -253,7 +254,7 @@ Exit gate:
 
 ### Phase 3 — Lab configuration, schedules, and slot availability
 
-**Status:** Implementation complete on `development-codex` (2026-08-23). Automated and real PostgreSQL/API verification passed; manual browser acceptance is pending. Phase 4 must not start until that acceptance is recorded.
+**Status:** Implementation complete on `development-codex` (2026-08-23). Automated and real PostgreSQL/API verification passed; manual browser acceptance is pending. The stakeholder explicitly authorized Phase 4 implementation to proceed while this independent acceptance record remains open.
 
 **Goal:** Generate Version 1 MakerSpace availability entirely from configurable lab policy while retaining a future-proof Lab relationship without adding multi-lab Student booking.
 
@@ -285,10 +286,12 @@ Implementation evidence (2026-08-23):
 - Change one non-critical policy field, confirm the warning dialog, save it, reload the page, and confirm the value persists; then restore the original value.
 - Add a closure for a future open day and confirm the Student availability screen shows no slots; remove the closure and confirm slots return.
 - In a real Student session with a project, open `/book`, select a date, and confirm time, remaining attendee capacity, participant-aware fit, and advisory project-equipment availability come from the API.
-- Confirm the booking action explicitly remains unavailable until Phase 4 and that the Prototype view role switch still exposes the existing mock screens.
+- Confirm the Phase 4 booking action appears only for an eligible verified project led by the signed-in Student and that the Prototype view role switch still exposes the existing mock screens.
 - Repeat the critical checks at mobile, tablet/iPad, and desktop widths and record screenshots or defects before marking Phase 3 accepted.
 
 ### Phase 4 — End-to-end capacity bookings
+
+**Status:** Implementation complete on `development-codex` (2026-08-23). Automated, fresh-migration, and real PostgreSQL concurrency verification passed; authenticated manual browser acceptance is pending.
 
 **Goal:** Connect the existing transactional booking core to the real Student experience.
 
@@ -313,6 +316,29 @@ Exit gate:
 - Equipment status is visible but does not create an equipment-specific reservation or incorrectly block MakerSpace capacity booking.
 - Historical booking facts remain intact when related current records later change.
 - Booking/cancellation notification events must be persisted; actual email delivery and live-client propagation remain open until Phase 7.
+
+Implementation evidence (2026-08-23):
+
+- Connected `/book`, `/bookings/:bookingId`, project booking links, and the Student Dashboard to persisted booking APIs with Upcoming, Available Slots, and Past views, server-derived eligibility, accepted-member selection, Team Leader policy, advisory equipment, confirmation, cancellation, and actionable capacity-conflict recovery.
+- Booking creation/cancellation use payload-bound idempotency keys. Participant identity fields are scoped so ordinary project participants see names/roles but only their own email/PRN; operational booking readers retain the fields required for lab work.
+- Database history stores immutable Lab/project/slot/policy/participant snapshots plus append-only status history. Legacy Version 1 resource-allocation and QR artifacts were removed, and the verified-project rule is enforced by service logic, API validation, UI policy, and a database constraint.
+- Project Detail intentionally returns only the latest 20 immutable booking previews; the complete history remains available through the paginated booking endpoint.
+- All 76 backend tests across 12 suites pass; backend/frontend lint and production builds pass; both production dependency audits report zero known vulnerabilities; OpenAPI YAML parses; all 10 migrations apply both incrementally and to an empty database.
+- The guarded PostgreSQL harness passed repeatedly. Its latest 40-request burst completed in 280 ms with exactly 20 confirmed requests, 20 `SLOT_CAPACITY_EXCEEDED` conflicts, and occupancy exactly 20/20. It also proved same-payload replay, changed-payload protection, maximum-future-booking races, cancellation replay/release, immutable snapshots, audit/outbox uniqueness, removed artifacts, and strict fixture cleanup.
+- Backend health and frontend HTTP smoke checks pass locally. The final authenticated responsive walkthrough remains unrecorded because the automated browser connector had no available browser session; this does not replace the manual checklist below.
+
+### Manual Phase 4 acceptance checklist
+
+- Sign in as a Student who leads a Faculty-verified project with at least one accepted member, then open `/book`.
+- Confirm only eligible verified projects led by that Student are offered; accepted members start selected, may be deselected, and the Team Leader follows the configured attendance policy.
+- Choose a date and slot, verify start/end time and remaining attendee places, and confirm unavailable equipment is clearly advisory rather than blocking the booking.
+- Review and confirm the booking. Verify one success state, an Upcoming card, booking detail, Project Detail preview, and Dashboard priority card all show the same persisted facts.
+- Retry the exact create action after an interrupted response and verify no duplicate booking; change the logical request and verify it does not reuse the old idempotency operation.
+- From booking detail, cancel before the deadline with a reason. Verify it moves from Upcoming to Past, retains its original facts plus cancellation record, and its attendee capacity becomes available again.
+- Repeat a cancellation after an interrupted response with the same reason and then with a changed reason; verify exact replay is safe and changed payload is not treated as the same operation.
+- Create competing requests from two sessions for the final places and verify the losing UI shows current remaining places, Refresh Availability, and alternate slots rather than a generic error.
+- Confirm participant email/PRN values are not exposed to ordinary teammates, while the Prototype view switch still grants no backend permissions.
+- Repeat the critical flow at mobile, tablet/iPad, and desktop widths and record screenshots or defects before marking Phase 4 accepted.
 
 ### Phase 5 — Quick Visits, attendance, and Lab Assistant operations
 
@@ -540,10 +566,11 @@ Do not skip an incomplete prerequisite phase or broaden the feature without expl
 
 Use pull requests/issues for active assignments. At minimum, record:
 
-| Phase | Work item                                           | Owner | Branch/PR           | Status             | Dependencies                                               | Last updated |
-| ----- | --------------------------------------------------- | ----- | ------------------- | ------------------ | ---------------------------------------------------------- | ------------ |
-| 1     | Integration and identity foundation                 | Codex | `development-codex` | Complete           | —                                                          | 2026-08-23   |
-| 2     | Projects, teams, and mentor verification            | Codex | `development-codex` | Complete           | Phase 1 complete                                           | 2026-08-23   |
-| 3     | Lab configuration, schedules, and slot availability | Codex | `development-codex` | Acceptance pending | Automated/API checks passed; manual browser check required | 2026-08-23   |
+| Phase | Work item                                           | Owner | Branch/PR           | Status             | Dependencies                                                                      | Last updated |
+| ----- | --------------------------------------------------- | ----- | ------------------- | ------------------ | --------------------------------------------------------------------------------- | ------------ |
+| 1     | Integration and identity foundation                 | Codex | `development-codex` | Complete           | —                                                                                 | 2026-08-23   |
+| 2     | Projects, teams, and mentor verification            | Codex | `development-codex` | Complete           | Phase 1 complete                                                                  | 2026-08-23   |
+| 3     | Lab configuration, schedules, and slot availability | Codex | `development-codex` | Acceptance pending | Automated/API checks passed; manual browser check required                        | 2026-08-23   |
+| 4     | End-to-end capacity bookings                        | Codex | `development-codex` | Acceptance pending | Automated/database checks passed; authenticated responsive browser check required | 2026-08-23   |
 
 Only the repository owner or designated technical lead should change a phase from **In progress** to **Complete**, after its exit gate has evidence.

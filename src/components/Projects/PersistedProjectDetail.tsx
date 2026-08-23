@@ -257,7 +257,7 @@ export function PersistedProjectDetail({
         {project.bookings.length ? (
           <div className="mt-4 divide-y divide-border">
             {project.bookings.map((booking) =>
-              role === "Student" ? (
+              booking.canView ? (
                 <Link
                   key={booking.id}
                   to="/bookings/$bookingId"

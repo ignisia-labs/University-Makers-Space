@@ -627,7 +627,13 @@ export type ProjectDetail = ProjectSummary & {
   }>;
   equipment: Array<{ id: string; name: string; category: string; status: string }>;
   consumables: Array<{ id: string; name: string; category: string; unit: string }>;
-  bookings: Array<{ id: string; status: string; startsAt: string; endsAt: string }>;
+  bookings: Array<{
+    id: string;
+    status: string;
+    startsAt: string;
+    endsAt: string;
+    canView: boolean;
+  }>;
 };
 
 export type OnboardingInput = {

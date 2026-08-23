@@ -317,7 +317,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
             include: { participants: true },
           });
           await createBookingNotifications(tx, {
-            userIds: selectedMembers.map((member) => member.userId!),
+            userIds: [project.creatorId, ...selectedMembers.map((member) => member.userId!)],
             type: "BOOKING_CONFIRMED",
             title: `${project.title} is booked`,
             body: `${formatBookingWindow(slot.startsAt, slot.endsAt, slot.lab.timeZone)} at ${slot.lab.name}.`,
@@ -472,7 +472,10 @@ export async function cancel(
             include: { participants: true },
           });
           await createBookingNotifications(tx, {
-            userIds: booking.participants.map((participant) => participant.userId),
+            userIds: [
+              booking.createdById,
+              ...booking.participants.map((participant) => participant.userId),
+            ],
             type: "BOOKING_CANCELLED",
             title: `${booking.projectTitleSnapshot} booking cancelled`,
             body: `${formatBookingWindow(
@@ -590,7 +593,6 @@ export async function updateStatus(
         where: { id },
         data: {
           status,
-          notes,
           statusHistory: {
             create: {
               fromStatus: existing.status,

@@ -1,4 +1,4 @@
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, type QueryClient } from "@tanstack/react-query";
 import { notificationsApi, projectsApi } from "./api";
 
 export const projectKeys = {
@@ -12,6 +12,17 @@ export function usePersistedProjects(params?: Record<string, string>, enabled = 
   return useQuery({
     queryKey: projectKeys.list(params),
     queryFn: () => projectsApi.list({ page: "1", limit: "50", ...params }).then((r) => r.data),
+    enabled,
+  });
+}
+
+export function usePersistedProjectPages(params?: Record<string, string>, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...projectKeys.list(params), "pages"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      projectsApi.list({ page: String(pageParam), limit: "50", ...params }),
+    getNextPageParam: (lastPage) => (lastPage.meta?.hasNext ? lastPage.meta.page + 1 : undefined),
     enabled,
   });
 }

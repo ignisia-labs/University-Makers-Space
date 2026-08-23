@@ -14,6 +14,7 @@ import { ProjectStatus, UserRole } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
+import { availabilityDates } from "../../src/modules/labs/lab-service.js";
 import { localToday } from "../../src/modules/labs/lab-time.js";
 
 const userId = "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
@@ -114,7 +115,7 @@ describe("Phase 3 lab availability API", () => {
       teamLeaderAttendanceRequired: true,
     });
     expect(response.body.data.dates).toHaveLength(15);
-    expect(response.body.data.dates[0]).toMatchObject({
+    expect(response.body.data.dates[1]).toMatchObject({
       isOpen: true,
       slotCount: 10,
       canFit: true,
@@ -180,5 +181,58 @@ describe("Phase 3 lab availability API", () => {
         schedule.isOpen = true;
       });
     }
+  });
+
+  it("does not offer elapsed slots when the requested date is today", async () => {
+    schedules.forEach((schedule) => {
+      schedule.isOpen = false;
+    });
+    try {
+      const response = await request(createApp())
+        .get(
+          `/api/v1/labs/${labId}/availability?date=${localToday(lab.timeZone)}&participantCount=1`,
+        )
+        .set("Authorization", `Bearer ${accessToken()}`);
+
+      expect(response.status).toBe(200);
+      const { prisma } = jest.requireMock("../../src/config/db") as {
+        prisma: { labSlot: { findMany: jest.Mock } };
+      };
+      const availabilityQuery = prisma.labSlot.findMany.mock.calls.at(-1)?.[0];
+      expect(availabilityQuery.where.startsAt.gt).toEqual(expect.any(Date));
+      expect(availabilityQuery.where.startsAt.gt.getTime()).toBeLessThanOrEqual(Date.now());
+    } finally {
+      schedules.forEach((schedule) => {
+        schedule.isOpen = true;
+      });
+    }
+  });
+
+  it("does not advertise today after its final slot has elapsed", async () => {
+    const afterClosing = new Date("2026-08-23T13:30:00.000Z");
+    const result = await availabilityDates(
+      labId,
+      undefined,
+      1,
+      {
+        id: userId,
+        name: "Test User",
+        email: "user@mitwpu.edu.in",
+        roles: [UserRole.STUDENT],
+        profileComplete: true,
+        isActive: true,
+        sessionId,
+      },
+      afterClosing,
+    );
+
+    expect(result.dates[0]).toMatchObject({
+      date: localToday(lab.timeZone, afterClosing),
+      isOpen: false,
+      slotCount: 0,
+      canFit: false,
+      reason: "No future slots remain for this date",
+    });
+    expect(result.dates[1]).toMatchObject({ isOpen: true, slotCount: 10, canFit: true });
   });
 });

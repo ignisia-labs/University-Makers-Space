@@ -29,7 +29,7 @@ import {
   type ProjectDetail,
 } from "@/lib/api";
 import { invalidateBookingData, usePersistedBookings } from "@/lib/booking-queries";
-import { usePersistedProject, usePersistedProjects } from "@/lib/project-queries";
+import { usePersistedProject, usePersistedProjectPages } from "@/lib/project-queries";
 import { cn } from "@/lib/utils";
 
 type SlotsTab = "upcoming" | "book" | "past";
@@ -165,15 +165,17 @@ function BookingFlow({
   onBooked: () => void;
 }) {
   const queryClient = useQueryClient();
-  const projects = usePersistedProjects({ status: "VERIFIED" });
+  const projects = usePersistedProjectPages({ status: "VERIFIED" });
+  const { data: projectPages, fetchNextPage, hasNextPage, isFetchingNextPage } = projects;
   const leaderProjects = useMemo(
     () =>
-      (projects.data ?? []).filter(
+      (projectPages?.pages.flatMap((page) => page.data) ?? []).filter(
         (project) => project.viewerRelationship === "LEADER" && project.status === "VERIFIED",
       ),
-    [projects.data],
+    [projectPages],
   );
   const [projectId, setProjectId] = useState(preselectedProjectId ?? "");
+  const preselectionHandled = useRef(!preselectedProjectId);
   const project = leaderProjects.find((item) => item.id === projectId);
   const projectDetail = usePersistedProject(projectId, Boolean(projectId));
   const acceptedParticipants = useMemo(
@@ -217,12 +219,34 @@ function BookingFlow({
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!leaderProjects.length) return;
-    if (!leaderProjects.some((item) => item.id === projectId)) {
-      const preferred = leaderProjects.find((item) => item.id === preselectedProjectId);
-      setProjectId(preferred?.id ?? leaderProjects[0]!.id);
+    const needsAnotherPage =
+      leaderProjects.length === 0 ||
+      Boolean(
+        !preselectionHandled.current &&
+        preselectedProjectId &&
+        !leaderProjects.some((item) => item.id === preselectedProjectId),
+      );
+    if (needsAnotherPage && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
     }
-  }, [leaderProjects, preselectedProjectId, projectId]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, leaderProjects, preselectedProjectId]);
+
+  useEffect(() => {
+    if (!leaderProjects.length) return;
+    if (!preselectionHandled.current && preselectedProjectId) {
+      const preferred = leaderProjects.find((item) => item.id === preselectedProjectId);
+      if (preferred) {
+        preselectionHandled.current = true;
+        setProjectId(preferred.id);
+        return;
+      }
+      if (hasNextPage || isFetchingNextPage) return;
+      preselectionHandled.current = true;
+    }
+    if (!leaderProjects.some((item) => item.id === projectId)) {
+      setProjectId(leaderProjects[0]!.id);
+    }
+  }, [hasNextPage, isFetchingNextPage, leaderProjects, preselectedProjectId, projectId]);
 
   useEffect(() => {
     if (!projectDetail.data || participantProjectId === projectId) return;
@@ -329,6 +353,9 @@ function BookingFlow({
       />
     );
   }
+  if (!leaderProjects.length && (hasNextPage || isFetchingNextPage)) {
+    return <BookingFlowLoading />;
+  }
   if (!leaderProjects.length) return <NoEligibleProjects />;
 
   const selectedParticipants = acceptedParticipants.filter((participant) =>
@@ -339,6 +366,7 @@ function BookingFlow({
   const projectEligible = availability.data?.project?.eligibleForBooking ?? true;
 
   const changeProject = (nextProjectId: string) => {
+    preselectionHandled.current = true;
     setProjectId(nextProjectId);
     setParticipantProjectId("");
     setParticipantIds([]);
@@ -412,6 +440,16 @@ function BookingFlow({
             </option>
           ))}
         </select>
+        {hasNextPage && (
+          <button
+            type="button"
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+            className="mt-3 min-h-11 rounded-xl border border-primary/20 px-4 text-xs font-semibold text-primary disabled:opacity-50"
+          >
+            {isFetchingNextPage ? "Loading more projects…" : "Load more verified projects"}
+          </button>
+        )}
         {project && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge label="Verified" />

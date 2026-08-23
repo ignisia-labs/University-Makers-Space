@@ -2,6 +2,34 @@
 
 Material product, architecture, requirement-status, and delivery decisions are appended here. The PRD/RFP remains authoritative; changelog entries describe implementation and verification state without changing requirements.
 
+## 2026-08-23 — Phase 4 end-to-end capacity bookings
+
+**Branch:** `development-codex`
+
+### Completed
+
+- Connected the production Student Slots experience to persisted APIs: eligible verified Team Leader projects, accepted-member selection, configurable Team Leader attendance, date/slot choice, advisory equipment, confirmation, Upcoming/Past history, booking detail, cancellation, Project Detail previews, and Dashboard upcoming-booking priority.
+- Redesigned the Phase 4 booking schema around immutable Lab/project/slot/policy/participant snapshots and append-only status history. Removed Version 1 booking resource-allocation tables and booking/Quick Visit QR fields; equipment and consumables remain advisory as required by the RFP.
+- Implemented payload-bound create/cancel idempotency, explicit PostgreSQL project/slot/booking row locks, exact capacity recalculation, actionable conflicts, bounded retries, atomic Redis mutation limits, audit records, deduplicated notifications, and pending email-delivery outbox rows.
+- Enforced the Version 1 verified-project rule in booking creation, availability, API validation, the Admin policy UI, and a database constraint. Team Leader attendance remains configurable.
+- Preserved Student creation notes across operational status changes, scoped participant email/PRN values to self or operational readers, and bounded Project Detail to the 20 most recent immutable booking previews while retaining paginated full history.
+- Added paginated verified-project selection beyond the first 50 records, excluded elapsed slots on the current date, double-checked stale slot reconciliation after the Lab lock, and added global temporal/status indexes for bounded operational booking lists.
+- Retained the isolated **Prototype view** switch through Phase 7; it still grants no backend permission.
+
+### Verification
+
+- Backend lint and TypeScript build passed; 76/76 tests passed across 12 suites. Frontend production build passed and lint has 0 errors with the same 11 pre-existing Fast Refresh warnings.
+- Prisma validation passed; all 10 migrations are applied locally. A temporary empty database successfully applied migrations 1–10 and proved status history present, legacy allocation tables absent, QR columns absent, the verified-project constraint present, and all three global operational booking-list indexes present; that temporary database was then removed.
+- The guarded real-PostgreSQL concurrency suite passed repeatedly. Its latest 40-request burst produced exactly 20 confirmations and 20 `SLOT_CAPACITY_EXCEEDED` conflicts at occupancy 20/20 in 280 ms. Capacity races, exact create/cancel replay, changed-payload protection, future-booking limits, capacity release, immutable snapshots, audit/outbox uniqueness, removed artifacts, and strict cleanup also passed.
+- Root/frontend and backend production dependency audits report 0 vulnerabilities, OpenAPI YAML parses, and `git diff --check` passes.
+- Local runtime smoke checks passed for the backend health endpoint and the frontend development server. The automated browser connector had no available browser session during final acceptance, so no authenticated visual result is being claimed from that check.
+
+### Remaining acceptance
+
+- Complete the authenticated Phase 4 manual browser checklist in the shared roadmap at mobile, tablet/iPad, and desktop widths. Phase 3 manual acceptance remains independently open; the stakeholder explicitly authorized Phase 4 development to proceed.
+- Phase 7 still owns actual asynchronous email delivery and cross-client near-real-time propagation. Phase 8 still owns production-like load, soak, failure/recovery, deployment sizing, monitoring, and launch acceptance for approximately 40,000 registered users.
+- Begin Phase 5 only after the stakeholder accepts Phase 4 or explicitly authorizes the next phase.
+
 ## 2026-08-23 — Phase 3 lab configuration and availability
 
 **Branch:** `development-codex`
@@ -25,7 +53,7 @@ Material product, architecture, requirement-status, and delivery decisions are a
 
 ### Next
 
-- Run the Phase 3 manual checklist in the roadmap. After acceptance, begin Phase 4 end-to-end capacity bookings.
+- Run the still-open Phase 3 manual checklist in the roadmap; the stakeholder explicitly authorized Phase 4 implementation while that independent acceptance record remains pending.
 - Production readiness for approximately 40,000 registered users still requires Phase 8 staging load/concurrency tests, deployment sizing, monitoring, and failure/recovery acceptance.
 
 ## 2026-08-23 — Phase 2 projects, teams, and mentor verification

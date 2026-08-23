@@ -158,8 +158,12 @@ const tx = {
 
 jest.mock("../../src/config/db", () => ({
   prisma: {
-    $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    $transaction: jest.fn(async (input: unknown) =>
+      Array.isArray(input) ? Promise.all(input) : (input as (client: typeof tx) => unknown)(tx),
+    ),
     booking: {
+      count: jest.fn(async () => 0),
+      findMany: jest.fn(async () => []),
       findUnique: jest.fn(async () => state.existing),
       findFirst: jest.fn(async (args: { where: Record<string, unknown> }) => {
         if ("cancellationIdempotencyKey" in args.where) {
@@ -246,6 +250,7 @@ describe("Phase 4 booking service", () => {
     state.duplicate = false;
     lab.maxFutureBookingsPerProject = null;
     lab.projectVerificationRequired = true;
+    lab.teamLeaderAttendanceRequired = true;
     project.status = ProjectStatus.VERIFIED;
     jest.clearAllMocks();
   });
@@ -314,6 +319,27 @@ describe("Phase 4 booking service", () => {
         idempotencyKey,
       }),
     ).rejects.toMatchObject({ code: "TEAM_LEADER_ATTENDANCE_REQUIRED" });
+  });
+
+  it("notifies the booking owner when policy permits them to deselect themself", async () => {
+    lab.teamLeaderAttendanceRequired = false;
+
+    await service.create(viewer, {
+      labSlotId: slotId,
+      projectId,
+      participantIds: [memberId],
+      idempotencyKey,
+    });
+    const createRecipients = tx.notification.createManyAndReturn.mock.calls[0]![0].data.map(
+      (row: { userId?: string }) => row.userId,
+    );
+    expect(createRecipients).toEqual(expect.arrayContaining([leaderId, memberId]));
+
+    await service.cancel(bookingId, "Owner cancelled", cancellationKey, viewer);
+    const cancellationRecipients = tx.notification.createManyAndReturn.mock.calls[1]![0].data.map(
+      (row: { userId?: string }) => row.userId,
+    );
+    expect(cancellationRecipients).toEqual(expect.arrayContaining([leaderId, memberId]));
   });
 
   it("rejects duplicate participants before opening a transaction", async () => {
@@ -434,6 +460,121 @@ describe("Phase 4 booking service", () => {
     await expect(
       service.cancel(bookingId, "Team unavailable", "ff5c6a30-8db5-4f06-90f6-1eb4e664b2f2", viewer),
     ).rejects.toMatchObject({ code: "BOOKING_ALREADY_CANCELLED" });
+  });
+
+  it("preserves the creation-time booking note when an operational status note is added", async () => {
+    state.current = bookingRecord({ notes: "Rover assembly" });
+    state.existing = state.current;
+    const operationalViewer = {
+      ...viewer,
+      id: "1f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      name: "Lab Assistant",
+      email: "assistant@mitwpu.edu.in",
+      roles: [UserRole.LAB_ASSISTANT],
+    };
+
+    const result = await service.updateStatus(
+      bookingId,
+      BookingStatus.ACTIVE,
+      "Team checked in",
+      operationalViewer,
+    );
+
+    expect(result.notes).toBe("Rover assembly");
+    expect(tx.booking.update.mock.calls[0]![0].data).toMatchObject({
+      status: BookingStatus.ACTIVE,
+      statusHistory: {
+        create: expect.objectContaining({ notes: "Team checked in" }),
+      },
+    });
+    expect(tx.booking.update.mock.calls[0]![0].data).not.toHaveProperty("notes");
+  });
+
+  it("denies booking detail to an unrelated Student", async () => {
+    state.current = bookingRecord();
+    state.existing = state.current;
+
+    await expect(
+      service.get(bookingId, {
+        ...viewer,
+        id: "2f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        email: "unrelated@mitwpu.edu.in",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("scopes a Student booking list to bookings they created or attend", async () => {
+    const { prisma } = jest.requireMock("../../src/config/db") as {
+      prisma: { booking: { count: jest.Mock } };
+    };
+
+    await service.list({ scope: "upcoming", page: 1, limit: 20 }, viewer);
+
+    expect(prisma.booking.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            {
+              OR: [{ createdById: leaderId }, { participants: { some: { userId: leaderId } } }],
+            },
+          ]),
+        }),
+      }),
+    );
+  });
+
+  it("denies cancellation to a selected non-leader participant", async () => {
+    state.current = bookingRecord();
+    state.existing = state.current;
+
+    await expect(
+      service.cancel(bookingId, "Cannot attend", cancellationKey, {
+        ...viewer,
+        id: memberId,
+        name: "Team Member",
+        email: "member@mitwpu.edu.in",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("enforces the snapshotted Student cancellation deadline", async () => {
+    state.current = bookingRecord({
+      slotStartsAtSnapshot: new Date(Date.now() + 60 * 60 * 1000),
+      cancellationWindowHoursSnapshot: 2,
+    });
+    state.existing = state.current;
+
+    await expect(
+      service.cancel(bookingId, "Too late to attend", cancellationKey, viewer),
+    ).rejects.toMatchObject({ code: "CANCELLATION_WINDOW_CLOSED" });
+  });
+
+  it("records a Lab Assistant cancellation source and may act after the Student deadline", async () => {
+    state.current = bookingRecord({
+      slotStartsAtSnapshot: new Date(Date.now() + 60 * 60 * 1000),
+      cancellationWindowHoursSnapshot: 2,
+    });
+    state.existing = state.current;
+    const operationalViewer = {
+      ...viewer,
+      id: "1f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      name: "Lab Assistant",
+      email: "assistant@mitwpu.edu.in",
+      roles: [UserRole.LAB_ASSISTANT],
+    };
+
+    const result = await service.cancel(
+      bookingId,
+      "Lab unavailable",
+      cancellationKey,
+      operationalViewer,
+    );
+
+    expect(result.booking).toMatchObject({
+      status: BookingStatus.CANCELLED,
+      statusLabel: "Cancelled by Lab Assistant",
+      cancellationSource: BookingCancellationSource.LAB_ASSISTANT,
+    });
   });
 
   it("never allows the generic status endpoint to bypass cancellation history", async () => {
