@@ -243,15 +243,19 @@ model Lab {
   slotDurationMinutes     Int                  @default(60) @map("slot_duration_minutes")
   bookingCapacity         Int                  @default(20) @map("booking_capacity")
   quickVisitCapacity      Int                  @default(10) @map("quick_visit_capacity")
+  quickVisitsEnabled      Boolean              @default(true) @map("quick_visits_enabled")
   bookingHorizonDays      Int                  @default(14) @map("booking_horizon_days")
   cancellationWindowHours Int                  @default(2) @map("cancellation_window_hours")
+  maxFutureBookingsPerProject Int?             @map("max_future_bookings_per_project")
+  projectVerificationRequired Boolean          @default(true) @map("project_verification_required")
+  configurationVersion    Int                  @default(1) @map("configuration_version")
   isActive                Boolean              @default(true) @map("is_active")
   createdById             String?              @map("created_by_id") @db.Uuid
   createdAt               DateTime             @default(now()) @map("created_at")
   updatedAt               DateTime             @updatedAt @map("updated_at")
   createdBy               User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   schedules               LabSchedule[]
-  closures                LabClosure[]
+  dateExceptions          LabDateException[]
   slots                   LabSlot[]
   equipmentCategories     EquipmentCategory[]
   equipment               Equipment[]
@@ -280,26 +284,32 @@ model LabSchedule {
   @@map("lab_schedules")
 }
 
-model LabClosure {
-  id        String   @id @default(uuid()) @db.Uuid
-  labId     String   @map("lab_id") @db.Uuid
-  startsAt  DateTime @map("starts_at")
-  endsAt    DateTime @map("ends_at")
-  reason    String
-  createdAt DateTime @default(now()) @map("created_at")
-  lab       Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
+model LabDateException {
+  id             String   @id @default(uuid()) @db.Uuid
+  labId          String   @map("lab_id") @db.Uuid
+  localDate      DateTime @map("local_date") @db.Date
+  isClosed       Boolean  @default(true) @map("is_closed")
+  opensAtMinute  Int?     @map("opens_at_minute")
+  closesAtMinute Int?     @map("closes_at_minute")
+  reason         String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  lab            Lab      @relation(fields: [labId], references: [id], onDelete: Cascade)
 
-  @@index([labId, startsAt, endsAt])
-  @@map("lab_closures")
+  @@unique([labId, localDate])
+  @@index([labId, localDate, isClosed])
+  @@map("lab_date_exceptions")
 }
 
 model LabSlot {
   id                 String       @id @default(uuid()) @db.Uuid
   labId              String       @map("lab_id") @db.Uuid
+  localDate          DateTime     @map("local_date") @db.Date
   startsAt           DateTime     @map("starts_at")
   endsAt             DateTime     @map("ends_at")
   bookingCapacity    Int          @map("booking_capacity")
   quickVisitCapacity Int          @map("quick_visit_capacity")
+  policyVersion      Int          @default(1) @map("policy_version")
   status             SlotStatus   @default(OPEN)
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
@@ -308,6 +318,7 @@ model LabSlot {
   quickVisits        QuickVisit[]
 
   @@unique([labId, startsAt, endsAt])
+  @@index([labId, localDate, status])
   @@index([labId, status, startsAt])
   @@map("lab_slots")
 }
