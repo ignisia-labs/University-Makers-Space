@@ -16,7 +16,7 @@ components:
     refreshCookie:
       type: apiKey
       in: cookie
-      name: ums_refresh
+      name: ums_refresh_token
   parameters:
     ResourceId:
       name: id
@@ -55,7 +55,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        fullName: { type: string }
+        name: { type: string }
         email: { type: string, format: email }
         roles:
           type: array
@@ -79,7 +79,12 @@ components:
       required: [fullName, prn, departmentId, programmeId, academicYear]
       properties:
         fullName: { type: string, minLength: 2, maxLength: 100 }
-        prn: { type: string, pattern: "^\\d{10}$" }
+        prn:
+          {
+            type: string,
+            pattern: "^[A-Za-z0-9][A-Za-z0-9/-]{5,23}$",
+            description: "Normalized current policy; exact institutional format remains configurable.",
+          }
         departmentId: { type: string, format: uuid }
         programmeId: { type: string, format: uuid }
         academicYear: { type: integer, minimum: 1, maximum: 8 }

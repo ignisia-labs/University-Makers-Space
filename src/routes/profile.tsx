@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { useMakerSpace } from "@/lib/makerspace-context";
+import { useAppSession } from "@/lib/auth-context";
 export const Route = createFileRoute("/profile")({ component: Profile });
 function Profile() {
-  const { profile, role } = useMakerSpace();
+  const { profile, role, user, prototype } = useAppSession();
   return (
     <AppShell title="Profile" subtitle="Your MakerSpace identity">
       <section className="card-surface p-6">
@@ -16,10 +16,15 @@ function Profile() {
         <h2 className="mt-4 text-xl font-bold">{profile.fullName}</h2>
         <p className="text-sm text-muted-foreground">{profile.email}</p>
         <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-          <Item label="PRN" value={profile.prn} />
+          {profile.prn && <Item label="PRN" value={profile.prn} />}
           <Item label="Role" value={role} />
           <Item label="Department" value={profile.department} />
-          <Item label="Programme" value={`${profile.programme} · ${profile.academicYear}`} />
+          {profile.programme && (
+            <Item label="Programme" value={`${profile.programme} · ${profile.academicYear}`} />
+          )}
+          {!prototype && user?.lastLoginAt && (
+            <Item label="Last sign-in" value={new Date(user.lastLoginAt).toLocaleString("en-IN")} />
+          )}
         </dl>
       </section>
     </AppShell>

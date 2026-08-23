@@ -6,7 +6,7 @@
 
 **Roadmap version:** 1.1 — RFP-conformance correction
 
-**Last updated:** 2026-08-16 (Asia/Kolkata)
+**Last updated:** 2026-08-23 (Asia/Kolkata)
 
 **Source requirements:** `MakerSpace PRD.docx`
 
@@ -52,7 +52,7 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Responsive landing page and the Student, Faculty Mentor, Lab Assistant, Admin, and Super Admin prototype workspaces.
 - Tab-scoped **Prototype view** role switch for reviewing mock workspaces. It remains intentionally available until Phase 8 and never grants backend permissions.
 - Local prototype flows for onboarding, projects, bookings, visits, equipment, notifications, user administration, and audit views.
-- The 2026-08-23 browser E2E audit found that the visible authentication, onboarding, project, logout, Admin, and Super Admin flows currently use `MakerSpaceProvider` browser-local state and issue no `/api` requests. These flows are not yet connected or testable end to end against PostgreSQL.
+- Phase 1 authentication, session restoration, onboarding, reference-data, real profile rendering, role guards, and logout now use the backend API and PostgreSQL. Project, booking, visits, equipment operations, and privileged administration remain mock until their owning consecutive phases.
 
 ### Backend foundations that work through the API
 
@@ -74,7 +74,7 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Backend TypeScript build passes.
 - Frontend production build passes.
 - Backend lint completes without errors. Frontend lint currently reports formatting errors plus existing UI-library Fast Refresh warnings and must pass before the Phase 1 exit gate.
-- Fifteen backend unit/integration-style tests pass.
+- Twenty-four backend unit/integration-style tests pass across six suites.
 - Prisma schema validates and all five migrations are applied to local PostgreSQL.
 - Live local health and Google configuration smoke tests pass. An unauthenticated protected reference-data request correctly returns 401.
 
@@ -110,6 +110,8 @@ The evidence and reproduction steps are in `Docs/E2E_QA_AUDIT_2026-08-23.md`. Th
 | P1 | QA-010: frontend lint gate fails | Clear errors and keep lint/build passing before Phase 1 is declared complete. | Phase 1 |
 
 Priority order is Phase 1 integration and identity first, then the consecutive roadmap phases. No later phase may treat local prototype success as end-to-end acceptance. The **Prototype view** role switch must remain available for mock review through Phases 1–7 and be removed only in Phase 8.
+
+**Phase 1 closure evidence (2026-08-23):** QA-001 is closed for authentication, session restoration, onboarding, authenticated reference reads, persisted profile rendering, and logout; domain-specific API replacement remains assigned to Phases 2–7. QA-002 through QA-005 and QA-010 are closed. Real Student Google sign-in, immediate profile rendering, refresh restoration, real onboarding, Student-to-privileged route denial, logout, and signed-out landing guards passed in Safari. The five-role Prototype view remains visibly isolated and grants no backend permissions.
 
 ## 4. What can be tested now
 
@@ -162,6 +164,8 @@ Useful URLs:
 9. On desktop, expand the sidebar and test every **Prototype view** role. Treat the displayed workspace records as mock data.
 10. Sign out and verify protected routes redirect to the landing page.
 
+**Executed 2026-08-23:** All ten checks passed. Google Identity Services required a supported system browser on macOS; Safari completed the real MIT-WPU flow. The embedded QA browser could render the button but did not reliably complete Google's popup. No application console error or failed MakerSpace API response was observed in the successful Safari run.
+
 ### Automated checks
 
 ```bash
@@ -186,7 +190,7 @@ Swagger can exercise implemented backend foundations, but successful privileged 
 
 ### Phase 1 — Integration and identity foundation
 
-**Status:** Backend core exists; browser E2E integration is incomplete and is the first implementation priority.
+**Status:** Complete on `development-codex` (2026-08-23); Phase 2 is the next consecutive implementation phase.
 
 Deliverables:
 
@@ -517,6 +521,7 @@ Use pull requests/issues for active assignments. At minimum, record:
 
 | Phase | Work item  | Owner | Branch/PR | Status | Dependencies | Last updated |
 | ----- | ---------- | ----- | --------- | ------ | ------------ | ------------ |
-| 2     | Unassigned | —     | —         | Ready  | Phase 1      | 2026-08-16   |
+| 1     | Integration and identity foundation | Codex | `development-codex` | Complete | — | 2026-08-23 |
+| 2     | Unassigned | —     | —         | Ready  | Phase 1 complete | 2026-08-23 |
 
 Only the repository owner or designated technical lead should change a phase from **In progress** to **Complete**, after its exit gate has evidence.

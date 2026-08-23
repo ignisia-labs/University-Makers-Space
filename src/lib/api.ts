@@ -19,23 +19,29 @@
  */
 
 const BASE_URL = "/api/v1";
+const SESSION_HINT_KEY = "ums_session_present";
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-function getStoredToken(): string | null {
+let accessToken: string | null = null;
+let refreshPromise: Promise<string | null> | null = null;
+
+export function storeAccessToken(token: string) {
+  accessToken = token;
   try {
-    return sessionStorage.getItem("ums_access_token");
+    window.localStorage.setItem(SESSION_HINT_KEY, "1");
   } catch {
-    return null;
+    // The token remains memory-only when storage is unavailable.
   }
 }
 
-export function storeAccessToken(token: string) {
-  sessionStorage.setItem("ums_access_token", token);
-}
-
 export function clearAccessToken() {
-  sessionStorage.removeItem("ums_access_token");
+  accessToken = null;
+  try {
+    window.localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {
+    // Nothing else is required when storage is unavailable.
+  }
 }
 
 // ─── response type ─────────────────────────────────────────────────────────
@@ -73,11 +79,11 @@ async function request<T>(
   path: string,
   body?: unknown,
   options: RequestInit = {},
+  retryAfterRefresh = true,
 ): Promise<ApiResponse<T>> {
-  const token = getStoredToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -94,11 +100,23 @@ async function request<T>(
     return { success: true, message: "OK", data: undefined as unknown as T };
   }
 
-  const json = (await response.json()) as ApiResponse<T> & {
+  const json = (await response.json().catch(() => ({
+    success: false,
+    message: response.statusText || "An unexpected error occurred",
+  }))) as ApiResponse<T> & {
     error?: { code: string; details?: unknown[] };
   };
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      retryAfterRefresh &&
+      path !== "/auth/refresh" &&
+      path !== "/auth/google"
+    ) {
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) return request<T>(method, path, body, options, false);
+    }
     throw new ApiError(
       response.status,
       json.error?.code ?? "UNKNOWN_ERROR",
@@ -108,6 +126,33 @@ async function request<T>(
   }
 
   return json;
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = request<{ accessToken: string }>("POST", "/auth/refresh", undefined, {}, false)
+      .then(({ data }) => {
+        storeAccessToken(data.accessToken);
+        return data.accessToken;
+      })
+      .catch(() => {
+        clearAccessToken();
+        return null;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+export async function restoreAccessToken() {
+  try {
+    if (window.localStorage.getItem(SESSION_HINT_KEY) !== "1") return null;
+  } catch {
+    return null;
+  }
+  return refreshAccessToken();
 }
 
 // ─── public API ────────────────────────────────────────────────────────────
@@ -133,8 +178,7 @@ export const api = {
 
 export const authApi = {
   /** Returns Google Client ID and hosted domain for GSI button */
-  googleConfig: () =>
-    api.get<{ clientId: string; hostedDomain: string }>("/auth/google/config"),
+  googleConfig: () => api.get<{ clientId: string; hostedDomain: string }>("/auth/google/config"),
 
   /** Get a CSRF token before calling googleSignIn */
   loginCsrf: () => api.get<{ csrfToken: string }>("/auth/google/csrf"),
@@ -158,8 +202,7 @@ export const authApi = {
   me: () => api.get<{ user: UserDto; permissions: string[] }>("/auth/me"),
 
   /** Complete student onboarding profile */
-  onboarding: (data: OnboardingInput) =>
-    api.post("/auth/onboarding", data),
+  onboarding: (data: OnboardingInput) => api.post("/auth/onboarding", data),
 
   /** Get PRN validation policy */
   studentProfileConfig: () =>
@@ -174,8 +217,7 @@ export const referenceApi = {
     api.get<Programme[]>(
       `/reference-data/programmes${departmentId ? `?departmentId=${departmentId}` : ""}`,
     ),
-  academicYears: () =>
-    api.get<AcademicYear[]>("/reference-data/academic-years"),
+  academicYears: () => api.get<AcademicYear[]>("/reference-data/academic-years"),
   labs: () => api.get<Lab[]>("/reference-data/labs"),
   equipmentCategories: (labId?: string) =>
     api.get<EquipmentCategory[]>(
@@ -203,11 +245,7 @@ export const projectsApi = {
     api.post<ProjectDetail>(`/projects/${id}/invitations/respond`, { decision }),
   requestMentor: (id: string, facultyId: string) =>
     api.post<ProjectDetail>(`/projects/${id}/mentor-requests`, { facultyId }),
-  decideMentor: (
-    id: string,
-    decision: "APPROVED" | "REJECTED",
-    reason?: string,
-  ) =>
+  decideMentor: (id: string, decision: "APPROVED" | "REJECTED", reason?: string) =>
     api.post<ProjectDetail>(`/projects/${id}/mentor-decision`, {
       decision,
       reason,
@@ -215,22 +253,16 @@ export const projectsApi = {
 };
 
 export const bookingsApi = {
-  list: (params?: Record<string, string>) =>
-    api.get(`/bookings${toQuery(params)}`),
+  list: (params?: Record<string, string>) => api.get(`/bookings${toQuery(params)}`),
   get: (id: string) => api.get(`/bookings/${id}`),
   create: (data: CreateBookingInput) => api.post("/bookings", data),
-  cancel: (id: string, reason: string) =>
-    api.post(`/bookings/${id}/cancel`, { reason }),
-  updateStatus: (
-    id: string,
-    status: string,
-    notes?: string | null,
-  ) => api.patch(`/bookings/${id}/status`, { status, notes }),
+  cancel: (id: string, reason: string) => api.post(`/bookings/${id}/cancel`, { reason }),
+  updateStatus: (id: string, status: string, notes?: string | null) =>
+    api.patch(`/bookings/${id}/status`, { status, notes }),
 };
 
 export const equipmentApi = {
-  list: (params?: Record<string, string>) =>
-    api.get(`/equipment${toQuery(params)}`),
+  list: (params?: Record<string, string>) => api.get(`/equipment${toQuery(params)}`),
   get: (id: string) => api.get(`/equipment/${id}`),
   create: (data: unknown) => api.post("/equipment", data),
   update: (id: string, data: unknown) => api.patch(`/equipment/${id}`, data),
@@ -242,8 +274,7 @@ export const equipmentApi = {
 };
 
 export const eventsApi = {
-  list: (params?: Record<string, string>) =>
-    api.get(`/events${toQuery(params)}`),
+  list: (params?: Record<string, string>) => api.get(`/events${toQuery(params)}`),
   get: (id: string) => api.get(`/events/${id}`),
   create: (data: unknown) => api.post("/events", data),
   update: (id: string, data: unknown) => api.patch(`/events/${id}`, data),
@@ -252,27 +283,22 @@ export const eventsApi = {
 };
 
 export const notificationsApi = {
-  list: (params?: Record<string, string>) =>
-    api.get(`/notifications${toQuery(params)}`),
-  markRead: (id: string, isRead: boolean) =>
-    api.patch(`/notifications/${id}/read`, { isRead }),
+  list: (params?: Record<string, string>) => api.get(`/notifications${toQuery(params)}`),
+  markRead: (id: string, isRead: boolean) => api.patch(`/notifications/${id}/read`, { isRead }),
 };
 
 export const usersApi = {
-  list: (params?: Record<string, string>) =>
-    api.get(`/users${toQuery(params)}`),
+  list: (params?: Record<string, string>) => api.get(`/users${toQuery(params)}`),
   get: (id: string) => api.get<UserDto>(`/users/${id}`),
   update: (id: string, data: unknown) => api.patch(`/users/${id}`, data),
-  updateRoles: (id: string, roles: string[]) =>
-    api.patch(`/users/${id}/roles`, { roles }),
+  updateRoles: (id: string, roles: string[]) => api.patch(`/users/${id}/roles`, { roles }),
   delete: (id: string) => api.delete(`/users/${id}`),
   searchFacultyMentors: (search: string) =>
     api.get(`/users/search/faculty-mentors?search=${encodeURIComponent(search)}`),
   listProvisioning: (params?: Record<string, string>) =>
     api.get(`/users/provisioning${toQuery(params)}`),
   createProvisioning: (data: unknown) => api.post("/users/provisioning", data),
-  updateProvisioning: (id: string, data: unknown) =>
-    api.patch(`/users/provisioning/${id}`, data),
+  updateProvisioning: (id: string, data: unknown) => api.patch(`/users/provisioning/${id}`, data),
   updateOwnProfile: (data: unknown) => api.patch("/users/me/student-profile", data),
 };
 
@@ -280,11 +306,10 @@ export const uploadsApi = {
   upload: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    const token = getStoredToken();
     return fetch(`${BASE_URL}/uploads`, {
       method: "POST",
       credentials: "include",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       body: form,
     }).then(async (res) => {
       const json = await res.json();

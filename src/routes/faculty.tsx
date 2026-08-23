@@ -8,6 +8,7 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Project, Reservation } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/faculty")({
@@ -28,7 +29,8 @@ const workspaces = [
 type WorkspaceId = (typeof workspaces)[number]["id"];
 
 function FacultyPage() {
-  const { profile, projects, reservations, verifyProject, updateProject } = useMakerSpace();
+  const { projects, reservations, verifyProject, updateProject } = useMakerSpace();
+  const { profile } = useAppSession();
   const [workspace, setWorkspace] = useState<WorkspaceId>("projects");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 

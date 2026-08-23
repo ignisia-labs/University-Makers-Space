@@ -11,7 +11,7 @@ process.env.CLOUDINARY_API_SECRET = "test";
 process.env.FRONTEND_URL = "http://localhost:5173";
 
 import { EquipmentStatus, MentorRequestStatus, ProjectStatus, UserRole } from "@prisma/client";
-import { hasPermission } from "../../src/config/permissions.js";
+import { hasPermission, permissions } from "../../src/config/permissions.js";
 import { onboardingSchema } from "../../src/modules/auth/auth-schema.js";
 import { createBookingSchema } from "../../src/modules/bookings/booking-schema.js";
 import { updateEquipmentAvailabilitySchema } from "../../src/modules/equipment/equipment-schema.js";
@@ -106,5 +106,17 @@ describe("validators", () => {
   it("allows Lab Assistants to change availability without catalogue-management access", () => {
     expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.availability.manage")).toBe(true);
     expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.manage")).toBe(false);
+  });
+
+  it("keeps the five-role permission model deny-by-default", () => {
+    expect(hasPermission([UserRole.STUDENT], "user.read")).toBe(false);
+    expect(hasPermission([UserRole.FACULTY_MENTOR], "project.approve")).toBe(true);
+    expect(hasPermission([UserRole.FACULTY_MENTOR], "project.manage.any")).toBe(false);
+    expect(hasPermission([UserRole.LAB_ASSISTANT], "booking.manage")).toBe(true);
+    expect(hasPermission([UserRole.ADMIN], "user.manage")).toBe(true);
+    expect(hasPermission([UserRole.ADMIN], "user.roles.manage")).toBe(false);
+    expect(
+      permissions.every((permission) => hasPermission([UserRole.SUPER_ADMIN], permission)),
+    ).toBe(true);
   });
 });

@@ -1,67 +1,18 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useMakerSpace } from "@/lib/makerspace-context";
-import bgVideo from "../../../Assets/gemini_generated_video_ab04e635.mp4";
-
-const roleHomes = {
-  Student: "/dashboard",
-  "Faculty Mentor": "/faculty",
-  "Lab Assistant": "/operations",
-  Admin: "/admin",
-  "Super Admin": "/super-admin",
-} as const;
+import { roleHomes, useAppSession } from "@/lib/auth-context";
+import bgVideo from "../../../Assets/gemini_generated_video_ab04e635_gwr_video_mvp.mp4";
 
 export function HeroSection() {
-  const { authenticated, role, signInWithEmail } = useMakerSpace();
+  const { authenticated, role, onboarded } = useAppSession();
   const navigate = useNavigate();
-  const [stage, setStage] = useState<"idle" | "email" | "loading">("idle");
-  const [email, setEmail] = useState("");
-  const [emailError, setEmailError] = useState("");
-
-  // Mimic the round-trip to Google, then land on the dashboard for a known
-  // account or on onboarding for a new one.
-  useEffect(() => {
-    if (stage !== "loading") return;
-    const timer = window.setTimeout(() => {
-      const exists = signInWithEmail(email);
-      navigate({ to: exists ? "/dashboard" : "/onboarding" });
-    }, 2000);
-    return () => window.clearTimeout(timer);
-  }, [stage, email, signInWithEmail, navigate]);
 
   const handleSignIn = () => {
     if (authenticated) {
-      navigate({ to: roleHomes[role] });
+      navigate({ to: onboarded ? roleHomes[role] : "/onboarding" });
       return;
     }
-    if (import.meta.env.DEV) {
-      setStage("email");
-      return;
-    }
-    navigate({ to: "/login", search: { mode: "email" } });
+    navigate({ to: "/login" });
   };
-
-  if (stage === "loading") return <SignInTransition />;
-  if (stage === "email") {
-    return (
-      <EmailGate
-        email={email}
-        error={emailError}
-        onChange={(value) => {
-          setEmail(value);
-          setEmailError("");
-        }}
-        onBack={() => setStage("idle")}
-        onContinue={() => {
-          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) {
-            setEmailError("Enter a valid institutional email.");
-            return;
-          }
-          setStage("loading");
-        }}
-      />
-    );
-  }
 
   return (
     <section className="relative w-full h-screen bg-black flex flex-col justify-center items-center overflow-hidden">
@@ -156,119 +107,11 @@ export function HeroSection() {
                 "linear-gradient(to right, transparent 10%, rgba(255,255,255,0.45) 50%, transparent 90%)",
             }}
           />
-          <span className="relative z-10">Sign In</span>
+          <span className="relative z-10">
+            {authenticated ? "Open workspace" : "Sign in with Google"}
+          </span>
         </button>
       </div>
     </section>
-  );
-}
-
-function EmailGate({
-  email,
-  error,
-  onChange,
-  onBack,
-  onContinue,
-}: {
-  email: string;
-  error: string;
-  onChange: (value: string) => void;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  return (
-    <section className="grid min-h-screen place-items-center bg-background px-6">
-      <form
-        className="card-surface animate-in fade-in zoom-in-95 w-full max-w-sm p-8 duration-300"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onContinue();
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <GoogleMark />
-          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            Sign in with Google
-          </p>
-        </div>
-        <h1 className="mt-5 font-serif text-2xl font-light tracking-wide">Welcome</h1>
-        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-          Use your MIT-WPU institutional email to continue.
-        </p>
-        <input
-          type="email"
-          autoFocus
-          value={email}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="you@mitwpu.edu.in"
-          className={
-            "mt-5 h-12 w-full rounded-xl border bg-secondary/40 px-4 text-sm outline-none transition-all " +
-            (error
-              ? "border-destructive focus:border-destructive"
-              : "border-border focus:border-primary focus:ring-2 focus:ring-primary/15")
-          }
-        />
-        {error && <p className="mt-1.5 text-[10px] font-mono text-destructive">{error}</p>}
-        <button
-          type="submit"
-          className="pressable mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-        >
-          Continue
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-3 w-full text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Back
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function SignInTransition() {
-  return (
-    <section className="grid min-h-screen place-items-center bg-background px-6">
-      <div className="animate-in fade-in zoom-in-95 flex flex-col items-center text-center duration-500">
-        <span className="relative grid size-16 place-items-center">
-          <span className="absolute inset-0 animate-ping rounded-full bg-primary/15" />
-          <span className="absolute inset-0 rounded-full border border-primary/20" />
-          <GoogleMark />
-        </span>
-        <p className="mt-8 font-serif text-2xl font-light tracking-wide text-foreground">
-          Signing you in
-        </p>
-        <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-          MIT-WPU institutional account
-        </p>
-        <span className="mt-8 h-0.5 w-40 overflow-hidden rounded-full bg-border">
-          <span className="signin-progress block h-full rounded-full bg-primary" />
-        </span>
-      </div>
-    </section>
-  );
-}
-
-function GoogleMark() {
-  return (
-    <svg viewBox="0 0 24 24" className="relative size-7" aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M23.52 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.87Z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.96-1.08 7.95-2.91l-3.88-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.26v3.09A12 12 0 0 0 12 24Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.62H1.26a12 12 0 0 0 0 10.76l4.01-3.09Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.95 1.19 15.24 0 12 0A12 12 0 0 0 1.26 6.62l4.01 3.09C6.22 6.86 8.87 4.75 12 4.75Z"
-      />
-    </svg>
   );
 }

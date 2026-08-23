@@ -17,6 +17,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { roleHomes, useAppSession } from "@/lib/auth-context";
 
 const studentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -47,17 +48,8 @@ export function AppShell({
   const [expanded, setExpanded] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsMounted, setNotificationsMounted] = useState(false);
-  const {
-    profile,
-    role,
-    notifications,
-    authenticated,
-    onboarded,
-    hydrated,
-    signOut,
-    markNotificationRead,
-    markAllNotificationsRead,
-  } = useMakerSpace();
+  const { notifications, markNotificationRead, markAllNotificationsRead } = useMakerSpace();
+  const { profile, role, authenticated, onboarded, hydrated, signOut } = useAppSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
 
@@ -73,6 +65,9 @@ export function AppShell({
     .join("")
     .slice(0, 2);
 
+  const studentOnly = ["/dashboard", "/projects", "/book", "/visits", "/equipment"].some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
   const requiredRole = pathname.startsWith("/faculty")
     ? "Faculty Mentor"
     : pathname.startsWith("/operations")
@@ -81,7 +76,9 @@ export function AppShell({
         ? "Super Admin"
         : pathname.startsWith("/admin")
           ? "Admin"
-          : null;
+          : studentOnly
+            ? "Student"
+            : null;
 
   const showSidebar = role === "Student" || (workspaceNavigation?.length ?? 0) > 1;
   const unread = notifications.filter((item) => !item.read).length;
@@ -94,6 +91,13 @@ export function AppShell({
     if (notificationsOpen) closeNotifications();
     else openNotifications();
   };
+  if (!hydrated) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Restoring your secure session...
+      </main>
+    );
+  }
   if (!authenticated) {
     return (
       <main className="grid min-h-screen place-items-center bg-background px-4">
@@ -103,10 +107,10 @@ export function AppShell({
             Use your MIT-WPU institutional account to continue.
           </p>
           <Link
-            to="/login"
+            to="/"
             className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
           >
-            Go to sign in
+            Go to landing page
           </Link>
         </section>
       </main>
@@ -121,7 +125,7 @@ export function AppShell({
             Your MIT-WPU account does not have permission to open this workspace.
           </p>
           <Link
-            to="/dashboard"
+            to={roleHomes[role]}
             className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
           >
             Go to dashboard
@@ -229,14 +233,16 @@ export function AppShell({
             {expanded && (
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{profile.fullName}</p>
-                <p className="truncate text-xs text-muted-foreground">PRN {profile.prn}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {profile.prn ? `PRN ${profile.prn}` : role}
+                </p>
               </div>
             )}
           </div>
           {expanded && (
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => void signOut()}
               className="mt-3 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs font-semibold text-muted-foreground hover:bg-sidebar-accent"
             >
               <LogOut className="size-3.5" />
@@ -284,7 +290,7 @@ export function AppShell({
               {!showSidebar && (
                 <button
                   type="button"
-                  onClick={signOut}
+                  onClick={() => void signOut()}
                   className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <LogOut className="size-4" />

@@ -8,6 +8,7 @@ import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import type { Project, Reservation, StudentProfile } from "@/lib/makerspace-data";
 import { useMakerSpace } from "@/lib/makerspace-context";
+import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/dashboard")({
@@ -24,7 +25,8 @@ export const Route = createFileRoute("/dashboard")({
 });
 
 function Dashboard() {
-  const { profile, projects, reservations, visits, acceptProjectInvitation } = useMakerSpace();
+  const { projects, reservations, visits, acceptProjectInvitation } = useMakerSpace();
+  const { profile } = useAppSession();
   const data = useMemo(
     () => getJourneyData(profile, projects, reservations),
     [profile, projects, reservations],

@@ -26,7 +26,9 @@ export function StaffAccess() {
             03 // Staff access
           </p>
           <p className="mt-1.5 text-xs text-zinc-400">
-            MakerSpace staff sign in with their institutional accounts.
+            {import.meta.env.DEV
+              ? "Prototype views for UI review. API permissions are not granted."
+              : "MakerSpace staff sign in with their institutional accounts."}
           </p>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
@@ -35,8 +37,12 @@ export function StaffAccess() {
               key={role}
               type="button"
               onClick={() => {
-                beginPrototypeSession(role);
-                navigate({ to });
+                if (import.meta.env.DEV) {
+                  beginPrototypeSession(role);
+                  navigate({ to });
+                } else {
+                  navigate({ to: "/login" });
+                }
               }}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-xs font-medium text-zinc-500 transition-colors hover:border-[#1E2B8A]/40 hover:text-[#1E2B8A]"
             >

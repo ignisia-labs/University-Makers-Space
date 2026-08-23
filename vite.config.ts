@@ -13,9 +13,7 @@ export default defineConfig({
   nitro: false,
   vite: {
     // Explicit plugins array prevents Wrangler from trying to auto-modify the file
-    plugins: [
-      cloudflare({ viteEnvironment: { name: "ssr" } }),
-    ],
+    plugins: [cloudflare({ viteEnvironment: { name: "ssr" } })],
     // Keep symlinked dependency paths intact. This avoids generated imports resolving
     // through the workspace's apostrophe-containing absolute path during Nitro builds.
     resolve: { preserveSymlinks: true },
@@ -49,7 +47,6 @@ export default defineConfig({
         "tsx",
       ],
     },
-
 
     server: {
       host: "127.0.0.1",

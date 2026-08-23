@@ -73,8 +73,19 @@ export async function googleSignIn(
       lastLoginAt: new Date(),
     };
     const nextUser = existing
-      ? await tx.user.update({ where: { id: existing.id }, data: identityData })
-      : await tx.user.create({ data: identityData });
+      ? await tx.user.update({
+          where: { id: existing.id },
+          data: identityData,
+          include: {
+            studentProfile: { include: { department: true, programme: true } },
+          },
+        })
+      : await tx.user.create({
+          data: identityData,
+          include: {
+            studentProfile: { include: { department: true, programme: true } },
+          },
+        });
 
     if (provision && !provision.claimedById) {
       await tx.userProvisioning.update({

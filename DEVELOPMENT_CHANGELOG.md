@@ -2,6 +2,45 @@
 
 Material product, architecture, requirement-status, and delivery decisions are appended here. The PRD/RFP remains authoritative; changelog entries describe implementation and verification state without changing requirements.
 
+## 2026-08-23 — Phase 1 integration and identity foundation
+
+**Branch:** `development-codex`
+
+### Completed
+
+- Replaced prototype production authentication with Google Identity Services backed by `/api/v1/auth/google/config`, CSRF-protected credential exchange, refresh-cookie rotation, `/auth/me`, and revocable logout.
+- Added the shared authenticated frontend API/session layer, backend-derived five-role guards, real Student identity/profile rendering, and signed-out redirects to the public landing page.
+- Connected Student onboarding to authenticated PRN policy, department, department-filtered programme, and academic-year APIs; Google email is verified and read-only.
+- Preserved and verified the isolated five-role **Prototype view** switch as required through Phase 7; it grants no backend permissions.
+- Added Google popup opener compatibility at the frontend response boundary for browsers where FedCM is unavailable.
+- Fixed the real-browser regression where the immediate Google sign-in response omitted an existing Student's persisted academic profile until refresh.
+- Retained the RFP scope boundary: project, booking, visit, equipment-operation, and privileged administration data remain assigned to their consecutive phases.
+
+### Browser verification
+
+- Real MIT-WPU Student Google sign-in passed in Safari with a 200 credential exchange and immediate dashboard update.
+- Real onboarding passed with read-only verified email, preserved name/PRN, authenticated reference reads, department-filtered programme choices, persisted submission, and dashboard redirection.
+- Session restoration passed after a full refresh without another Google prompt.
+- Profile and Settings rendered persisted identity; Student access to Faculty, Lab Assistant, Admin, and Super Admin routes was denied.
+- Logout revoked the session, and a signed-out dashboard request returned to the public landing page.
+- All five Prototype view roles rendered successfully and remained isolated from API permissions.
+- The Codex embedded browser could not reliably complete Google's macOS OAuth popup; this is a browser-surface limitation. The supported Safari flow passed cleanly.
+
+### Verification
+
+- Frontend lint: passed with 0 errors and 11 existing Fast Refresh warnings.
+- Frontend production build: passed; only the existing bundle-size advisory remains.
+- Backend lint and TypeScript build: passed.
+- Backend tests: 24/24 passed across 6 suites.
+- Prisma schema validation: passed.
+- Prisma migration status: 5 migrations found; local PostgreSQL schema is up to date.
+- Successful final Safari run: no failed MakerSpace API response and no unhandled UI error observed.
+
+### Next
+
+- Begin Phase 2 — Projects, teams, and mentor verification.
+- Keep the Prototype view role switch until its required Phase 8 removal.
+
 ## 2026-08-23 — E2E issue triage and phased roadmap ownership
 
 **Branch:** `development-codex`

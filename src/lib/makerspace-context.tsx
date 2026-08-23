@@ -56,6 +56,8 @@ type State = {
   role: AppRole;
   authenticated: boolean;
   onboarded: boolean;
+  /** True only for the isolated development role/profile preview. */
+  prototypeActive: boolean;
   /** False until the persisted session has been read, so guards don't redirect too early. */
   hydrated: boolean;
   /** Every student profile that has completed onboarding on this device. */
@@ -78,6 +80,7 @@ type State = {
   completeOnboarding: (p: StudentProfile) => void;
   beginPrototypeSession: (role?: AppRole) => void;
   beginNewStudentSession: () => void;
+  endPrototypeSession: () => void;
   /** Email-first sign-in. Returns true when the account already exists (skip onboarding). */
   signInWithEmail: (email: string) => boolean;
   signOut: () => void;
@@ -133,6 +136,7 @@ type SharedSnapshot = Pick<
   | "accounts"
   | "authenticated"
   | "onboarded"
+  | "prototypeActive"
   | "projects"
   | "reservations"
   | "visits"
@@ -163,6 +167,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole>("Student");
   const [authenticated, setAuthenticated] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
+  const [prototypeActive, setPrototypeActive] = useState(false);
   const [projects, setProjects] = useState(initialProjects);
   const [reservations, setReservations] = useState(initialReservations);
   const [visits, setVisits] = useState(initialVisits);
@@ -191,6 +196,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       setAccounts(snapshot.accounts ?? []);
       setAuthenticated(snapshot.authenticated ?? false);
       setOnboarded(snapshot.onboarded ?? false);
+      setPrototypeActive(snapshot.prototypeActive ?? false);
       setProjects(snapshot.projects ?? initialProjects);
       setReservations(snapshot.reservations ?? initialReservations);
       setVisits(snapshot.visits ?? initialVisits);
@@ -243,6 +249,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       accounts,
       authenticated,
       onboarded,
+      prototypeActive,
       projects,
       reservations,
       visits,
@@ -266,6 +273,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
     accounts,
     authenticated,
     onboarded,
+    prototypeActive,
     projects,
     reservations,
     visits,
@@ -312,6 +320,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       role,
       authenticated,
       onboarded,
+      prototypeActive,
       hydrated,
       projects,
       reservations,
@@ -367,6 +376,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         );
       },
       beginPrototypeSession(nextRole = "Student") {
+        setPrototypeActive(true);
         setRole(nextRole);
         setAuthenticated(true);
         // Staff identities come pre-provisioned by the university — no onboarding.
@@ -390,6 +400,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         // A returning student keeps their persisted profile; a staff identity left
         // over from a staff demo session is discarded.
         setRole("Student");
+        setPrototypeActive(true);
         setAuthenticated(true);
         if (!onboarded || profile.programme === "Staff") {
           setProfile(defaultProfile);
@@ -400,6 +411,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         const normalized = email.trim().toLowerCase();
         const account = accounts.find((candidate) => candidate.email.toLowerCase() === normalized);
         setRole("Student");
+        setPrototypeActive(true);
         setAuthenticated(true);
         if (account) {
           setProfile(account);
@@ -414,10 +426,18 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
         // Sign-out ends the session; the account itself survives, so signing back in
         // with the same email skips onboarding.
         setAuthenticated(false);
+        setPrototypeActive(false);
         setOnboarded(false);
         setProfile(defaultProfile);
         setRole("Student");
         window.location.href = "/";
+      },
+      endPrototypeSession() {
+        setAuthenticated(false);
+        setOnboarded(false);
+        setPrototypeActive(false);
+        setProfile(defaultProfile);
+        setRole("Student");
       },
       addProject(p) {
         setProjects((prev) => [
@@ -857,6 +877,7 @@ export function MakerSpaceProvider({ children }: { children: ReactNode }) {
       role,
       authenticated,
       onboarded,
+      prototypeActive,
       hydrated,
       projects,
       reservations,
