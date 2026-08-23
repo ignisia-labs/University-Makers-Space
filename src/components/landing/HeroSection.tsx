@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { roleHomes, useAppSession } from "@/lib/auth-context";
-import bgVideo from "../../../Assets/gemini_generated_video_ab04e635_gwr_video_mvp.mp4";
+import bgVideo from "../../../Assets/gemini_generated_video_ab04e635.mp4";
 
 export function HeroSection() {
   const { authenticated, role, onboarded } = useAppSession();
