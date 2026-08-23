@@ -13,7 +13,7 @@ Material product, architecture, requirement-status, and delivery decisions are a
 - Connected production Admin configuration and Student date/slot availability UI to authenticated APIs while retaining the isolated **Prototype view** switch through Phase 7.
 - Added project/participant-aware capacity display and advisory project-equipment availability without reserving equipment or creating a booking before Phase 4.
 - Added institutional Admin provisioning through `SEED_ADMIN_EMAIL`; the local environment provisions `ignisia@mitwpu.edu.in` without hardcoding that address into authorization logic.
-- Changed request limiting so authenticated users are isolated by verified session subject and campus users behind a shared NAT are not incorrectly treated as one user; route-specific limits remain enforced.
+- Changed request limiting so requests with a cryptographically verified access token are isolated by token subject and campus users behind a shared NAT are not incorrectly treated as one user; route-specific limits and downstream session validation remain enforced.
 
 ### Verification
 
