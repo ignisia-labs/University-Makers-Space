@@ -68,6 +68,13 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum BookingCancellationSource {
+  STUDENT
+  LAB_ASSISTANT
+  ADMIN
+  SUPER_ADMIN
+}
+
 enum QuickVisitStatus {
   REQUESTED
   CONFIRMED
@@ -98,40 +105,41 @@ enum DeliveryStatus {
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  googleSubject       String?              @unique @map("google_subject")
-  email               String               @unique
-  name                String
-  avatarUrl           String?              @map("avatar_url")
-  roles               UserRole[]           @default([STUDENT])
-  profileComplete     Boolean              @default(false) @map("profile_complete")
-  isActive            Boolean              @default(true) @map("is_active")
-  tokenVersion        Int                  @default(0) @map("token_version")
-  lastLoginAt         DateTime?            @map("last_login_at")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  deletedAt           DateTime?            @map("deleted_at")
-  studentProfile      StudentProfile?
-  sessions            Session[]
-  provisionsCreated   UserProvisioning[]   @relation("ProvisionCreatedBy")
-  provisionClaimed    UserProvisioning?    @relation("ProvisionClaimedBy")
-  labsCreated         Lab[]                @relation("LabCreatedBy")
-  projectsCreated     Project[]            @relation("ProjectCreatedBy")
-  projectMemberships  ProjectMember[]
-  projectsMentored    Project[]            @relation("CurrentMentor")
-  mentorRequests      MentorRequest[]      @relation("MentorFaculty")
-  bookingsCreated     Booking[]            @relation("BookingCreatedBy")
-  bookingsCancelled   Booking[]            @relation("BookingCancelledBy")
-  bookingParticipants BookingParticipant[]
-  quickVisits         QuickVisit[]
-  visits              Visit[]              @relation("VisitUser")
-  visitsCheckedIn     Visit[]              @relation("VisitCheckedInBy")
-  visitsCheckedOut    Visit[]              @relation("VisitCheckedOutBy")
-  eventsOrganized     Event[]              @relation("EventOrganizer")
-  eventRegistrations  EventRegistration[]
-  notifications       Notification[]
-  uploads             Upload[]
-  auditEvents         AuditLog[]           @relation("AuditActor")
+  id                   String                 @id @default(uuid()) @db.Uuid
+  googleSubject        String?                @unique @map("google_subject")
+  email                String                 @unique
+  name                 String
+  avatarUrl            String?                @map("avatar_url")
+  roles                UserRole[]             @default([STUDENT])
+  profileComplete      Boolean                @default(false) @map("profile_complete")
+  isActive             Boolean                @default(true) @map("is_active")
+  tokenVersion         Int                    @default(0) @map("token_version")
+  lastLoginAt          DateTime?              @map("last_login_at")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+  deletedAt            DateTime?              @map("deleted_at")
+  studentProfile       StudentProfile?
+  sessions             Session[]
+  provisionsCreated    UserProvisioning[]     @relation("ProvisionCreatedBy")
+  provisionClaimed     UserProvisioning?      @relation("ProvisionClaimedBy")
+  labsCreated          Lab[]                  @relation("LabCreatedBy")
+  projectsCreated      Project[]              @relation("ProjectCreatedBy")
+  projectMemberships   ProjectMember[]
+  projectsMentored     Project[]              @relation("CurrentMentor")
+  mentorRequests       MentorRequest[]        @relation("MentorFaculty")
+  bookingsCreated      Booking[]              @relation("BookingCreatedBy")
+  bookingsCancelled    Booking[]              @relation("BookingCancelledBy")
+  bookingParticipants  BookingParticipant[]
+  bookingStatusChanges BookingStatusHistory[] @relation("BookingStatusActor")
+  quickVisits          QuickVisit[]
+  visits               Visit[]                @relation("VisitUser")
+  visitsCheckedIn      Visit[]                @relation("VisitCheckedInBy")
+  visitsCheckedOut     Visit[]                @relation("VisitCheckedOutBy")
+  eventsOrganized      Event[]                @relation("EventOrganizer")
+  eventRegistrations   EventRegistration[]
+  notifications        Notification[]
+  uploads              Upload[]
+  auditEvents          AuditLog[]             @relation("AuditActor")
 
   @@index([email])
   @@index([roles], type: Gin)
@@ -235,37 +243,38 @@ model StudentProfile {
 }
 
 model Lab {
-  id                          String               @id @default(uuid()) @db.Uuid
-  name                        String               @unique
-  code                        String               @unique
-  description                 String?
-  timeZone                    String               @default("Asia/Kolkata") @map("time_zone")
-  slotDurationMinutes         Int                  @default(60) @map("slot_duration_minutes")
-  bookingCapacity             Int                  @default(20) @map("booking_capacity")
-  quickVisitCapacity          Int                  @default(10) @map("quick_visit_capacity")
-  quickVisitsEnabled          Boolean              @default(true) @map("quick_visits_enabled")
-  bookingHorizonDays          Int                  @default(14) @map("booking_horizon_days")
-  cancellationWindowHours     Int                  @default(2) @map("cancellation_window_hours")
-  maxFutureBookingsPerProject Int?                 @map("max_future_bookings_per_project")
-  projectVerificationRequired Boolean              @default(true) @map("project_verification_required")
-  configurationVersion        Int                  @default(1) @map("configuration_version")
-  isActive                    Boolean              @default(true) @map("is_active")
-  createdById                 String?              @map("created_by_id") @db.Uuid
-  createdAt                   DateTime             @default(now()) @map("created_at")
-  updatedAt                   DateTime             @updatedAt @map("updated_at")
-  createdBy                   User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  schedules                   LabSchedule[]
-  dateExceptions              LabDateException[]
-  slots                       LabSlot[]
-  equipmentCategories         EquipmentCategory[]
-  equipment                   Equipment[]
-  consumableCategories        ConsumableCategory[]
-  consumables                 Consumable[]
-  projects                    Project[]
-  bookings                    Booking[]
-  quickVisits                 QuickVisit[]
-  visits                      Visit[]
-  events                      Event[]
+  id                           String               @id @default(uuid()) @db.Uuid
+  name                         String               @unique
+  code                         String               @unique
+  description                  String?
+  timeZone                     String               @default("Asia/Kolkata") @map("time_zone")
+  slotDurationMinutes          Int                  @default(60) @map("slot_duration_minutes")
+  bookingCapacity              Int                  @default(20) @map("booking_capacity")
+  quickVisitCapacity           Int                  @default(10) @map("quick_visit_capacity")
+  quickVisitsEnabled           Boolean              @default(true) @map("quick_visits_enabled")
+  bookingHorizonDays           Int                  @default(14) @map("booking_horizon_days")
+  cancellationWindowHours      Int                  @default(2) @map("cancellation_window_hours")
+  maxFutureBookingsPerProject  Int?                 @map("max_future_bookings_per_project")
+  projectVerificationRequired  Boolean              @default(true) @map("project_verification_required")
+  teamLeaderAttendanceRequired Boolean              @default(true) @map("team_leader_attendance_required")
+  configurationVersion         Int                  @default(1) @map("configuration_version")
+  isActive                     Boolean              @default(true) @map("is_active")
+  createdById                  String?              @map("created_by_id") @db.Uuid
+  createdAt                    DateTime             @default(now()) @map("created_at")
+  updatedAt                    DateTime             @updatedAt @map("updated_at")
+  createdBy                    User?                @relation("LabCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  schedules                    LabSchedule[]
+  dateExceptions               LabDateException[]
+  slots                        LabSlot[]
+  equipmentCategories          EquipmentCategory[]
+  equipment                    Equipment[]
+  consumableCategories         ConsumableCategory[]
+  consumables                  Consumable[]
+  projects                     Project[]
+  bookings                     Booking[]
+  quickVisits                  QuickVisit[]
+  visits                       Visit[]
+  events                       Event[]
 
   @@index([isActive])
   @@map("labs")
@@ -356,7 +365,6 @@ model Equipment {
   lab                 Lab                           @relation(fields: [labId], references: [id], onDelete: Restrict)
   category            EquipmentCategory             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   projectRequirements ProjectEquipmentRequirement[]
-  bookingRequirements BookingEquipment[]
 
   @@unique([labId, name])
   @@index([labId, categoryId, status])
@@ -391,7 +399,6 @@ model Consumable {
   lab                 Lab                            @relation(fields: [labId], references: [id], onDelete: Restrict)
   category            ConsumableCategory             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   projectRequirements ProjectConsumableRequirement[]
-  bookingRequirements BookingConsumable[]
 
   @@unique([labId, name])
   @@index([labId, categoryId, isActive])
@@ -499,71 +506,88 @@ model ProjectConsumableRequirement {
 }
 
 model Booking {
-  id                 String               @id @default(uuid()) @db.Uuid
-  labId              String               @map("lab_id") @db.Uuid
-  labSlotId          String               @map("lab_slot_id") @db.Uuid
-  projectId          String               @map("project_id") @db.Uuid
-  createdById        String               @map("created_by_id") @db.Uuid
-  cancelledById      String?              @map("cancelled_by_id") @db.Uuid
-  idempotencyKey     String               @map("idempotency_key") @db.Uuid
-  attendeeCount      Int                  @map("attendee_count")
-  status             BookingStatus        @default(CONFIRMED)
-  notes              String?
-  qrTokenHash        String?              @unique @map("qr_token_hash")
-  qrExpiresAt        DateTime?            @map("qr_expires_at")
-  cancelledAt        DateTime?            @map("cancelled_at")
-  cancellationReason String?              @map("cancellation_reason")
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @updatedAt @map("updated_at")
-  lab                Lab                  @relation(fields: [labId], references: [id], onDelete: Restrict)
-  labSlot            LabSlot              @relation(fields: [labSlotId], references: [id], onDelete: Restrict)
-  project            Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  createdBy          User                 @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  cancelledBy        User?                @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
-  participants       BookingParticipant[]
-  equipment          BookingEquipment[]
-  consumables        BookingConsumable[]
-  visits             Visit[]
+  id                              String                     @id @default(uuid()) @db.Uuid
+  labId                           String                     @map("lab_id") @db.Uuid
+  labSlotId                       String                     @map("lab_slot_id") @db.Uuid
+  projectId                       String                     @map("project_id") @db.Uuid
+  createdById                     String                     @map("created_by_id") @db.Uuid
+  cancelledById                   String?                    @map("cancelled_by_id") @db.Uuid
+  idempotencyKey                  String                     @map("idempotency_key") @db.Uuid
+  creationRequestFingerprint      String                     @map("creation_request_fingerprint") @db.Char(64)
+  cancellationIdempotencyKey      String?                    @map("cancellation_idempotency_key") @db.Uuid
+  cancellationRequestFingerprint  String?                    @map("cancellation_request_fingerprint") @db.Char(64)
+  attendeeCount                   Int                        @map("attendee_count")
+  status                          BookingStatus              @default(CONFIRMED)
+  notes                           String?
+  labNameSnapshot                 String                     @map("lab_name_snapshot")
+  projectTitleSnapshot            String                     @map("project_title_snapshot")
+  slotStartsAtSnapshot            DateTime                   @map("slot_starts_at_snapshot")
+  slotEndsAtSnapshot              DateTime                   @map("slot_ends_at_snapshot")
+  timeZoneSnapshot                String                     @map("time_zone_snapshot")
+  cancellationWindowHoursSnapshot Int                        @map("cancellation_window_hours_snapshot")
+  cancellationSource              BookingCancellationSource? @map("cancellation_source")
+  cancelledByNameSnapshot         String?                    @map("cancelled_by_name_snapshot")
+  cancelledByRoleSnapshot         UserRole?                  @map("cancelled_by_role_snapshot")
+  cancelledAt                     DateTime?                  @map("cancelled_at")
+  cancellationReason              String?                    @map("cancellation_reason")
+  createdAt                       DateTime                   @default(now()) @map("created_at")
+  updatedAt                       DateTime                   @updatedAt @map("updated_at")
+  lab                             Lab                        @relation(fields: [labId], references: [id], onDelete: Restrict)
+  labSlot                         LabSlot                    @relation(fields: [labSlotId], references: [id], onDelete: Restrict)
+  project                         Project                    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy                       User                       @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy                     User?                      @relation("BookingCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  participants                    BookingParticipant[]
+  statusHistory                   BookingStatusHistory[]
+  visits                          Visit[]
 
   @@unique([createdById, idempotencyKey])
+  @@unique([cancelledById, cancellationIdempotencyKey])
   @@index([labSlotId, status])
   @@index([projectId, createdAt])
   @@index([createdById, status, createdAt])
+  @@index([createdById, status, slotStartsAtSnapshot, id])
+  @@index([projectId, status, slotStartsAtSnapshot, id])
+  @@index([labId, status, slotStartsAtSnapshot, id])
   @@map("bookings")
 }
 
 model BookingParticipant {
-  bookingId        String           @map("booking_id") @db.Uuid
-  userId           String           @map("user_id") @db.Uuid
-  attendanceStatus AttendanceStatus @default(EXPECTED) @map("attendance_status")
-  booking          Booking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user             User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  bookingId           String            @map("booking_id") @db.Uuid
+  userId              String            @map("user_id") @db.Uuid
+  attendanceStatus    AttendanceStatus  @default(EXPECTED) @map("attendance_status")
+  nameSnapshot        String            @map("name_snapshot")
+  emailSnapshot       String            @map("email_snapshot")
+  prnSnapshot         String?           @map("prn_snapshot") @db.VarChar(24)
+  projectRoleSnapshot ProjectMemberRole @map("project_role_snapshot")
+  booking             Booking           @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  user                User              @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@id([bookingId, userId])
   @@index([userId, attendanceStatus])
+  @@index([userId, bookingId])
   @@map("booking_participants")
 }
 
-model BookingEquipment {
-  bookingId   String    @map("booking_id") @db.Uuid
-  equipmentId String    @map("equipment_id") @db.Uuid
-  quantity    Int       @default(1)
-  booking     Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+model BookingStatusHistory {
+  id                String         @id @default(uuid()) @db.Uuid
+  bookingId         String         @map("booking_id") @db.Uuid
+  fromStatus        BookingStatus? @map("from_status")
+  toStatus          BookingStatus  @map("to_status")
+  actorUserId       String?        @map("actor_user_id") @db.Uuid
+  actorNameSnapshot String         @map("actor_name_snapshot")
+  actorRoleSnapshot UserRole       @map("actor_role_snapshot")
+  reason            String?
+  notes             String?
+  idempotencyKey    String?        @map("idempotency_key") @db.Uuid
+  createdAt         DateTime       @default(now()) @map("created_at")
+  booking           Booking        @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  actor             User?          @relation("BookingStatusActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
-  @@id([bookingId, equipmentId])
-  @@map("booking_equipment")
-}
-
-model BookingConsumable {
-  bookingId        String     @map("booking_id") @db.Uuid
-  consumableId     String     @map("consumable_id") @db.Uuid
-  expectedQuantity Decimal?   @map("expected_quantity") @db.Decimal(12, 3)
-  booking          Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  consumable       Consumable @relation(fields: [consumableId], references: [id], onDelete: Restrict)
-
-  @@id([bookingId, consumableId])
-  @@map("booking_consumables")
+  @@unique([bookingId, idempotencyKey])
+  @@index([bookingId, createdAt, id])
+  @@index([actorUserId, createdAt])
+  @@map("booking_status_history")
 }
 
 model QuickVisit {
@@ -574,8 +598,6 @@ model QuickVisit {
   idempotencyKey String           @map("idempotency_key") @db.Uuid
   purpose        String
   status         QuickVisitStatus @default(REQUESTED)
-  qrTokenHash    String?          @unique @map("qr_token_hash")
-  qrExpiresAt    DateTime?        @map("qr_expires_at")
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
   lab            Lab              @relation(fields: [labId], references: [id], onDelete: Restrict)

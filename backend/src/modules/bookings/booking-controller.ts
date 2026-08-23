@@ -12,16 +12,23 @@ export async function get(req: Request, res: Response) {
 }
 
 export async function create(req: Request, res: Response) {
-  const result = await service.create(req.user!.id, req.body);
+  const result = await service.create(req.user!, req.body, requestContext(req));
   if (result.replayed) return ok(res, "Booking already created", result);
   return created(res, "Booking created", result);
 }
 
 export async function cancel(req: Request, res: Response) {
+  const result = await service.cancel(
+    req.params.id!,
+    req.body.reason,
+    req.body.idempotencyKey,
+    req.user!,
+    requestContext(req),
+  );
   return ok(
     res,
-    "Booking cancelled",
-    await service.cancel(req.params.id!, req.body.reason, req.user!),
+    result.replayed ? "Booking already cancelled" : "Booking cancelled",
+    result.booking,
   );
 }
 
@@ -29,6 +36,20 @@ export async function updateStatus(req: Request, res: Response) {
   return ok(
     res,
     "Booking updated",
-    await service.updateStatus(req.params.id!, req.body.status, req.body.notes, req.user!.id),
+    await service.updateStatus(
+      req.params.id!,
+      req.body.status,
+      req.body.notes,
+      req.user!,
+      requestContext(req),
+    ),
   );
+}
+
+function requestContext(req: Request) {
+  return {
+    requestId: req.requestId,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
+  };
 }

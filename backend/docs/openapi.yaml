@@ -100,26 +100,131 @@ components:
         participantIds:
           type: array
           minItems: 1
+          maxItems: 500
           uniqueItems: true
           items: { type: string, format: uuid }
-        equipment:
-          type: array
-          items:
-            type: object
-            required: [equipmentId, quantity]
-            properties:
-              equipmentId: { type: string, format: uuid }
-              quantity: { type: integer, minimum: 1 }
-        consumables:
-          type: array
-          items:
-            type: object
-            required: [consumableId, quantity]
-            properties:
-              consumableId: { type: string, format: uuid }
-              quantity: { type: number, exclusiveMinimum: 0 }
         notes: { type: string, maxLength: 500, nullable: true }
         idempotencyKey: { type: string, format: uuid }
+    BookingCancel:
+      type: object
+      additionalProperties: false
+      required: [reason, idempotencyKey]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+        idempotencyKey: { type: string, format: uuid }
+    BookingStatusUpdate:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { type: string, enum: [ACTIVE, COMPLETED, NO_SHOW] }
+        notes: { type: string, maxLength: 500, nullable: true }
+    BookingParticipant:
+      type: object
+      required: [userId, name, email, role]
+      properties:
+        userId: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        prn: { type: string }
+        role: { type: string, enum: [LEADER, MEMBER] }
+    Booking:
+      type: object
+      required:
+        [
+          id,
+          labId,
+          labSlotId,
+          projectId,
+          createdById,
+          projectTitle,
+          labName,
+          timeZone,
+          attendeeCount,
+          status,
+          statusLabel,
+          notes,
+          cancellationReason,
+          cancellationSource,
+          cancelledAt,
+          startsAt,
+          endsAt,
+          participants,
+          canCancel,
+          cancellationDeadline,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        labId: { type: string, format: uuid }
+        labSlotId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        createdById: { type: string, format: uuid }
+        projectTitle: { type: string, description: Immutable creation-time snapshot }
+        labName: { type: string, description: Immutable creation-time snapshot }
+        timeZone: { type: string, description: Immutable creation-time snapshot }
+        attendeeCount: { type: integer, minimum: 1 }
+        status: { type: string, enum: [CONFIRMED, ACTIVE, COMPLETED, CANCELLED, NO_SHOW] }
+        statusLabel: { type: string }
+        notes: { type: string, nullable: true }
+        cancellationReason: { type: string, nullable: true }
+        cancellationSource:
+          { type: string, nullable: true, enum: [STUDENT, LAB_ASSISTANT, ADMIN, SUPER_ADMIN] }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        startsAt: { type: string, format: date-time, description: Immutable slot-time snapshot }
+        endsAt: { type: string, format: date-time, description: Immutable slot-time snapshot }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/BookingParticipant" }
+        canCancel: { type: boolean, description: Server-derived for the authenticated caller }
+        cancellationDeadline:
+          {
+            type: string,
+            format: date-time,
+            description: Derived from the creation-time policy snapshot,
+          }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    BookingMutationResult:
+      type: object
+      required: [booking, replayed]
+      properties:
+        booking: { $ref: "#/components/schemas/Booking" }
+        replayed: { type: boolean }
+    BookingEnvelope:
+      type: object
+      required: [success, message, data]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data: { $ref: "#/components/schemas/Booking" }
+    BookingMutationEnvelope:
+      type: object
+      required: [success, message, data]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data: { $ref: "#/components/schemas/BookingMutationResult" }
+    BookingListEnvelope:
+      type: object
+      required: [success, message, data, meta]
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Booking" }
+        meta:
+          type: object
+          required: [page, limit, total, totalPages, hasNext, hasPrev]
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+            hasNext: { type: boolean }
+            hasPrev: { type: boolean }
     WeeklyLabSchedule:
       type: object
       additionalProperties: false
@@ -145,6 +250,7 @@ components:
           cancellationWindowHours,
           maxFutureBookingsPerProject,
           projectVerificationRequired,
+          teamLeaderAttendanceRequired,
           weeklySchedule,
         ]
       properties:
@@ -160,6 +266,7 @@ components:
         cancellationWindowHours: { type: integer, minimum: 0, maximum: 168 }
         maxFutureBookingsPerProject: { type: integer, nullable: true, minimum: 1, maximum: 100 }
         projectVerificationRequired: { type: boolean }
+        teamLeaderAttendanceRequired: { type: boolean }
         weeklySchedule:
           type: array
           minItems: 7
@@ -481,25 +588,31 @@ paths:
         "410": { description: Invalid or expired email action link }
   /labs/{labId}/availability/dates:
     get:
-      summary: List the bounded server-derived operating-date window
+      summary: List the bounded server-derived operating-date window and applicable lab policy
       parameters:
         - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
         - { in: query, name: projectId, schema: { type: string, format: uuid } }
         - { in: query, name: participantCount, schema: { type: integer, minimum: 1, default: 1 } }
       responses:
-        "200": { description: Weekly policy and exceptions resolved into operating dates }
+        "200":
+          {
+            description: Weekly policy and exceptions resolved into operating dates; lab summary includes teamLeaderAttendanceRequired,
+          }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /labs/{labId}/availability:
     get:
-      summary: Read remaining attendee places and advisory equipment status for one date
+      summary: Read remaining attendee places, attendee policy, and advisory equipment status for one date
       parameters:
         - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
         - { in: query, name: date, required: true, schema: { type: string, format: date } }
         - { in: query, name: projectId, schema: { type: string, format: uuid } }
         - { in: query, name: participantCount, schema: { type: integer, minimum: 1, default: 1 } }
       responses:
-        "200": { description: Timezone-safe slot availability and project equipment advisory }
+        "200":
+          {
+            description: Timezone-safe slot availability with teamLeaderAttendanceRequired in the lab summary and project equipment advisory,
+          }
         "400": { description: Date is invalid or outside the configured booking horizon }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -523,7 +636,10 @@ paths:
       responses:
         "200": { description: Policy saved and future slots regenerated }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { description: Configuration version conflict }
+        "409":
+          {
+            description: Configuration version conflict or proposed capacity below confirmed/active future attendance,
+          }
   /labs/{labId}/date-exceptions:
     put:
       summary: Create or replace a closure or special-hours exception (lab.configure)
@@ -567,34 +683,97 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
   /bookings:
     get:
-      {
-        summary: List bookings within the caller's scope,
-        responses: { "200": { description: Bookings } },
-      }
+      summary: List snapshot-based bookings within the caller's authorization and time scope
+      parameters:
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - {
+            in: query,
+            name: limit,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
+        - { in: query, name: labSlotId, schema: { type: string, format: uuid } }
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - {
+            in: query,
+            name: userId,
+            description: Operational roles only; ignored for Student-scoped reads,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            in: query,
+            name: status,
+            schema: { type: string, enum: [CONFIRMED, ACTIVE, COMPLETED, CANCELLED, NO_SHOW] },
+          }
+        - {
+            in: query,
+            name: scope,
+            schema: { type: string, enum: [upcoming, past, all], default: all },
+          }
+      responses:
+        "200":
+          description: Paginated bookings ordered by immutable slot-time snapshots
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingListEnvelope" }
     post:
-      summary: Atomically reserve a lab slot and resources
+      summary: Idempotently reserve attendee capacity for a verified project and open lab slot
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/BookingCreate" }
       responses:
-        "201": { description: Booking and one-time QR secret }
+        "200":
+          description: Idempotent replay of the original booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingMutationEnvelope" }
+        "201":
+          description: Booking created; no QR or resource allocation is performed in Phase 4
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingMutationEnvelope" }
         "409": { $ref: "#/components/responses/Conflict" }
   /bookings/{id}:
     get:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
-      responses: { "200": { description: Booking } }
+      responses:
+        "200":
+          description: Snapshot-based booking detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingEnvelope" }
   /bookings/{id}/cancel:
     post:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
-      summary: Cancel an owned or managed booking without deleting history
-      responses: { "200": { description: Booking cancelled } }
+      summary: Idempotently cancel an owned or managed booking without deleting history
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingCancel" }
+      responses:
+        "200":
+          description: Cancelled booking DTO, or the same DTO on a matching replay
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingEnvelope" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /bookings/{id}/status:
     patch:
       parameters: [{ $ref: "#/components/parameters/ResourceId" }]
-      summary: Apply an allowed operational status transition (booking.manage)
-      responses: { "200": { description: Booking updated } }
+      summary: Apply a non-cancellation operational status transition (booking.manage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingStatusUpdate" }
+      responses:
+        "200":
+          description: Booking updated with an immutable status-history entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingEnvelope" }
   /equipment:
     get: { summary: List equipment, responses: { "200": { description: Equipment } } }
     post:

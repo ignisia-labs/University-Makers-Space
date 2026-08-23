@@ -74,9 +74,14 @@ export function AppShell({
     .join("")
     .slice(0, 2);
 
-  const studentOnly = ["/dashboard", "/projects", "/book", "/visits", "/equipment"].some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
-  );
+  const studentOnly = [
+    "/dashboard",
+    "/projects",
+    "/book",
+    "/bookings",
+    "/visits",
+    "/equipment",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const requiredRole = pathname.startsWith("/faculty")
     ? "Faculty Mentor"
     : pathname.startsWith("/operations")

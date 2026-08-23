@@ -3,6 +3,7 @@ import { ArrowRight, Check, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
+import { BookingSummaryCard } from "@/components/Booking/BookingSummaryCard";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -17,6 +18,7 @@ import {
   projectStatusLabel,
   usePersistedProjects,
 } from "@/lib/project-queries";
+import { usePersistedBookings } from "@/lib/booking-queries";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -40,6 +42,7 @@ function PersistedDashboard() {
   const { profile } = useAppSession();
   const queryClient = useQueryClient();
   const projects = usePersistedProjects();
+  const upcomingBookings = usePersistedBookings("upcoming", 1, 1);
   const invitationMutation = useMutation({
     mutationFn: (projectId: string) => projectsApi.respondToInvitation(projectId, "ACCEPTED"),
     onSuccess: async (_response, projectId) => {
@@ -59,10 +62,65 @@ function PersistedDashboard() {
     ["TEAM_ACCEPTANCE_PENDING", "MENTOR_APPROVAL_PENDING"].includes(project.status),
   );
   const verified = active.filter((project) => project.status === "VERIFIED");
+  const bookable = verified.filter((project) => project.viewerRelationship === "LEADER");
+  const nextBooking = upcomingBookings.data?.data[0];
   const firstName = profile.fullName.trim().split(" ")[0] || "there";
   return (
     <AppShell title={`Hi, ${firstName}`} subtitle={profile.department}>
       <div className="animate-in fade-in slide-in-from-bottom-2 mx-auto max-w-3xl duration-500">
+        <section aria-labelledby="dashboard-upcoming-title" className="mb-6">
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                Next at the MakerSpace
+              </p>
+              <h2 id="dashboard-upcoming-title" className="mt-1 font-serif text-2xl font-light">
+                {nextBooking ? "Your upcoming booking" : "Your next build session"}
+              </h2>
+            </div>
+            <Link to="/book" className="min-h-11 py-3 text-sm font-semibold text-primary">
+              View Slots
+            </Link>
+          </div>
+          {upcomingBookings.isLoading ? (
+            <div className="h-48 animate-pulse rounded-2xl border border-border bg-card" />
+          ) : upcomingBookings.isError ? (
+            <div className="card-surface flex flex-wrap items-center justify-between gap-3 p-5">
+              <p className="text-sm text-muted-foreground">
+                Your next booking could not be loaded.
+              </p>
+              <button
+                type="button"
+                onClick={() => upcomingBookings.refetch()}
+                className="min-h-11 text-sm font-semibold text-primary"
+              >
+                Retry
+              </button>
+            </div>
+          ) : nextBooking ? (
+            <BookingSummaryCard booking={nextBooking} />
+          ) : (
+            <div className="card-surface flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+              <div>
+                <p className="text-sm font-semibold">No upcoming booking</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {bookable.length
+                    ? "Your verified project is ready for a capacity-aware slot."
+                    : "Verify a project as Team Leader before reserving a slot."}
+                </p>
+              </div>
+              {bookable.length > 0 && (
+                <Link
+                  to="/book"
+                  search={{ project: bookable[0]!.id }}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+                >
+                  Book a slot <ArrowRight className="size-4" />
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
         <StatStrip projects={active.length} labTime="0h" visits={0} />
         {invitations.map((project) => (
           <PersistedInvitationCard
@@ -143,8 +201,9 @@ function PersistedDashboard() {
             </p>
             <p className="mt-2 font-serif text-3xl font-light">{verified.length}</p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Only verified projects led by you are eligible for booking. Slot booking connects in
-              Phase 4.
+              {bookable.length
+                ? `${bookable.length} ${bookable.length === 1 ? "project is" : "projects are"} ready for booking.`
+                : "Only verified projects led by you are eligible for booking."}
             </p>
           </div>
         </section>

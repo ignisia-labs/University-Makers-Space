@@ -54,6 +54,7 @@ export const updateLabConfigurationSchema = z.object({
       cancellationWindowHours: z.number().int().min(0).max(168),
       maxFutureBookingsPerProject: z.number().int().min(1).max(100).nullable(),
       projectVerificationRequired: z.boolean(),
+      teamLeaderAttendanceRequired: z.boolean(),
       weeklySchedule: z
         .array(weeklySchedule)
         .length(7)

@@ -1,13 +1,17 @@
 import { BookingStatus } from "@prisma/client";
 import { z } from "zod";
-import { idParam, listQuery } from "../shared/schemas.js";
+import { idParam } from "../shared/schemas.js";
 
 export const listBookingsSchema = z.object({
-  query: listQuery
-    .extend({
+  query: z
+    .object({
+      page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
       labSlotId: z.string().uuid().optional(),
       projectId: z.string().uuid().optional(),
       userId: z.string().uuid().optional(),
+      status: z.nativeEnum(BookingStatus).optional(),
+      scope: z.enum(["upcoming", "past", "all"]).default("all"),
     })
     .strict(),
 });
@@ -17,22 +21,7 @@ export const createBookingSchema = z.object({
     .object({
       labSlotId: z.string().uuid(),
       projectId: z.string().uuid(),
-      participantIds: z.array(z.string().uuid()).min(1).max(20),
-      equipment: z
-        .array(
-          z.object({ equipmentId: z.string().uuid(), quantity: z.number().int().min(1).max(20) }),
-        )
-        .max(30)
-        .default([]),
-      consumables: z
-        .array(
-          z.object({
-            consumableId: z.string().uuid(),
-            expectedQuantity: z.number().positive().max(100_000).optional(),
-          }),
-        )
-        .max(50)
-        .default([]),
+      participantIds: z.array(z.string().uuid()).min(1).max(500),
       idempotencyKey: z.string().uuid(),
       notes: z.string().trim().max(500).nullable().optional(),
     })
@@ -45,14 +34,23 @@ export const createBookingSchema = z.object({
 
 export const cancelBookingSchema = z.object({
   params: idParam,
-  body: z.object({ reason: z.string().trim().min(3).max(500) }).strict(),
+  body: z
+    .object({
+      reason: z.string().trim().min(3).max(500),
+      idempotencyKey: z.string().uuid(),
+    })
+    .strict(),
 });
 
 export const updateBookingStatusSchema = z.object({
   params: idParam,
   body: z
     .object({
-      status: z.nativeEnum(BookingStatus),
+      status: z.union([
+        z.literal(BookingStatus.ACTIVE),
+        z.literal(BookingStatus.COMPLETED),
+        z.literal(BookingStatus.NO_SHOW),
+      ]),
       notes: z.string().trim().max(500).nullable().optional(),
     })
     .strict(),

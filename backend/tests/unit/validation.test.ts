@@ -13,7 +13,12 @@ process.env.FRONTEND_URL = "http://localhost:5173";
 import { EquipmentStatus, MentorRequestStatus, ProjectStatus, UserRole } from "@prisma/client";
 import { hasPermission, permissions } from "../../src/config/permissions.js";
 import { onboardingSchema } from "../../src/modules/auth/auth-schema.js";
-import { createBookingSchema } from "../../src/modules/bookings/booking-schema.js";
+import {
+  cancelBookingSchema,
+  createBookingSchema,
+  listBookingsSchema,
+  updateBookingStatusSchema,
+} from "../../src/modules/bookings/booking-schema.js";
 import { updateEquipmentAvailabilitySchema } from "../../src/modules/equipment/equipment-schema.js";
 import {
   updateLabConfigurationSchema,
@@ -154,6 +159,51 @@ describe("validators", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("keeps the Phase 4 booking payload capacity-only", () => {
+    const base = {
+      labSlotId: "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      projectId: "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      participantIds: ["6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2"],
+      idempotencyKey: "9f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+    };
+    expect(createBookingSchema.safeParse({ body: base }).success).toBe(true);
+    expect(
+      createBookingSchema.safeParse({
+        body: { ...base, equipment: [{ equipmentId: base.labSlotId, quantity: 1 }] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires cancellation idempotency and reserves CANCELLED for the cancel endpoint", () => {
+    const params = { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" };
+    expect(
+      cancelBookingSchema.safeParse({ params, body: { reason: "Team unavailable" } }).success,
+    ).toBe(false);
+    expect(
+      cancelBookingSchema.safeParse({
+        params,
+        body: {
+          reason: "Team unavailable",
+          idempotencyKey: "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      updateBookingStatusSchema.safeParse({
+        params,
+        body: { status: "CANCELLED", notes: "Bypass" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects booking list query keys the service does not implement", () => {
+    expect(listBookingsSchema.safeParse({ query: { scope: "upcoming", page: "1" } }).success).toBe(
+      true,
+    );
+    expect(listBookingsSchema.safeParse({ query: { search: "rover" } }).success).toBe(false);
+    expect(listBookingsSchema.safeParse({ query: { sortBy: "createdAt" } }).success).toBe(false);
+  });
+
   it("requires an operational reason when equipment availability changes", () => {
     const parsed = updateEquipmentAvailabilitySchema.safeParse({
       params: { id: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" },
@@ -181,6 +231,7 @@ describe("validators", () => {
       cancellationWindowHours: 2,
       maxFutureBookingsPerProject: null,
       projectVerificationRequired: true,
+      teamLeaderAttendanceRequired: true,
       weeklySchedule: Array.from({ length: 7 }, (_, dayOfWeek) => ({
         dayOfWeek,
         isOpen: true,

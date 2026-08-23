@@ -23,22 +23,26 @@ type MentorEmailActionToken = {
   facultyId: string;
 };
 
-const summaryInclude = {
-  creator: { select: { id: true, name: true, email: true } },
-  currentMentor: { select: { id: true, name: true, email: true } },
-  members: { select: { id: true, userId: true, email: true, status: true, role: true } },
-  mentorRequests: {
-    select: { status: true, requestedAt: true, respondedAt: true },
-    orderBy: { requestedAt: "desc" },
-    take: 1,
-  },
-  bookings: {
-    where: { status: { in: ["CONFIRMED", "ACTIVE"] } },
-    include: { labSlot: { select: { startsAt: true, endsAt: true } } },
-    orderBy: { labSlot: { startsAt: "asc" } },
-    take: 1,
-  },
-} satisfies Prisma.ProjectInclude;
+function summaryInclude(now: Date) {
+  return {
+    creator: { select: { id: true, name: true, email: true } },
+    currentMentor: { select: { id: true, name: true, email: true } },
+    members: { select: { id: true, userId: true, email: true, status: true, role: true } },
+    mentorRequests: {
+      select: { status: true, requestedAt: true, respondedAt: true },
+      orderBy: { requestedAt: "desc" },
+      take: 1,
+    },
+    bookings: {
+      where: {
+        status: { in: ["CONFIRMED", "ACTIVE"] },
+        slotEndsAtSnapshot: { gt: now },
+      },
+      orderBy: [{ slotStartsAtSnapshot: "asc" }, { id: "asc" }],
+      take: 1,
+    },
+  } satisfies Prisma.ProjectInclude;
+}
 
 const detailInclude = {
   creator: {
@@ -94,7 +98,6 @@ const detailInclude = {
     },
   },
   bookings: {
-    include: { labSlot: { select: { startsAt: true, endsAt: true } } },
     orderBy: { createdAt: "desc" },
   },
 } satisfies Prisma.ProjectInclude;
@@ -134,7 +137,7 @@ function assertMentorEmailActionToken(token: string, requestId: string) {
   }
 }
 
-type SummaryProject = Prisma.ProjectGetPayload<{ include: typeof summaryInclude }>;
+type SummaryProject = Prisma.ProjectGetPayload<{ include: ReturnType<typeof summaryInclude> }>;
 type DetailProject = Prisma.ProjectGetPayload<{ include: typeof detailInclude }>;
 
 function scopeFor(viewer: Viewer): Prisma.ProjectWhereInput {
@@ -202,7 +205,18 @@ function summaryDto(project: SummaryProject, viewer: Viewer) {
       member.status !== ProjectMemberStatus.CANCELLED &&
       member.status !== ProjectMemberStatus.EXPIRED,
   );
-  const nextBooking = project.bookings[0];
+  const now = Date.now();
+  const nextBooking = project.bookings
+    .filter(
+      (booking) =>
+        (booking.status === "CONFIRMED" || booking.status === "ACTIVE") &&
+        booking.slotEndsAtSnapshot.getTime() > now,
+    )
+    .sort(
+      (left, right) =>
+        left.slotStartsAtSnapshot.getTime() - right.slotStartsAtSnapshot.getTime() ||
+        left.id.localeCompare(right.id),
+    )[0];
   const pendingMemberCount = activeMembers.filter(
     (member) => member.status === ProjectMemberStatus.PENDING,
   ).length;
@@ -233,8 +247,8 @@ function summaryDto(project: SummaryProject, viewer: Viewer) {
     nextBooking: nextBooking
       ? {
           id: nextBooking.id,
-          startsAt: nextBooking.labSlot.startsAt.toISOString(),
-          endsAt: nextBooking.labSlot.endsAt.toISOString(),
+          startsAt: nextBooking.slotStartsAtSnapshot.toISOString(),
+          endsAt: nextBooking.slotEndsAtSnapshot.toISOString(),
         }
       : null,
     createdAt: project.createdAt.toISOString(),
@@ -285,8 +299,8 @@ function detailDto(project: DetailProject, viewer: Viewer) {
     bookings: project.bookings.map((booking) => ({
       id: booking.id,
       status: booking.status,
-      startsAt: booking.labSlot.startsAt.toISOString(),
-      endsAt: booking.labSlot.endsAt.toISOString(),
+      startsAt: booking.slotStartsAtSnapshot.toISOString(),
+      endsAt: booking.slotEndsAtSnapshot.toISOString(),
     })),
   };
 }
@@ -326,7 +340,7 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
     prisma.project.count({ where }),
     prisma.project.findMany({
       where,
-      include: summaryInclude,
+      include: summaryInclude(new Date()),
       orderBy: { [sortBy]: query.order ?? "desc" },
       skip: (page - 1) * limit,
       take: limit,

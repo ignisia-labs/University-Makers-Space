@@ -9,6 +9,7 @@
     "start": "node dist/src/server.js",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "jest --runInBand",
+    "test:booking-concurrency": "tsx scripts/verify-booking-concurrency.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"

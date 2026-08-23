@@ -1,21 +1,39 @@
 import crypto from "node:crypto";
-import { BookingStatus, Prisma } from "@prisma/client";
-import { hasPermission } from "../../config/permissions.js";
+import {
+  BookingCancellationSource,
+  BookingStatus,
+  DeliveryStatus,
+  NotificationChannel,
+  Prisma,
+  ProjectMemberRole,
+  ProjectMemberStatus,
+  ProjectStatus,
+  UserRole,
+} from "@prisma/client";
 import { prisma } from "../../config/db.js";
+import { logger } from "../../config/logger.js";
+import { hasPermission } from "../../config/permissions.js";
+import { redis } from "../../config/redis.js";
 import { ApiError } from "../../utils/api-error.js";
 import { meta } from "../../utils/pagination.js";
 import { bookingDto } from "../../utils/serializers.js";
+import { addLocalDays, localToday } from "../labs/lab-time.js";
 
-const sortFields = new Set(["status", "createdAt", "updatedAt"]);
 const capacityStatuses = [BookingStatus.CONFIRMED, BookingStatus.ACTIVE];
+const terminalStatuses = [BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.NO_SHOW];
+const maxTransactionAttempts = 3;
 
 type Viewer = NonNullable<Express.Request["user"]>;
+type BookingRecord = Prisma.BookingGetPayload<{ include: { participants: true } }>;
+type RequestContext = {
+  requestId?: string;
+  ipAddress?: string;
+  userAgent?: string;
+};
 type BookingInput = {
   labSlotId: string;
   projectId: string;
   participantIds: string[];
-  equipment: { equipmentId: string; quantity: number }[];
-  consumables: { consumableId: string; expectedQuantity?: number }[];
   idempotencyKey: string;
   notes?: string | null;
 };
@@ -23,238 +41,513 @@ type BookingInput = {
 export async function list(query: Record<string, unknown>, viewer: Viewer) {
   const page = Number(query.page ?? 1);
   const limit = Number(query.limit ?? 20);
-  const sortBy = sortFields.has(String(query.sortBy)) ? String(query.sortBy) : "createdAt";
+  const scope = String(query.scope ?? "all") as "upcoming" | "past" | "all";
+  const now = new Date();
   const operational = hasPermission(viewer.roles, "booking.read.operational");
+  const temporalScope: Prisma.BookingWhereInput =
+    scope === "upcoming"
+      ? { status: { in: capacityStatuses }, slotEndsAtSnapshot: { gte: now } }
+      : scope === "past"
+        ? {
+            OR: [{ status: { in: terminalStatuses } }, { slotEndsAtSnapshot: { lt: now } }],
+          }
+        : {};
   const where: Prisma.BookingWhereInput = {
-    ...(operational
-      ? query.userId
-        ? { participants: { some: { userId: String(query.userId) } } }
-        : {}
-      : {
-          OR: [{ createdById: viewer.id }, { participants: { some: { userId: viewer.id } } }],
-        }),
+    AND: [
+      operational
+        ? query.userId
+          ? { participants: { some: { userId: String(query.userId) } } }
+          : {}
+        : {
+            OR: [{ createdById: viewer.id }, { participants: { some: { userId: viewer.id } } }],
+          },
+      temporalScope,
+    ],
     ...(query.labSlotId ? { labSlotId: String(query.labSlotId) } : {}),
     ...(query.projectId ? { projectId: String(query.projectId) } : {}),
-    ...(query.status ? { status: query.status as Prisma.EnumBookingStatusFilter } : {}),
+    ...(query.status ? { status: query.status as BookingStatus } : {}),
   };
+  const order = scope === "upcoming" ? "asc" : "desc";
   const [total, rows] = await prisma.$transaction([
     prisma.booking.count({ where }),
     prisma.booking.findMany({
       where,
-      include: { labSlot: true, participants: true },
-      orderBy: { [sortBy]: query.order ?? "desc" },
+      include: { participants: true },
+      orderBy: [{ slotStartsAtSnapshot: order }, { id: order }],
       skip: (page - 1) * limit,
       take: limit,
     }),
   ]);
-  return { data: rows.map(bookingDto), meta: meta(page, limit, total) };
+  return {
+    data: rows.map((booking) => bookingDto(booking, bookingAccess(viewer))),
+    meta: meta(page, limit, total),
+  };
 }
 
 export async function get(id: string, viewer: Viewer) {
   const booking = await prisma.booking.findUnique({
     where: { id },
-    include: { labSlot: true, participants: true, equipment: true, consumables: true },
+    include: { participants: true },
   });
   if (!booking) throw new ApiError(404, "NOT_FOUND", "Booking not found");
-  const canRead =
-    booking.createdById === viewer.id ||
-    booking.participants.some((participant) => participant.userId === viewer.id) ||
-    hasPermission(viewer.roles, "booking.read.operational");
-  if (!canRead) throw new ApiError(403, "FORBIDDEN", "You do not have permission for this booking");
-  return bookingDto(booking);
+  assertCanRead(booking, viewer);
+  return bookingDto(booking, bookingAccess(viewer));
 }
 
-export async function create(userId: string, data: BookingInput) {
-  const existing = await prisma.booking.findUnique({
-    where: {
-      createdById_idempotencyKey: { createdById: userId, idempotencyKey: data.idempotencyKey },
-    },
-    include: { labSlot: true, participants: true },
-  });
-  if (existing) return { booking: bookingDto(existing), replayed: true };
+export async function create(viewer: Viewer, data: BookingInput, context: RequestContext = {}) {
+  if (new Set(data.participantIds).size !== data.participantIds.length) {
+    throw new ApiError(400, "DUPLICATE_PARTICIPANTS", "Each attendee may be selected only once");
+  }
+  const requestFingerprint = creationFingerprint(data);
+  const existing = await findCreationReplay(viewer.id, data.idempotencyKey);
+  if (existing) {
+    assertCreationFingerprint(existing, requestFingerprint);
+    return { booking: bookingDto(existing, bookingAccess(viewer)), replayed: true };
+  }
 
-  const qrToken = crypto.randomBytes(32).toString("base64url");
-  const booking = await prisma.$transaction(
-    async (tx) => {
-      const lockedSlots = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT id FROM "lab_slots"
-        WHERE id = ${data.labSlotId}::uuid
-        FOR UPDATE
-      `);
-      if (lockedSlots.length !== 1) throw new ApiError(404, "NOT_FOUND", "Lab slot not found");
+  for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          await lockProject(tx, data.projectId);
+          await lockSlot(tx, data.labSlotId);
 
-      const replay = await tx.booking.findUnique({
-        where: {
-          createdById_idempotencyKey: {
-            createdById: userId,
-            idempotencyKey: data.idempotencyKey,
-          },
+          const replay = await tx.booking.findUnique({
+            where: {
+              createdById_idempotencyKey: {
+                createdById: viewer.id,
+                idempotencyKey: data.idempotencyKey,
+              },
+            },
+            include: { participants: true },
+          });
+          if (replay) {
+            assertCreationFingerprint(replay, requestFingerprint);
+            return { booking: replay, replayed: true as const };
+          }
+
+          const now = new Date();
+          const [slot, project] = await Promise.all([
+            tx.labSlot.findUnique({ where: { id: data.labSlotId }, include: { lab: true } }),
+            tx.project.findUnique({
+              where: { id: data.projectId },
+              include: {
+                members: {
+                  where: { status: ProjectMemberStatus.ACCEPTED, userId: { not: null } },
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        roles: true,
+                        isActive: true,
+                        deletedAt: true,
+                        studentProfile: { select: { prn: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            }),
+          ]);
+          if (!slot || !slot.lab.isActive) {
+            throw new ApiError(404, "NOT_FOUND", "MakerSpace slot not found");
+          }
+          if (slot.status !== "OPEN") {
+            throw new ApiError(409, "SLOT_UNAVAILABLE", "This slot is not open for booking");
+          }
+          assertSlotInsideBookingWindow(slot, now);
+          if (!project || project.deletedAt) {
+            throw new ApiError(404, "NOT_FOUND", "Project not found");
+          }
+          if (project.creatorId !== viewer.id) {
+            throw new ApiError(
+              403,
+              "TEAM_LEADER_REQUIRED",
+              "Only the project leader can book a slot",
+            );
+          }
+          if (project.labId !== slot.labId) {
+            throw new ApiError(
+              400,
+              "LAB_MISMATCH",
+              "Project and slot must belong to the same MakerSpace",
+            );
+          }
+          if (slot.lab.projectVerificationRequired && project.status !== ProjectStatus.VERIFIED) {
+            throw new ApiError(
+              409,
+              "PROJECT_NOT_VERIFIED",
+              "This project must be verified before booking",
+            );
+          }
+
+          const acceptedMembers = new Map(
+            project.members.flatMap((member) =>
+              member.userId && member.user ? [[member.userId, member] as const] : [],
+            ),
+          );
+          const leaderMembership = project.members.find(
+            (member) =>
+              member.userId === project.creatorId && member.role === ProjectMemberRole.LEADER,
+          );
+          if (!leaderMembership?.user || !isActiveStudent(leaderMembership.user)) {
+            throw new ApiError(
+              409,
+              "LEADER_MEMBERSHIP_INVALID",
+              "The Team Leader must be an active accepted project member",
+            );
+          }
+          if (
+            slot.lab.teamLeaderAttendanceRequired &&
+            !data.participantIds.includes(project.creatorId)
+          ) {
+            throw new ApiError(
+              400,
+              "TEAM_LEADER_ATTENDANCE_REQUIRED",
+              "The Team Leader must attend this booking",
+            );
+          }
+
+          const selectedMembers = data.participantIds.map((participantId) => {
+            const member = acceptedMembers.get(participantId);
+            if (!member?.user || !isActiveStudent(member.user)) {
+              throw new ApiError(
+                400,
+                "INVALID_PARTICIPANTS",
+                "Every attendee must be an active accepted project member",
+              );
+            }
+            return member;
+          });
+
+          if (slot.lab.maxFutureBookingsPerProject !== null) {
+            const futureBookings = await tx.booking.count({
+              where: {
+                projectId: project.id,
+                status: { in: capacityStatuses },
+                slotEndsAtSnapshot: { gt: now },
+              },
+            });
+            if (futureBookings >= slot.lab.maxFutureBookingsPerProject) {
+              throw new ApiError(
+                409,
+                "PROJECT_BOOKING_LIMIT_REACHED",
+                "This project has reached its future booking limit",
+              );
+            }
+          }
+
+          const duplicate = await tx.booking.findFirst({
+            where: {
+              projectId: project.id,
+              labSlotId: slot.id,
+              status: { in: capacityStatuses },
+            },
+            select: { id: true },
+          });
+          if (duplicate) {
+            throw new ApiError(
+              409,
+              "PROJECT_SLOT_ALREADY_BOOKED",
+              "This project already has a live booking for the selected slot",
+            );
+          }
+
+          const reserved = await tx.booking.aggregate({
+            where: { labSlotId: slot.id, status: { in: capacityStatuses } },
+            _sum: { attendeeCount: true },
+          });
+          const placesUsed = reserved._sum.attendeeCount ?? 0;
+          const remainingCapacity = Math.max(0, slot.bookingCapacity - placesUsed);
+          if (selectedMembers.length > remainingCapacity) {
+            throw new ApiError(
+              409,
+              "SLOT_CAPACITY_EXCEEDED",
+              `This slot filled up while you were booking. Only ${remainingCapacity} ${remainingCapacity === 1 ? "place remains" : "places remain"}.`,
+              [
+                {
+                  remainingCapacity,
+                  requestedParticipants: selectedMembers.length,
+                  labSlotId: slot.id,
+                },
+              ],
+            );
+          }
+
+          const actorRole = primaryRole(viewer.roles);
+          const created = await tx.booking.create({
+            data: {
+              labId: slot.labId,
+              labSlotId: slot.id,
+              projectId: project.id,
+              createdById: viewer.id,
+              idempotencyKey: data.idempotencyKey,
+              creationRequestFingerprint: requestFingerprint,
+              attendeeCount: selectedMembers.length,
+              notes: data.notes,
+              labNameSnapshot: slot.lab.name,
+              projectTitleSnapshot: project.title,
+              slotStartsAtSnapshot: slot.startsAt,
+              slotEndsAtSnapshot: slot.endsAt,
+              timeZoneSnapshot: slot.lab.timeZone,
+              cancellationWindowHoursSnapshot: slot.lab.cancellationWindowHours,
+              participants: {
+                create: selectedMembers.map((member) => ({
+                  userId: member.userId!,
+                  nameSnapshot: member.user!.name,
+                  emailSnapshot: member.user!.email,
+                  prnSnapshot: member.user!.studentProfile?.prn ?? null,
+                  projectRoleSnapshot: member.role,
+                })),
+              },
+              statusHistory: {
+                create: {
+                  fromStatus: null,
+                  toStatus: BookingStatus.CONFIRMED,
+                  actorUserId: viewer.id,
+                  actorNameSnapshot: viewer.name,
+                  actorRoleSnapshot: actorRole,
+                  idempotencyKey: data.idempotencyKey,
+                },
+              },
+            },
+            include: { participants: true },
+          });
+          await createBookingNotifications(tx, {
+            userIds: selectedMembers.map((member) => member.userId!),
+            type: "BOOKING_CONFIRMED",
+            title: `${project.title} is booked`,
+            body: `${formatBookingWindow(slot.startsAt, slot.endsAt, slot.lab.timeZone)} at ${slot.lab.name}.`,
+            href: `/bookings/${created.id}`,
+          });
+          await tx.auditLog.create({
+            data: {
+              actorUserId: viewer.id,
+              action: "booking.created",
+              entityType: "Booking",
+              entityId: created.id,
+              metadata: {
+                projectId: project.id,
+                labSlotId: slot.id,
+                attendeeCount: selectedMembers.length,
+                participantIds: selectedMembers.map((member) => member.userId),
+              },
+              requestId: context.requestId,
+              ipAddress: context.ipAddress,
+              userAgent: context.userAgent,
+            },
+          });
+          return { booking: created, replayed: false as const };
         },
-        include: { labSlot: true, participants: true },
-      });
-      if (replay) return { booking: replay, replayed: true as const };
-
-      const slot = await tx.labSlot.findUnique({
-        where: { id: data.labSlotId },
-        include: { lab: true },
-      });
-      if (!slot || slot.status !== "OPEN") {
-        throw new ApiError(409, "SLOT_UNAVAILABLE", "This slot is not open for booking");
-      }
-      const now = new Date();
-      const horizon = new Date(now.getTime() + slot.lab.bookingHorizonDays * 24 * 60 * 60 * 1000);
-      if (slot.startsAt <= now || slot.startsAt > horizon) {
-        throw new ApiError(409, "SLOT_OUTSIDE_BOOKING_WINDOW", "This slot cannot be booked now");
-      }
-
-      const project = await tx.project.findUnique({
-        where: { id: data.projectId },
-        include: { members: { where: { status: "ACCEPTED" } } },
-      });
-      if (!project || project.deletedAt) throw new ApiError(404, "NOT_FOUND", "Project not found");
-      if (project.status !== "VERIFIED") {
-        throw new ApiError(409, "PROJECT_NOT_VERIFIED", "Only verified projects can book slots");
-      }
-      if (project.creatorId !== userId) {
-        throw new ApiError(403, "TEAM_LEADER_REQUIRED", "Only the project leader can book a slot");
-      }
-      if (project.labId !== slot.labId) {
-        throw new ApiError(400, "LAB_MISMATCH", "Project and slot must belong to the same lab");
-      }
-
-      const acceptedIds = new Set(
-        project.members.flatMap((member) => (member.userId ? [member.userId] : [])),
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 10_000,
+        },
       );
-      if (data.participantIds.some((participantId) => !acceptedIds.has(participantId))) {
-        throw new ApiError(
-          400,
-          "INVALID_PARTICIPANTS",
-          "Every attendee must be an accepted project member",
-        );
-      }
-
-      const reserved = await tx.booking.aggregate({
-        where: { labSlotId: slot.id, status: { in: capacityStatuses } },
-        _sum: { attendeeCount: true },
-      });
-      const placesUsed = reserved._sum.attendeeCount ?? 0;
-      if (placesUsed + data.participantIds.length > slot.bookingCapacity) {
-        throw new ApiError(409, "SLOT_CAPACITY_EXCEEDED", "Not enough places remain in this slot");
-      }
-
-      await validateEquipment(tx, slot.labId, slot.id, data.equipment);
-      await validateConsumables(tx, slot.labId, data.consumables);
-
-      const created = await tx.booking.create({
-        data: {
-          labId: slot.labId,
-          labSlotId: slot.id,
-          projectId: project.id,
-          createdById: userId,
-          idempotencyKey: data.idempotencyKey,
-          attendeeCount: data.participantIds.length,
-          notes: data.notes,
-          qrTokenHash: hashToken(qrToken),
-          qrExpiresAt: slot.endsAt,
-          participants: {
-            create: data.participantIds.map((participantId) => ({ userId: participantId })),
-          },
-          equipment: { create: data.equipment },
-          consumables: {
-            create: data.consumables.map((item) => ({
-              consumableId: item.consumableId,
-              expectedQuantity: item.expectedQuantity,
-            })),
-          },
-        },
-        include: { labSlot: true, participants: true },
-      });
-      return { booking: created, replayed: false as const };
-    },
-    {
-      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      maxWait: 5_000,
-      timeout: 10_000,
-    },
-  );
-  if (booking.replayed) return { booking: bookingDto(booking.booking), replayed: true };
-  return { booking: bookingDto(booking.booking), qrToken, replayed: false };
-}
-
-export async function cancel(id: string, reason: string, viewer: Viewer) {
-  return prisma.$transaction(
-    async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT id FROM "bookings" WHERE id = ${id}::uuid FOR UPDATE
-      `);
-      const booking = await tx.booking.findUnique({
-        where: { id },
-        include: { labSlot: { include: { lab: true } }, participants: true },
-      });
-      if (!booking) throw new ApiError(404, "NOT_FOUND", "Booking not found");
-      const canManage = hasPermission(viewer.roles, "booking.manage");
-      if (booking.createdById !== viewer.id && !canManage) {
-        throw new ApiError(403, "FORBIDDEN", "You cannot cancel this booking");
-      }
-      if (booking.status === BookingStatus.CANCELLED) return bookingDto(booking);
-      if (booking.status !== BookingStatus.CONFIRMED) {
+      if (!result.replayed) await publishAvailability(result.booking, "BOOKING_CREATED");
+      return {
+        booking: bookingDto(result.booking, bookingAccess(viewer)),
+        replayed: result.replayed,
+      };
+    } catch (error) {
+      const recovered = await recoverCreationConflict(error, viewer, data, requestFingerprint);
+      if (recovered) return recovered;
+      if (isSerializationConflict(error) && attempt < maxTransactionAttempts) continue;
+      if (isSerializationConflict(error)) {
         throw new ApiError(
           409,
-          "INVALID_BOOKING_STATE",
-          "Only confirmed bookings can be cancelled",
+          "TRANSACTION_CONFLICT",
+          "Availability changed during booking. Refresh and try again.",
         );
       }
-      const cancellationDeadline = new Date(
-        booking.labSlot.startsAt.getTime() -
-          booking.labSlot.lab.cancellationWindowHours * 60 * 60 * 1000,
+      throw error;
+    }
+  }
+  throw new ApiError(409, "TRANSACTION_CONFLICT", "Refresh availability and try again");
+}
+
+export async function cancel(
+  id: string,
+  reason: string,
+  idempotencyKey: string,
+  viewer: Viewer,
+  context: RequestContext = {},
+) {
+  const requestFingerprint = cancellationFingerprint(id, reason);
+  const keyOwner = await prisma.booking.findFirst({
+    where: { cancelledById: viewer.id, cancellationIdempotencyKey: idempotencyKey },
+    include: { participants: true },
+  });
+  if (keyOwner && keyOwner.id !== id) {
+    throw new ApiError(
+      409,
+      "IDEMPOTENCY_KEY_REUSED",
+      "This cancellation key was already used for another booking",
+    );
+  }
+  if (keyOwner) return cancellationReplay(keyOwner, requestFingerprint, viewer);
+
+  for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(
+        async (tx) => {
+          await lockBooking(tx, id);
+          const booking = await tx.booking.findUnique({
+            where: { id },
+            include: { participants: true },
+          });
+          if (!booking) throw new ApiError(404, "NOT_FOUND", "Booking not found");
+          const access = bookingAccess(viewer);
+          assertCanCancel(booking, viewer, access.canManage);
+
+          if (booking.status === BookingStatus.CANCELLED) {
+            assertCancellationFingerprint(booking, requestFingerprint);
+            return { booking, replayed: true as const };
+          }
+          if (booking.status !== BookingStatus.CONFIRMED) {
+            throw new ApiError(
+              409,
+              "INVALID_BOOKING_STATE",
+              "Only confirmed bookings can be cancelled",
+            );
+          }
+          const cancellationDeadline = new Date(
+            booking.slotStartsAtSnapshot.getTime() -
+              booking.cancellationWindowHoursSnapshot * 60 * 60 * 1000,
+          );
+          if (!access.canManage && new Date() > cancellationDeadline) {
+            throw new ApiError(
+              409,
+              "CANCELLATION_WINDOW_CLOSED",
+              "The cancellation window has closed",
+            );
+          }
+
+          const cancellationSource = cancellationSourceFor(viewer, access.canManage);
+          const actorRole = roleForCancellationSource(cancellationSource);
+          const cancelledAt = new Date();
+          const updated = await tx.booking.update({
+            where: { id },
+            data: {
+              status: BookingStatus.CANCELLED,
+              cancelledById: viewer.id,
+              cancelledAt,
+              cancellationReason: reason,
+              cancellationSource,
+              cancelledByNameSnapshot: viewer.name,
+              cancelledByRoleSnapshot: actorRole,
+              cancellationIdempotencyKey: idempotencyKey,
+              cancellationRequestFingerprint: requestFingerprint,
+              statusHistory: {
+                create: {
+                  fromStatus: BookingStatus.CONFIRMED,
+                  toStatus: BookingStatus.CANCELLED,
+                  actorUserId: viewer.id,
+                  actorNameSnapshot: viewer.name,
+                  actorRoleSnapshot: actorRole,
+                  reason,
+                  idempotencyKey,
+                },
+              },
+            },
+            include: { participants: true },
+          });
+          await createBookingNotifications(tx, {
+            userIds: booking.participants.map((participant) => participant.userId),
+            type: "BOOKING_CANCELLED",
+            title: `${booking.projectTitleSnapshot} booking cancelled`,
+            body: `${formatBookingWindow(
+              booking.slotStartsAtSnapshot,
+              booking.slotEndsAtSnapshot,
+              booking.timeZoneSnapshot,
+            )}. Reason: ${reason}`,
+            href: `/bookings/${booking.id}`,
+          });
+          await tx.auditLog.create({
+            data: {
+              actorUserId: viewer.id,
+              action: "booking.cancelled",
+              entityType: "Booking",
+              entityId: id,
+              metadata: {
+                reason,
+                cancellationSource,
+                cancelledAt: cancelledAt.toISOString(),
+                from: BookingStatus.CONFIRMED,
+                to: BookingStatus.CANCELLED,
+              },
+              requestId: context.requestId,
+              ipAddress: context.ipAddress,
+              userAgent: context.userAgent,
+            },
+          });
+          return { booking: updated, replayed: false as const };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
-      if (!canManage && new Date() > cancellationDeadline) {
-        throw new ApiError(409, "CANCELLATION_WINDOW_CLOSED", "The cancellation window has closed");
+      if (!result.replayed) await publishAvailability(result.booking, "BOOKING_CANCELLED");
+      return {
+        booking: bookingDto(result.booking, bookingAccess(viewer)),
+        replayed: result.replayed,
+      };
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        const replay = await prisma.booking.findFirst({
+          where: { cancelledById: viewer.id, cancellationIdempotencyKey: idempotencyKey },
+          include: { participants: true },
+        });
+        if (replay?.id === id) return cancellationReplay(replay, requestFingerprint, viewer);
+        throw new ApiError(
+          409,
+          "IDEMPOTENCY_KEY_REUSED",
+          "This cancellation key has already been used",
+        );
       }
-      const updated = await tx.booking.update({
-        where: { id },
-        data: {
-          status: BookingStatus.CANCELLED,
-          cancelledById: viewer.id,
-          cancelledAt: new Date(),
-          cancellationReason: reason,
-        },
-        include: { labSlot: true, participants: true },
-      });
-      await tx.auditLog.create({
-        data: {
-          actorUserId: viewer.id,
-          action: "booking.cancelled",
-          entityType: "Booking",
-          entityId: id,
-          metadata: { reason },
-        },
-      });
-      return bookingDto(updated);
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-  );
+      if (isSerializationConflict(error) && attempt < maxTransactionAttempts) continue;
+      if (isSerializationConflict(error)) {
+        throw new ApiError(
+          409,
+          "TRANSACTION_CONFLICT",
+          "The booking changed during cancellation. Refresh and try again.",
+        );
+      }
+      throw error;
+    }
+  }
+  throw new ApiError(409, "TRANSACTION_CONFLICT", "Refresh the booking and try again");
 }
 
 export async function updateStatus(
   id: string,
   status: BookingStatus,
   notes: string | null | undefined,
-  actorId: string,
+  viewer: Viewer,
+  context: RequestContext = {},
 ) {
+  if (status === BookingStatus.CANCELLED) {
+    throw new ApiError(
+      400,
+      "CANCELLATION_ENDPOINT_REQUIRED",
+      "Use the cancellation endpoint so actor, reason, and history are preserved",
+    );
+  }
   const allowed: Record<BookingStatus, BookingStatus[]> = {
-    CONFIRMED: [BookingStatus.ACTIVE, BookingStatus.CANCELLED, BookingStatus.NO_SHOW],
+    CONFIRMED: [BookingStatus.ACTIVE, BookingStatus.NO_SHOW],
     ACTIVE: [BookingStatus.COMPLETED],
     COMPLETED: [],
     CANCELLED: [],
     NO_SHOW: [],
   };
-  return prisma.$transaction(
+  const updated = await prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw(Prisma.sql`
-        SELECT id FROM "bookings" WHERE id = ${id}::uuid FOR UPDATE
-      `);
-      const existing = await tx.booking.findUnique({ where: { id } });
+      await lockBooking(tx, id);
+      const existing = await tx.booking.findUnique({
+        where: { id },
+        include: { participants: true },
+      });
       if (!existing) throw new ApiError(404, "NOT_FOUND", "Booking not found");
       if (!allowed[existing.status].includes(status)) {
         throw new ApiError(
@@ -263,79 +556,281 @@ export async function updateStatus(
           "This booking status transition is not allowed",
         );
       }
-      const updated = await tx.booking.update({
+      const actorRole = primaryRole(viewer.roles);
+      const booking = await tx.booking.update({
         where: { id },
-        data: { status, notes },
-        include: { labSlot: true, participants: true },
+        data: {
+          status,
+          notes,
+          statusHistory: {
+            create: {
+              fromStatus: existing.status,
+              toStatus: status,
+              actorUserId: viewer.id,
+              actorNameSnapshot: viewer.name,
+              actorRoleSnapshot: actorRole,
+              notes,
+            },
+          },
+        },
+        include: { participants: true },
       });
       await tx.auditLog.create({
         data: {
-          actorUserId: actorId,
+          actorUserId: viewer.id,
           action: "booking.status_changed",
           entityType: "Booking",
           entityId: id,
-          metadata: { from: existing.status, to: status },
+          metadata: { from: existing.status, to: status, notes },
+          requestId: context.requestId,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
         },
       });
-      return bookingDto(updated);
+      return booking;
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );
+  await publishAvailability(updated, "BOOKING_STATUS_CHANGED");
+  return bookingDto(updated, bookingAccess(viewer));
 }
 
-async function validateEquipment(
-  tx: Prisma.TransactionClient,
-  labId: string,
-  labSlotId: string,
-  requested: BookingInput["equipment"],
+function assertSlotInsideBookingWindow(
+  slot: {
+    startsAt: Date;
+    localDate: Date;
+    lab: { bookingHorizonDays: number; timeZone: string };
+  },
+  now: Date,
 ) {
-  if (new Set(requested.map((item) => item.equipmentId)).size !== requested.length) {
-    throw new ApiError(400, "DUPLICATE_EQUIPMENT", "Equipment requests must be unique");
-  }
-  for (const item of requested) {
-    const equipment = await tx.equipment.findFirst({
-      where: { id: item.equipmentId, labId, visible: true, deletedAt: null },
-    });
-    if (
-      !equipment ||
-      ["UNAVAILABLE", "UNDER_MAINTENANCE", "DAMAGED", "OUT_OF_SERVICE"].includes(equipment.status)
-    ) {
-      throw new ApiError(409, "EQUIPMENT_UNAVAILABLE", "Requested equipment is unavailable");
-    }
-    const reserved = await tx.bookingEquipment.aggregate({
-      where: {
-        equipmentId: item.equipmentId,
-        booking: { labSlotId, status: { in: capacityStatuses } },
-      },
-      _sum: { quantity: true },
-    });
-    if ((reserved._sum.quantity ?? 0) + item.quantity > equipment.availableQuantity) {
-      throw new ApiError(409, "EQUIPMENT_CAPACITY_EXCEEDED", `${equipment.name} is fully reserved`);
-    }
+  const today = localToday(slot.lab.timeZone, now);
+  const horizon = addLocalDays(today, slot.lab.bookingHorizonDays);
+  const slotDate = slot.localDate.toISOString().slice(0, 10);
+  if (slot.startsAt <= now || slotDate < today || slotDate > horizon) {
+    throw new ApiError(409, "SLOT_OUTSIDE_BOOKING_WINDOW", "This slot cannot be booked now");
   }
 }
 
-async function validateConsumables(
-  tx: Prisma.TransactionClient,
-  labId: string,
-  requested: BookingInput["consumables"],
+function isActiveStudent(user: { roles: UserRole[]; isActive: boolean; deletedAt: Date | null }) {
+  return user.isActive && user.deletedAt === null && user.roles.includes(UserRole.STUDENT);
+}
+
+function bookingAccess(viewer: Viewer) {
+  return {
+    viewerId: viewer.id,
+    canManage: hasPermission(viewer.roles, "booking.manage"),
+    canCancelOwn: hasPermission(viewer.roles, "booking.cancel.own"),
+  };
+}
+
+function assertCanRead(
+  booking: { createdById: string; participants: Array<{ userId: string }> },
+  viewer: Viewer,
 ) {
-  if (new Set(requested.map((item) => item.consumableId)).size !== requested.length) {
-    throw new ApiError(400, "DUPLICATE_CONSUMABLE", "Consumable requests must be unique");
+  const canRead =
+    booking.createdById === viewer.id ||
+    booking.participants.some((participant) => participant.userId === viewer.id) ||
+    hasPermission(viewer.roles, "booking.read.operational");
+  if (!canRead) throw new ApiError(403, "FORBIDDEN", "You do not have permission for this booking");
+}
+
+function assertCanCancel(booking: { createdById: string }, viewer: Viewer, canManage: boolean) {
+  const canCancelOwn =
+    booking.createdById === viewer.id && hasPermission(viewer.roles, "booking.cancel.own");
+  if (!canManage && !canCancelOwn) {
+    throw new ApiError(403, "FORBIDDEN", "You cannot cancel this booking");
   }
-  if (!requested.length) return;
-  const count = await tx.consumable.count({
-    where: { id: { in: requested.map((item) => item.consumableId) }, labId, isActive: true },
+}
+
+function creationFingerprint(data: BookingInput) {
+  return fingerprint({
+    version: 1,
+    labSlotId: data.labSlotId,
+    projectId: data.projectId,
+    participantIds: [...data.participantIds].sort(),
+    notes: data.notes ?? null,
   });
-  if (count !== requested.length) {
+}
+
+function cancellationFingerprint(id: string, reason: string) {
+  return fingerprint({ version: 1, bookingId: id, reason });
+}
+
+function fingerprint(value: unknown) {
+  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+async function findCreationReplay(userId: string, idempotencyKey: string) {
+  return prisma.booking.findUnique({
+    where: { createdById_idempotencyKey: { createdById: userId, idempotencyKey } },
+    include: { participants: true },
+  });
+}
+
+function assertCreationFingerprint(booking: BookingRecord, expectedFingerprint: string) {
+  if (booking.creationRequestFingerprint !== expectedFingerprint) {
     throw new ApiError(
-      400,
-      "INVALID_CONSUMABLE",
-      "A requested consumable is not available in this lab",
+      409,
+      "IDEMPOTENCY_KEY_REUSED",
+      "This booking key was already used with different booking details",
     );
   }
 }
 
-function hashToken(token: string) {
-  return crypto.createHash("sha256").update(token).digest("hex");
+function assertCancellationFingerprint(booking: BookingRecord, expectedFingerprint: string) {
+  if (
+    booking.cancellationRequestFingerprint &&
+    booking.cancellationRequestFingerprint !== expectedFingerprint
+  ) {
+    throw new ApiError(
+      409,
+      "IDEMPOTENCY_KEY_REUSED",
+      "This cancellation key was already used with a different reason",
+    );
+  }
+}
+
+function cancellationReplay(booking: BookingRecord, expectedFingerprint: string, viewer: Viewer) {
+  assertCanCancel(booking, viewer, hasPermission(viewer.roles, "booking.manage"));
+  assertCancellationFingerprint(booking, expectedFingerprint);
+  if (booking.status !== BookingStatus.CANCELLED) {
+    throw new ApiError(409, "CANCELLATION_NOT_COMMITTED", "Cancellation was not completed");
+  }
+  return { booking: bookingDto(booking, bookingAccess(viewer)), replayed: true as const };
+}
+
+async function recoverCreationConflict(
+  error: unknown,
+  viewer: Viewer,
+  data: BookingInput,
+  expectedFingerprint: string,
+) {
+  if (!isUniqueConflict(error) && !isSerializationConflict(error)) return null;
+  const replay = await findCreationReplay(viewer.id, data.idempotencyKey);
+  if (replay) {
+    assertCreationFingerprint(replay, expectedFingerprint);
+    return { booking: bookingDto(replay, bookingAccess(viewer)), replayed: true as const };
+  }
+  if (isUniqueConflict(error)) {
+    const duplicate = await prisma.booking.findFirst({
+      where: {
+        projectId: data.projectId,
+        labSlotId: data.labSlotId,
+        status: { in: capacityStatuses },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ApiError(
+        409,
+        "PROJECT_SLOT_ALREADY_BOOKED",
+        "This project already has a live booking for the selected slot",
+      );
+    }
+  }
+  return null;
+}
+
+async function createBookingNotifications(
+  tx: Prisma.TransactionClient,
+  event: { userIds: string[]; type: string; title: string; body: string; href: string },
+) {
+  const userIds = [...new Set(event.userIds)];
+  if (!userIds.length) return;
+  const notifications = await tx.notification.createManyAndReturn({
+    data: userIds.map((userId) => ({
+      userId,
+      type: event.type,
+      title: event.title,
+      body: event.body,
+      href: event.href,
+    })),
+    select: { id: true },
+  });
+  await tx.notificationDelivery.createMany({
+    data: notifications.map((notification) => ({
+      notificationId: notification.id,
+      channel: NotificationChannel.EMAIL,
+      status: DeliveryStatus.PENDING,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+async function publishAvailability(
+  booking: { id: string; labId: string; labSlotId: string },
+  type: string,
+) {
+  try {
+    await redis.publish(
+      `lab:${booking.labId}:availability`,
+      JSON.stringify({ type, bookingId: booking.id, labSlotId: booking.labSlotId }),
+    );
+  } catch (error) {
+    logger.warn(
+      { err: error, bookingId: booking.id, labSlotId: booking.labSlotId },
+      "Booking committed but the availability publication failed",
+    );
+  }
+}
+
+function cancellationSourceFor(viewer: Viewer, canManage: boolean): BookingCancellationSource {
+  if (!canManage) return BookingCancellationSource.STUDENT;
+  if (viewer.roles.includes(UserRole.SUPER_ADMIN)) return BookingCancellationSource.SUPER_ADMIN;
+  if (viewer.roles.includes(UserRole.ADMIN)) return BookingCancellationSource.ADMIN;
+  return BookingCancellationSource.LAB_ASSISTANT;
+}
+
+function roleForCancellationSource(source: BookingCancellationSource) {
+  return UserRole[source];
+}
+
+function primaryRole(roles: UserRole[]) {
+  const priority = [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.LAB_ASSISTANT,
+    UserRole.FACULTY_MENTOR,
+    UserRole.STUDENT,
+  ];
+  return priority.find((role) => roles.includes(role)) ?? UserRole.STUDENT;
+}
+
+function formatBookingWindow(startsAt: Date, endsAt: Date, timeZone: string) {
+  const start = new Intl.DateTimeFormat("en-IN", {
+    timeZone,
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(startsAt);
+  const end = new Intl.DateTimeFormat("en-IN", { timeZone, timeStyle: "short" }).format(endsAt);
+  return `${start}–${end}`;
+}
+
+async function lockProject(tx: Prisma.TransactionClient, projectId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "projects" WHERE id = ${projectId}::uuid FOR UPDATE
+  `);
+  if (rows.length !== 1) throw new ApiError(404, "NOT_FOUND", "Project not found");
+}
+
+async function lockSlot(tx: Prisma.TransactionClient, labSlotId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "lab_slots" WHERE id = ${labSlotId}::uuid FOR UPDATE
+  `);
+  if (rows.length !== 1) throw new ApiError(404, "NOT_FOUND", "MakerSpace slot not found");
+}
+
+async function lockBooking(tx: Prisma.TransactionClient, bookingId: string) {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "bookings" WHERE id = ${bookingId}::uuid FOR UPDATE
+  `);
+  if (rows.length !== 1) throw new ApiError(404, "NOT_FOUND", "Booking not found");
+}
+
+function isSerializationConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+}
+
+function isUniqueConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

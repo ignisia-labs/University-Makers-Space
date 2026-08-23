@@ -42,6 +42,7 @@ type PolicyLab = {
   cancellationWindowHours: number;
   maxFutureBookingsPerProject: number | null;
   projectVerificationRequired: boolean;
+  teamLeaderAttendanceRequired: boolean;
   configurationVersion: number;
   isActive: boolean;
   updatedAt: Date;
@@ -81,6 +82,9 @@ export async function updateConfiguration(
           "The MakerSpace configuration changed. Reload before saving again.",
         );
       }
+      if (input.bookingCapacity < existing.bookingCapacity) {
+        await assertFutureCapacityCompatible(tx, labId, input.bookingCapacity);
+      }
 
       await tx.lab.update({
         where: { id: labId },
@@ -96,6 +100,7 @@ export async function updateConfiguration(
           cancellationWindowHours: input.cancellationWindowHours,
           maxFutureBookingsPerProject: input.maxFutureBookingsPerProject,
           projectVerificationRequired: input.projectVerificationRequired,
+          teamLeaderAttendanceRequired: input.teamLeaderAttendanceRequired,
           configurationVersion: { increment: 1 },
         },
       });
@@ -394,7 +399,7 @@ export async function dailyAvailability(
               ? "Only the Team Leader can book for this project."
               : lab.projectVerificationRequired && project.status !== ProjectStatus.VERIFIED
                 ? "Faculty Mentor verification is required before booking."
-                : "This project can continue to booking when Phase 4 is enabled.",
+                : "This project is eligible to continue to booking.",
         }
       : null,
     equipmentAdvisory,
@@ -501,6 +506,61 @@ async function lockLab(tx: Prisma.TransactionClient, labId: string) {
     SELECT id FROM "labs" WHERE id = ${labId}::uuid FOR UPDATE
   `);
   if (rows.length !== 1) throw new ApiError(404, "NOT_FOUND", "MakerSpace not found");
+}
+
+async function assertFutureCapacityCompatible(
+  tx: Prisma.TransactionClient,
+  labId: string,
+  proposedCapacity: number,
+) {
+  const now = new Date();
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id
+    FROM "lab_slots"
+    WHERE "lab_id" = ${labId}::uuid AND "starts_at" > ${now}
+    ORDER BY "starts_at", id
+    FOR UPDATE
+  `);
+  const conflicts = await tx.$queryRaw<
+    Array<{
+      id: string;
+      localDate: Date;
+      startsAt: Date;
+      reservedAttendees: number;
+    }>
+  >(Prisma.sql`
+    SELECT
+      slot.id,
+      slot."local_date" AS "localDate",
+      slot."starts_at" AS "startsAt",
+      SUM(booking."attendee_count")::int AS "reservedAttendees"
+    FROM "lab_slots" AS slot
+    INNER JOIN "bookings" AS booking ON booking."lab_slot_id" = slot.id
+    WHERE
+      slot."lab_id" = ${labId}::uuid
+      AND slot."starts_at" > ${now}
+      AND booking.status IN ('CONFIRMED', 'ACTIVE')
+    GROUP BY slot.id, slot."local_date", slot."starts_at"
+    HAVING SUM(booking."attendee_count") > ${proposedCapacity}
+    ORDER BY slot."starts_at", slot.id
+    LIMIT 1
+  `);
+  const conflict = conflicts[0];
+  if (!conflict) return;
+  throw new ApiError(
+    409,
+    "CONFIGURATION_CAPACITY_CONFLICT",
+    "The new capacity is below attendance already reserved for a future slot.",
+    [
+      {
+        labSlotId: conflict.id,
+        date: dbDateToLocalDate(conflict.localDate),
+        startsAt: conflict.startsAt.toISOString(),
+        reservedAttendees: conflict.reservedAttendees,
+        proposedCapacity,
+      },
+    ],
+  );
 }
 
 async function reconcileRange(
@@ -678,6 +738,7 @@ function configurationDto(lab: PolicyLab, exceptions: DateException[]) {
     cancellationWindowHours: lab.cancellationWindowHours,
     maxFutureBookingsPerProject: lab.maxFutureBookingsPerProject,
     projectVerificationRequired: lab.projectVerificationRequired,
+    teamLeaderAttendanceRequired: lab.teamLeaderAttendanceRequired,
     configurationVersion: lab.configurationVersion,
     updatedAt: lab.updatedAt.toISOString(),
     bookingWindow: { fromDate: today, toDate: addLocalDays(today, lab.bookingHorizonDays) },
@@ -712,6 +773,7 @@ function labSummary(lab: PolicyLab) {
     slotDurationMinutes: lab.slotDurationMinutes,
     bookingCapacity: lab.bookingCapacity,
     bookingHorizonDays: lab.bookingHorizonDays,
+    teamLeaderAttendanceRequired: lab.teamLeaderAttendanceRequired,
   };
 }
 
@@ -727,6 +789,7 @@ function configurationAuditSnapshot(lab: PolicyLab) {
     cancellationWindowHours: lab.cancellationWindowHours,
     maxFutureBookingsPerProject: lab.maxFutureBookingsPerProject,
     projectVerificationRequired: lab.projectVerificationRequired,
+    teamLeaderAttendanceRequired: lab.teamLeaderAttendanceRequired,
     configurationVersion: lab.configurationVersion,
     weeklySchedule: lab.schedules,
   };

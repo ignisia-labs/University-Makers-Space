@@ -1,5 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Check, Loader2, Pencil, Search, ShieldCheck, UserPlus, X } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  Archive,
+  ArrowRight,
+  Check,
+  Loader2,
+  Pencil,
+  Search,
+  ShieldCheck,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -40,10 +51,12 @@ export function PersistedProjectDetail({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const isLeader = project.viewerRelationship === "LEADER";
   const latestMentorRequest = project.mentorRequests[0];
-  const canDecide =
+  const canDecide = Boolean(
     role === "Faculty Mentor" &&
-    latestMentorRequest?.faculty.id === user?.id &&
-    latestMentorRequest.status === "PENDING";
+    latestMentorRequest &&
+    latestMentorRequest.faculty.id === user?.id &&
+    latestMentorRequest.status === "PENDING",
+  );
   const ownMembership = project.members.find(
     (member) => member.userId === user?.id || member.email === user?.email,
   );
@@ -243,17 +256,41 @@ export function PersistedProjectDetail({
         <SectionTitle>Bookings</SectionTitle>
         {project.bookings.length ? (
           <div className="mt-4 divide-y divide-border">
-            {project.bookings.map((booking) => (
-              <div key={booking.id} className="flex items-center justify-between gap-3 py-3">
-                <span className="text-sm">
-                  {new Date(booking.startsAt).toLocaleString("en-IN")}
-                </span>
-                <StatusBadge label={invitationStatusLabel(booking.status)} />
-              </div>
-            ))}
+            {project.bookings.map((booking) =>
+              role === "Student" ? (
+                <Link
+                  key={booking.id}
+                  to="/bookings/$bookingId"
+                  params={{ bookingId: booking.id }}
+                  className="flex min-h-14 items-center justify-between gap-3 py-3"
+                >
+                  <ProjectBookingRow booking={booking} linked />
+                </Link>
+              ) : (
+                <div
+                  key={booking.id}
+                  className="flex min-h-14 items-center justify-between gap-3 py-3"
+                >
+                  <ProjectBookingRow booking={booking} />
+                </div>
+              ),
+            )}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">Booking history connects in Phase 4.</p>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              No bookings have been made for this project.
+            </p>
+            {isLeader && project.status === "VERIFIED" && (
+              <Link
+                to="/book"
+                search={{ project: project.id }}
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-primary"
+              >
+                Find a slot
+              </Link>
+            )}
+          </div>
         )}
       </section>
 
@@ -346,6 +383,24 @@ export function PersistedProjectDetail({
         </div>
       </ResponsiveModal>
     </div>
+  );
+}
+
+function ProjectBookingRow({
+  booking,
+  linked = false,
+}: {
+  booking: ProjectDetail["bookings"][number];
+  linked?: boolean;
+}) {
+  return (
+    <>
+      <span className="text-sm">{new Date(booking.startsAt).toLocaleString("en-IN")}</span>
+      <span className="flex items-center gap-2">
+        <StatusBadge label={invitationStatusLabel(booking.status)} />
+        {linked && <ArrowRight className="size-4 text-muted-foreground" aria-hidden />}
+      </span>
+    </>
   );
 }
 
@@ -482,7 +537,7 @@ function ChangeMentorForm({
   onDone,
 }: {
   projectId: string;
-  currentMentorId?: string;
+  currentMentorId?: string | undefined;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();

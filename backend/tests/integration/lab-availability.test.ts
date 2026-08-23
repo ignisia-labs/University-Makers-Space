@@ -43,6 +43,7 @@ const lab = {
   cancellationWindowHours: 2,
   maxFutureBookingsPerProject: null,
   projectVerificationRequired: true,
+  teamLeaderAttendanceRequired: true,
   configurationVersion: 1,
   isActive: true,
   createdById: null,

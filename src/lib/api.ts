@@ -253,12 +253,13 @@ export const projectsApi = {
 };
 
 export const bookingsApi = {
-  list: (params?: Record<string, string>) => api.get(`/bookings${toQuery(params)}`),
-  get: (id: string) => api.get(`/bookings/${id}`),
-  create: (data: CreateBookingInput) => api.post("/bookings", data),
-  cancel: (id: string, reason: string) => api.post(`/bookings/${id}/cancel`, { reason }),
-  updateStatus: (id: string, status: string, notes?: string | null) =>
-    api.patch(`/bookings/${id}/status`, { status, notes }),
+  list: (params?: Record<string, string>) => api.get<BookingDto[]>(`/bookings${toQuery(params)}`),
+  get: (id: string) => api.get<BookingDto>(`/bookings/${id}`),
+  create: (data: CreateBookingInput) => api.post<BookingMutationResult>("/bookings", data),
+  cancel: (id: string, data: CancelBookingInput) =>
+    api.post<BookingDto>(`/bookings/${id}/cancel`, data),
+  updateStatus: (id: string, status: BookingStatus, notes?: string | null) =>
+    api.patch<BookingDto>(`/bookings/${id}/status`, { status, notes }),
 };
 
 export const labsApi = {
@@ -434,6 +435,7 @@ export type LabConfiguration = {
   cancellationWindowHours: number;
   maxFutureBookingsPerProject: number | null;
   projectVerificationRequired: boolean;
+  teamLeaderAttendanceRequired: boolean;
   configurationVersion: number;
   updatedAt: string;
   bookingWindow: { fromDate: string; toDate: string };
@@ -491,6 +493,7 @@ export type LabAvailabilitySummary = {
   slotDurationMinutes: number;
   bookingCapacity: number;
   bookingHorizonDays: number;
+  teamLeaderAttendanceRequired: boolean;
 };
 
 export type DailyAvailability = {
@@ -655,12 +658,55 @@ export type UpdateProjectInput = {
   consumableIds?: string[];
 };
 
+export type BookingStatus = "CONFIRMED" | "ACTIVE" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+
+export type BookingParticipantDto = {
+  userId: string;
+  name: string;
+  email: string;
+  prn?: string;
+  role: string;
+};
+
+export type BookingDto = {
+  id: string;
+  labId: string;
+  labSlotId: string;
+  projectId: string;
+  createdById: string;
+  projectTitle: string;
+  labName: string;
+  timeZone: string;
+  attendeeCount: number;
+  status: BookingStatus;
+  statusLabel: string;
+  notes: string | null;
+  cancellationReason: string | null;
+  cancellationSource: "STUDENT" | "LAB_ASSISTANT" | "ADMIN" | "SUPER_ADMIN" | null;
+  cancelledAt: string | null;
+  startsAt: string;
+  endsAt: string;
+  participants: BookingParticipantDto[];
+  canCancel: boolean;
+  cancellationDeadline: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookingMutationResult = {
+  booking: BookingDto;
+  replayed: boolean;
+};
+
 export type CreateBookingInput = {
   labSlotId: string;
   projectId: string;
   participantIds: string[];
-  equipment?: Array<{ equipmentId: string; quantity: number }>;
-  consumables?: Array<{ consumableId: string; expectedQuantity?: number }>;
   idempotencyKey: string;
   notes?: string | null;
+};
+
+export type CancelBookingInput = {
+  reason: string;
+  idempotencyKey: string;
 };

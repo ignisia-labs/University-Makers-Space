@@ -4,7 +4,6 @@ import type {
   Equipment,
   EquipmentCategory,
   Event,
-  LabSlot,
   Notification,
   Project,
   StudentProfile,
@@ -22,8 +21,13 @@ type UserWithAcademicProfile = User & {
 };
 type EquipmentWithCategory = Equipment & { category?: EquipmentCategory };
 type BookingWithDetails = Booking & {
-  labSlot?: LabSlot;
   participants?: BookingParticipant[];
+};
+type BookingAccess = {
+  viewerId: string;
+  canManage: boolean;
+  canCancelOwn: boolean;
+  now?: Date;
 };
 
 export const userDto = (user: UserWithProfile | UserWithAcademicProfile) => ({
@@ -72,22 +76,66 @@ export const equipmentDto = (equipment: EquipmentWithCategory) => ({
   updatedAt: equipment.updatedAt.toISOString(),
 });
 
-export const bookingDto = (booking: BookingWithDetails) => ({
-  id: booking.id,
-  labId: booking.labId,
-  labSlotId: booking.labSlotId,
-  projectId: booking.projectId,
-  createdById: booking.createdById,
-  attendeeCount: booking.attendeeCount,
-  status: booking.status,
-  notes: booking.notes,
-  cancellationReason: booking.cancellationReason,
-  startsAt: booking.labSlot?.startsAt.toISOString(),
-  endsAt: booking.labSlot?.endsAt.toISOString(),
-  participantIds: booking.participants?.map((participant) => participant.userId),
-  createdAt: booking.createdAt.toISOString(),
-  updatedAt: booking.updatedAt.toISOString(),
-});
+export const bookingDto = (booking: BookingWithDetails, access?: BookingAccess) => {
+  const cancellationDeadline = new Date(
+    booking.slotStartsAtSnapshot.getTime() -
+      booking.cancellationWindowHoursSnapshot * 60 * 60 * 1000,
+  );
+  const now = access?.now ?? new Date();
+  const canCancel =
+    booking.status === "CONFIRMED" &&
+    Boolean(
+      access &&
+      (access.canManage ||
+        (access.canCancelOwn &&
+          access.viewerId === booking.createdById &&
+          now <= cancellationDeadline)),
+    );
+  return {
+    id: booking.id,
+    labId: booking.labId,
+    labSlotId: booking.labSlotId,
+    projectId: booking.projectId,
+    createdById: booking.createdById,
+    projectTitle: booking.projectTitleSnapshot,
+    labName: booking.labNameSnapshot,
+    timeZone: booking.timeZoneSnapshot,
+    attendeeCount: booking.attendeeCount,
+    status: booking.status,
+    statusLabel: bookingStatusLabel(booking),
+    notes: booking.notes,
+    cancellationReason: booking.cancellationReason,
+    cancellationSource: booking.cancellationSource,
+    cancelledAt: booking.cancelledAt?.toISOString() ?? null,
+    startsAt: booking.slotStartsAtSnapshot.toISOString(),
+    endsAt: booking.slotEndsAtSnapshot.toISOString(),
+    participants:
+      booking.participants?.map((participant) => ({
+        userId: participant.userId,
+        name: participant.nameSnapshot,
+        email: participant.emailSnapshot,
+        ...(participant.prnSnapshot ? { prn: participant.prnSnapshot } : {}),
+        role: participant.projectRoleSnapshot,
+      })) ?? [],
+    canCancel,
+    cancellationDeadline: cancellationDeadline.toISOString(),
+    createdAt: booking.createdAt.toISOString(),
+    updatedAt: booking.updatedAt.toISOString(),
+  };
+};
+
+function bookingStatusLabel(booking: BookingWithDetails) {
+  if (booking.status === "ACTIVE") return "In Progress";
+  if (booking.status === "COMPLETED") return "Completed";
+  if (booking.status === "NO_SHOW") return "No Show";
+  if (booking.status === "CANCELLED") {
+    if (booking.cancellationSource === "STUDENT") return "Cancelled by Student";
+    if (booking.cancellationSource === "LAB_ASSISTANT") return "Cancelled by Lab Assistant";
+    if (booking.cancellationSource === "SUPER_ADMIN") return "Cancelled by Super Admin";
+    return "Cancelled by Admin";
+  }
+  return "Confirmed";
+}
 
 export const projectDto = (project: Project) => ({
   id: project.id,

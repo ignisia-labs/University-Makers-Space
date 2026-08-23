@@ -174,6 +174,14 @@ export function LabConfigurationPanel() {
             }
           />
           <ToggleField
+            label="Require Team Leader attendance"
+            hint="Keeps the Team Leader selected when a project booking is created."
+            checked={form.teamLeaderAttendanceRequired}
+            onCheckedChange={(checked) =>
+              setForm({ ...form, teamLeaderAttendanceRequired: checked })
+            }
+          />
+          <ToggleField
             label="Quick Visits enabled"
             hint="The detailed visit workflow is connected in Phase 5."
             checked={form.quickVisitsEnabled}
@@ -628,6 +636,7 @@ function configurationInput(configuration: LabConfiguration): UpdateLabConfigura
     cancellationWindowHours: configuration.cancellationWindowHours,
     maxFutureBookingsPerProject: configuration.maxFutureBookingsPerProject,
     projectVerificationRequired: configuration.projectVerificationRequired,
+    teamLeaderAttendanceRequired: configuration.teamLeaderAttendanceRequired,
     weeklySchedule: configuration.weeklySchedule,
   };
 }

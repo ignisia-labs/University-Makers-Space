@@ -58,9 +58,10 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 - `POST /projects/mentor-requests/:requestId/email-review` and `POST /projects/mentor-requests/:requestId/email-decision` power the signed, seven-day Faculty email action link; the token remains in the URL fragment and is submitted in the request body, so it is not sent in server/access logs. No app login is required and rejection requires a reason.
 - `GET /users/search/faculty-mentors` provides minimum-length, paginated, role-filtered search over the university-provided Faculty directory. Teammates are invited directly by institutional email and do not need to exist before invitation.
 - `PATCH /users/me/student-profile` updates the signed-in Student's permitted profile fields.
-- `POST /bookings` accepts `labSlotId`, `projectId`, selected `participantIds`, requested equipment/consumables, and a UUID `idempotencyKey`.
-- `POST /bookings/:id/cancel` cancels without deleting history.
-- `PATCH /bookings/:id/status` applies the controlled operational transition table.
+- `POST /bookings` accepts only `labSlotId`, `projectId`, unique selected `participantIds`, a UUID `idempotencyKey`, and optional `notes`. It reserves attendee capacity only; machine and consumable reservation are not part of this phase.
+- `GET /bookings?scope=upcoming|past|all&page=&limit=` returns a server-filtered, paginated list ordered by immutable slot-time snapshots. Operational roles may additionally filter by `userId`; Students remain restricted to bookings they created or attend.
+- `POST /bookings/:id/cancel` requires `reason` and a UUID `idempotencyKey`, records who cancelled and why, and never deletes booking history.
+- `PATCH /bookings/:id/status` applies only the controlled operational transitions to `ACTIVE`, `COMPLETED`, or `NO_SHOW`. Cancellation is deliberately available only through the cancellation endpoint.
 - `PATCH /equipment/:id/availability` lets Lab Assistants/Admins change only operational status or available quantity and requires an audited reason.
 - `GET /labs/:labId/availability/dates` resolves the bounded booking window from weekly policy and date exceptions without frontend timezone calculations.
 - `GET /labs/:labId/availability` returns one date's generated slots, remaining attendee places, project eligibility, and advisory equipment status.
@@ -70,13 +71,17 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 - `GET|POST|PATCH /users/provisioning` maintains deny-by-default privileged identity claims.
 - `PATCH /users/:id/roles` changes roles and revokes all of that user's active sessions.
 
-Booking creation uses a serializable transaction and locks the selected lab-slot row before checking lab capacity, equipment quantity, consumables, project verification, team membership, and attendee selection. A QR secret is returned only at creation; only its hash is stored.
+Booking creation uses a bounded-retry serializable transaction. It locks the project and selected slot, then verifies the lab is active, the slot is current/open and inside its configured local-date horizon, the project belongs to that lab, applicable project-verification policy, active accepted Student membership, Team Leader selection when configured, the per-project future-booking limit, one live booking per project/slot, and remaining attendee capacity. Capacity conflicts use `SLOT_CAPACITY_EXCEEDED` with `remainingCapacity` and `requestedParticipants` details. The same creator/idempotency key replays only when its SHA-256 request fingerprint matches; changed payloads are rejected.
+
+Booking and participant DTOs are built from creation-time snapshots of project title, lab name, slot times, timezone, cancellation policy, participant identity, PRN, and project role. Later edits to projects, labs, slots, or profiles therefore cannot rewrite booking history. Every creation, cancellation, and operational status change appends immutable status history and an audit record. Creation and cancellation batch-deduplicate participant notifications and insert pending email-delivery outbox rows in the same transaction. Availability invalidation is published through Redis after commit on a best-effort basis; clients still revalidate availability before showing a successful mutation.
+
+Student owners may cancel a confirmed booking only before its snapshotted cancellation deadline. Lab Assistants and administrators with `booking.manage` may cancel operationally. Cancellation idempotency uses a separate payload fingerprint and persists the reason, source, actor identity/role snapshots, and timestamp atomically.
 
 ## Domain configuration
 
-The schema makes labs, per-day schedules, date closures/special hours, generated slots, capacities, booking horizon, cancellation window, optional maximum future bookings per project, Quick Visit policy, project-verification policy, equipment categories, equipment, consumable categories, consumables, departments, programmes, and academic-year choices data-driven.
+The schema makes labs, per-day schedules, date closures/special hours, generated slots, capacities, booking horizon, cancellation window, optional maximum future bookings per project, Quick Visit policy, project-verification policy, Team Leader attendance policy, equipment categories, equipment, consumable categories, consumables, departments, programmes, and academic-year choices data-driven.
 
-Phase 3 configuration writes require `lab.configure`, use optimistic `configurationVersion` checks plus a serialized Lab row lock, and record an audit event. Slot rows carry a local MakerSpace date, UTC timestamps, a policy version, and indexed Lab/date/status access. Configuration writes and explicit regeneration materialize the bounded horizon; ordinary availability traffic is read-only unless a date is missing or stale. Duplicate generation updates the same unique slot rows and never creates duplicates. Slots with booking/visit history are closed instead of deleted when a later policy removes them.
+Phase 3 configuration writes require `lab.configure`, use optimistic `configurationVersion` checks plus a serialized Lab row lock, and record an audit event. Slot rows carry a local MakerSpace date, UTC timestamps, a policy version, and indexed Lab/date/status access. Configuration writes and explicit regeneration materialize the bounded horizon; ordinary availability traffic is read-only unless a date is missing or stale. Duplicate generation updates the same unique slot rows and never creates duplicates. Slots with booking/visit history are closed instead of deleted when a later policy removes them. A capacity reduction locks affected future slot rows and is rejected with `CONFIGURATION_CAPACITY_CONFLICT` if any proposed slot capacity is below its confirmed/active attendee total.
 
 ## Responses and errors
 
