@@ -2,6 +2,25 @@
 
 Material product, architecture, requirement-status, and delivery decisions are appended here. The PRD/RFP remains authoritative; changelog entries describe implementation and verification state without changing requirements.
 
+## 2026-08-23 — Dependency security remediation
+
+**Branch:** `development-codex`
+
+### Completed
+
+- Closed the six dependency advisories reported for the default branch: five frontend dependency-chain alerts rooted in vulnerable `undici@7.28.0`, and one backend chain rooted in vulnerable `deepmerge-ts@7.1.5` through Prisma configuration.
+- Overrode Undici to patched version `7.29.0` and explicitly retained Miniflare 4 for Nitro while Cloudflare/Wrangler continue using their compatible Miniflare 5 line.
+- Pinned Prisma CLI and Prisma Client together at the audit-recommended safe version `6.12.0` and regenerated the Prisma client.
+- Changed dependency metadata and lockfiles only; no RFP requirement, endpoint, schema, business rule, or mock-role-switch behavior changed.
+
+### Verification
+
+- Root/frontend `npm audit`: 0 vulnerabilities; dependency tree validation passed.
+- Backend `npm audit`: 0 vulnerabilities; dependency tree validation passed.
+- Frontend lint passed with 0 errors and 11 existing Fast Refresh warnings; production build passed.
+- Backend lint, TypeScript build, and 24/24 tests across 6 suites passed.
+- Prisma schema validation passed; all 5 local PostgreSQL migrations are applied and the database schema is up to date.
+
 ## 2026-08-23 — Phase 1 integration and identity foundation
 
 **Branch:** `development-codex`

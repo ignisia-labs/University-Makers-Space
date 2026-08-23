@@ -73,10 +73,11 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 
 - Backend TypeScript build passes.
 - Frontend production build passes.
-- Backend lint completes without errors. Frontend lint currently reports formatting errors plus existing UI-library Fast Refresh warnings and must pass before the Phase 1 exit gate.
+- Backend lint completes without errors. Frontend lint completes with zero errors and eleven existing Fast Refresh warnings.
 - Twenty-four backend unit/integration-style tests pass across six suites.
 - Prisma schema validates and all five migrations are applied to local PostgreSQL.
 - Live local health and Google configuration smoke tests pass. An unauthenticated protected reference-data request correctly returns 401.
+- Root/frontend and backend dependency audits report zero known vulnerabilities after the 2026-08-23 Undici and Prisma remediation; both dependency trees validate cleanly.
 
 ## 3. What is still mock or incomplete
 

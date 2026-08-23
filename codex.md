@@ -15,6 +15,8 @@ This file is the persistent engineering context for this repository. Update it w
 
 The frontend proxies `/api` and `/health` to port 4000 in development. It does **not** import backend code: Vite explicitly excludes `backend/` from scanning and watching. Backend service configuration belongs in `backend/.env` (ignored by Git). It needs database, Redis, JWT, Cloudinary, CORS origin, Google client, and PRN policy settings. `GOOGLE_CLIENT_SECRET` may be kept there for future OAuth flows, but the current Google ID-token verifier uses `GOOGLE_CLIENT_ID` only.
 
+Dependency security baseline (2026-08-23): root/frontend and backend `npm audit` both report zero vulnerabilities. The frontend pins Miniflare 4 for Nitro's optional peer and overrides Undici to patched `7.29.0`, while Cloudflare/Wrangler retain their compatible Miniflare 5 line. Backend Prisma CLI and Client are pinned together at audit-recommended `6.12.0`; upgrade them only as a matched pair and re-run generate, validate, migration status, tests, and both audits.
+
 ## Project layout
 
 ```text
