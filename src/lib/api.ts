@@ -663,7 +663,7 @@ export type BookingStatus = "CONFIRMED" | "ACTIVE" | "COMPLETED" | "CANCELLED" |
 export type BookingParticipantDto = {
   userId: string;
   name: string;
-  email: string;
+  email?: string;
   prn?: string;
   role: string;
 };

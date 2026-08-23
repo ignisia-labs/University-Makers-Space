@@ -7,9 +7,9 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
-    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\"",
     "test": "jest --runInBand",
-    "test:booking-concurrency": "tsx scripts/verify-booking-concurrency.ts",
+    "test:booking-concurrency": "LOG_LEVEL=silent tsx scripts/verify-booking-concurrency.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts"

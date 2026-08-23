@@ -41,6 +41,7 @@ bookingRoutes.patch(
   "/:id/status",
   authenticate,
   authorize("booking.manage"),
+  bookingMutationLimiter,
   validate(updateBookingStatusSchema),
   asyncHandler(controller.updateStatus),
 );

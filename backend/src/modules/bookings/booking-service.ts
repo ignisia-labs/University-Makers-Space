@@ -22,6 +22,7 @@ import { addLocalDays, localToday } from "../labs/lab-time.js";
 const capacityStatuses = [BookingStatus.CONFIRMED, BookingStatus.ACTIVE];
 const terminalStatuses = [BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.NO_SHOW];
 const maxTransactionAttempts = 3;
+const maxSerializationBackoffMs = 150;
 
 type Viewer = NonNullable<Express.Request["user"]>;
 type BookingRecord = Prisma.BookingGetPayload<{ include: { participants: true } }>;
@@ -175,7 +176,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
               "Project and slot must belong to the same MakerSpace",
             );
           }
-          if (slot.lab.projectVerificationRequired && project.status !== ProjectStatus.VERIFIED) {
+          if (project.status !== ProjectStatus.VERIFIED) {
             throw new ApiError(
               409,
               "PROJECT_NOT_VERIFIED",
@@ -342,7 +343,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
           return { booking: created, replayed: false as const };
         },
         {
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
           maxWait: 5_000,
           timeout: 10_000,
         },
@@ -355,7 +356,10 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
     } catch (error) {
       const recovered = await recoverCreationConflict(error, viewer, data, requestFingerprint);
       if (recovered) return recovered;
-      if (isSerializationConflict(error) && attempt < maxTransactionAttempts) continue;
+      if (isSerializationConflict(error) && attempt < maxTransactionAttempts) {
+        await waitForSerializationRetry(attempt);
+        continue;
+      }
       if (isSerializationConflict(error)) {
         throw new ApiError(
           409,
@@ -388,7 +392,9 @@ export async function cancel(
       "This cancellation key was already used for another booking",
     );
   }
-  if (keyOwner) return cancellationReplay(keyOwner, requestFingerprint, viewer);
+  if (keyOwner) {
+    return cancellationReplay(keyOwner, requestFingerprint, idempotencyKey, viewer);
+  }
 
   for (let attempt = 1; attempt <= maxTransactionAttempts; attempt += 1) {
     try {
@@ -404,8 +410,18 @@ export async function cancel(
           assertCanCancel(booking, viewer, access.canManage);
 
           if (booking.status === BookingStatus.CANCELLED) {
-            assertCancellationFingerprint(booking, requestFingerprint);
-            return { booking, replayed: true as const };
+            if (
+              booking.cancelledById === viewer.id &&
+              booking.cancellationIdempotencyKey === idempotencyKey
+            ) {
+              assertCancellationFingerprint(booking, requestFingerprint);
+              return { booking, replayed: true as const };
+            }
+            throw new ApiError(
+              409,
+              "BOOKING_ALREADY_CANCELLED",
+              "This booking has already been cancelled",
+            );
           }
           if (booking.status !== BookingStatus.CONFIRMED) {
             throw new ApiError(
@@ -486,7 +502,11 @@ export async function cancel(
           });
           return { booking: updated, replayed: false as const };
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+          maxWait: 5_000,
+          timeout: 10_000,
+        },
       );
       if (!result.replayed) await publishAvailability(result.booking, "BOOKING_CANCELLED");
       return {
@@ -499,15 +519,24 @@ export async function cancel(
           where: { cancelledById: viewer.id, cancellationIdempotencyKey: idempotencyKey },
           include: { participants: true },
         });
-        if (replay?.id === id) return cancellationReplay(replay, requestFingerprint, viewer);
+        if (replay?.id === id) {
+          return cancellationReplay(replay, requestFingerprint, idempotencyKey, viewer);
+        }
         throw new ApiError(
           409,
           "IDEMPOTENCY_KEY_REUSED",
           "This cancellation key has already been used",
         );
       }
-      if (isSerializationConflict(error) && attempt < maxTransactionAttempts) continue;
       if (isSerializationConflict(error)) {
+        const replay = await findCancellationReplay(viewer.id, idempotencyKey);
+        if (replay?.id === id) {
+          return cancellationReplay(replay, requestFingerprint, idempotencyKey, viewer);
+        }
+        if (attempt < maxTransactionAttempts) {
+          await waitForSerializationRetry(attempt);
+          continue;
+        }
         throw new ApiError(
           409,
           "TRANSACTION_CONFLICT",
@@ -589,7 +618,11 @@ export async function updateStatus(
       });
       return booking;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      maxWait: 5_000,
+      timeout: 10_000,
+    },
   );
   await publishAvailability(updated, "BOOKING_STATUS_CHANGED");
   return bookingDto(updated, bookingAccess(viewer));
@@ -616,10 +649,12 @@ function isActiveStudent(user: { roles: UserRole[]; isActive: boolean; deletedAt
 }
 
 function bookingAccess(viewer: Viewer) {
+  const canManage = hasPermission(viewer.roles, "booking.manage");
   return {
     viewerId: viewer.id,
-    canManage: hasPermission(viewer.roles, "booking.manage"),
+    canManage,
     canCancelOwn: hasPermission(viewer.roles, "booking.cancel.own"),
+    canReadParticipantPii: canManage || hasPermission(viewer.roles, "booking.read.operational"),
   };
 }
 
@@ -690,13 +725,31 @@ function assertCancellationFingerprint(booking: BookingRecord, expectedFingerpri
   }
 }
 
-function cancellationReplay(booking: BookingRecord, expectedFingerprint: string, viewer: Viewer) {
+function cancellationReplay(
+  booking: BookingRecord,
+  expectedFingerprint: string,
+  idempotencyKey: string,
+  viewer: Viewer,
+) {
   assertCanCancel(booking, viewer, hasPermission(viewer.roles, "booking.manage"));
+  if (
+    booking.cancelledById !== viewer.id ||
+    booking.cancellationIdempotencyKey !== idempotencyKey
+  ) {
+    throw new ApiError(409, "BOOKING_ALREADY_CANCELLED", "This booking has already been cancelled");
+  }
   assertCancellationFingerprint(booking, expectedFingerprint);
   if (booking.status !== BookingStatus.CANCELLED) {
     throw new ApiError(409, "CANCELLATION_NOT_COMMITTED", "Cancellation was not completed");
   }
   return { booking: bookingDto(booking, bookingAccess(viewer)), replayed: true as const };
+}
+
+async function findCancellationReplay(userId: string, idempotencyKey: string) {
+  return prisma.booking.findFirst({
+    where: { cancelledById: userId, cancellationIdempotencyKey: idempotencyKey },
+    include: { participants: true },
+  });
 }
 
 async function recoverCreationConflict(
@@ -828,9 +881,18 @@ async function lockBooking(tx: Prisma.TransactionClient, bookingId: string) {
 }
 
 function isSerializationConflict(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code === "P2034") return true;
+  const sqlState = typeof error.meta?.code === "string" ? error.meta.code : null;
+  return error.code === "P2010" && (sqlState === "40001" || sqlState === "40P01");
 }
 
 function isUniqueConflict(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+async function waitForSerializationRetry(attempt: number) {
+  const ceiling = Math.min(maxSerializationBackoffMs, 10 * 2 ** attempt);
+  const delayMs = Math.max(1, Math.floor(Math.random() * ceiling));
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
 }

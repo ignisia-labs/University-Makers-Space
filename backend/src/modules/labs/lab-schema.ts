@@ -53,7 +53,8 @@ export const updateLabConfigurationSchema = z.object({
       bookingHorizonDays: z.number().int().min(1).max(365),
       cancellationWindowHours: z.number().int().min(0).max(168),
       maxFutureBookingsPerProject: z.number().int().min(1).max(100).nullable(),
-      projectVerificationRequired: z.boolean(),
+      // Version 1 booking eligibility is an RFP invariant: only VERIFIED projects may book.
+      projectVerificationRequired: z.literal(true),
       teamLeaderAttendanceRequired: z.boolean(),
       weeklySchedule: z
         .array(weeklySchedule)

@@ -59,8 +59,8 @@ const booking = {
   updatedAt: new Date().toISOString(),
 };
 
-const mockCreate = jest.fn(async () => ({ booking, replayed: false }));
-const mockCancel = jest.fn(async () => ({
+const mockCreate = jest.fn(async (..._args: unknown[]) => ({ booking, replayed: false }));
+const mockCancel = jest.fn(async (..._args: unknown[]) => ({
   booking: {
     ...booking,
     status: BookingStatus.CANCELLED,
@@ -69,20 +69,20 @@ const mockCancel = jest.fn(async () => ({
   },
   replayed: false,
 }));
-const mockList = jest.fn(async () => ({
+const mockList = jest.fn(async (..._args: unknown[]) => ({
   data: [booking],
   meta: { page: 1, limit: 20, total: 1, totalPages: 1, hasNext: false, hasPrev: false },
 }));
-const mockGet = jest.fn(async () => booking);
-const mockUpdateStatus = jest.fn(async () => booking);
+const mockGet = jest.fn(async (..._args: unknown[]) => booking);
+const mockUpdateStatus = jest.fn(async (..._args: unknown[]) => booking);
 let mockRole: UserRole = UserRole.STUDENT;
 
 jest.mock("../../src/modules/bookings/booking-service", () => ({
-  create: mockCreate,
-  cancel: mockCancel,
-  list: mockList,
-  get: mockGet,
-  updateStatus: mockUpdateStatus,
+  create: (...args: unknown[]) => mockCreate(...args),
+  cancel: (...args: unknown[]) => mockCancel(...args),
+  list: (...args: unknown[]) => mockList(...args),
+  get: (...args: unknown[]) => mockGet(...args),
+  updateStatus: (...args: unknown[]) => mockUpdateStatus(...args),
 }));
 
 jest.mock("../../src/config/db", () => ({
@@ -106,10 +106,7 @@ jest.mock("../../src/config/db", () => ({
 
 jest.mock("../../src/config/redis", () => ({
   redis: {
-    zremrangebyscore: jest.fn(),
-    zcard: jest.fn(async () => 0),
-    zadd: jest.fn(),
-    expire: jest.fn(),
+    eval: jest.fn(async () => [1, 0]),
     publish: jest.fn(async () => 1),
   },
 }));
@@ -148,6 +145,41 @@ describe("Phase 4 booking API contract", () => {
       expect.objectContaining({ participantIds: [userId] }),
       expect.objectContaining({ requestId: expect.any(String) }),
     );
+    const { redis } = jest.requireMock("../../src/config/redis") as {
+      redis: { eval: jest.Mock };
+    };
+    expect(redis.eval).toHaveBeenCalledTimes(2);
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.stringContaining("ZREMRANGEBYSCORE"),
+      1,
+      expect.stringContaining(`booking-mutation:${userId}`),
+      expect.any(Number),
+      expect.any(Number),
+      30,
+      60,
+      expect.any(String),
+    );
+  });
+
+  it("returns 429 from the atomic per-user booking limiter", async () => {
+    const { redis } = jest.requireMock("../../src/config/redis") as {
+      redis: { eval: jest.Mock };
+    };
+    redis.eval.mockResolvedValueOnce([1, 0]).mockResolvedValueOnce([0, Date.now()]);
+
+    const response = await request(createApp())
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${accessToken()}`)
+      .send({
+        labSlotId: slotId,
+        projectId,
+        participantIds: [userId],
+        idempotencyKey,
+      });
+
+    expect(response.status).toBe(429);
+    expect(response.headers["retry-after"]).toBeDefined();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("rejects Future Scope resource allocation fields", async () => {

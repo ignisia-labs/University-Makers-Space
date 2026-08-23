@@ -244,6 +244,12 @@ describe("validators", () => {
     expect(
       updateLabConfigurationSchema.safeParse({
         params,
+        body: { ...body, projectVerificationRequired: false },
+      }).success,
+    ).toBe(false);
+    expect(
+      updateLabConfigurationSchema.safeParse({
+        params,
         body: {
           ...body,
           weeklySchedule: body.weeklySchedule.map((row) => ({ ...row, dayOfWeek: 1 })),

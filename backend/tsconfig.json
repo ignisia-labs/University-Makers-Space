@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src", "prisma", "tests"],
+  "include": ["src", "prisma", "scripts", "tests"],
   "exclude": ["dist", "node_modules"]
 }

@@ -98,7 +98,8 @@ const detailInclude = {
     },
   },
   bookings: {
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 20,
   },
 } satisfies Prisma.ProjectInclude;
 

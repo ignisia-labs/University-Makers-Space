@@ -16,10 +16,7 @@ import { createApp } from "../../src/app.js";
 jest.mock("../../src/config/db", () => ({ prisma: {} }));
 jest.mock("../../src/config/redis", () => ({
   redis: {
-    zremrangebyscore: jest.fn(),
-    zcard: jest.fn(async () => 0),
-    zadd: jest.fn(),
-    expire: jest.fn(),
+    eval: jest.fn(async () => [1, 0]),
   },
 }));
 

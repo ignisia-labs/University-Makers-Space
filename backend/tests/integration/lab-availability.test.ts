@@ -10,14 +10,16 @@ process.env.CLOUDINARY_API_KEY = "test";
 process.env.CLOUDINARY_API_SECRET = "test";
 process.env.FRONTEND_URL = "http://localhost:5173";
 
-import { UserRole } from "@prisma/client";
+import { ProjectStatus, UserRole } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
+import { localToday } from "../../src/modules/labs/lab-time.js";
 
 const userId = "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const sessionId = "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const labId = "9f5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
+const projectId = "af5c6a30-8db5-4f06-90f6-1eb4e664b2f2";
 const now = new Date("2026-08-23T12:00:00.000Z");
 let mockRole: UserRole = UserRole.STUDENT;
 
@@ -69,16 +71,23 @@ jest.mock("../../src/config/db", () => ({
       })),
     },
     lab: { findUnique: jest.fn(async () => lab) },
+    project: {
+      findFirst: jest.fn(async () => ({
+        id: projectId,
+        creatorId: userId,
+        title: "Unverified Rover",
+        status: ProjectStatus.MENTOR_APPROVAL_PENDING,
+        equipmentRequirements: [],
+      })),
+    },
     labDateException: { findMany: jest.fn(async () => []) },
+    labSlot: { findMany: jest.fn(async () => []) },
   },
 }));
 
 jest.mock("../../src/config/redis", () => ({
   redis: {
-    zremrangebyscore: jest.fn(),
-    zcard: jest.fn(async () => 0),
-    zadd: jest.fn(),
-    expire: jest.fn(),
+    eval: jest.fn(async () => [1, 0]),
   },
 }));
 
@@ -99,7 +108,11 @@ describe("Phase 3 lab availability API", () => {
       .set("Authorization", `Bearer ${accessToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.data.lab).toMatchObject({ id: labId, bookingCapacity: 20 });
+    expect(response.body.data.lab).toMatchObject({
+      id: labId,
+      bookingCapacity: 20,
+      teamLeaderAttendanceRequired: true,
+    });
     expect(response.body.data.dates).toHaveLength(15);
     expect(response.body.data.dates[0]).toMatchObject({
       isOpen: true,
@@ -128,6 +141,7 @@ describe("Phase 3 lab availability API", () => {
       id: labId,
       configurationVersion: 1,
       bookingCapacity: 20,
+      teamLeaderAttendanceRequired: true,
     });
     expect(response.body.data.weeklySchedule).toHaveLength(7);
   });
@@ -139,5 +153,32 @@ describe("Phase 3 lab availability API", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("never marks an unverified project eligible even when the legacy flag is false", async () => {
+    lab.projectVerificationRequired = false;
+    schedules.forEach((schedule) => {
+      schedule.isOpen = false;
+    });
+    try {
+      const response = await request(createApp())
+        .get(
+          `/api/v1/labs/${labId}/availability?date=${localToday(lab.timeZone)}&projectId=${projectId}&participantCount=1`,
+        )
+        .set("Authorization", `Bearer ${accessToken()}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.project).toMatchObject({
+        id: projectId,
+        status: ProjectStatus.MENTOR_APPROVAL_PENDING,
+        eligibleForBooking: false,
+        eligibilityMessage: "Faculty Mentor verification is required before booking.",
+      });
+    } finally {
+      lab.projectVerificationRequired = true;
+      schedules.forEach((schedule) => {
+        schedule.isOpen = true;
+      });
+    }
   });
 });

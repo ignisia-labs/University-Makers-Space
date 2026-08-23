@@ -69,7 +69,7 @@ const project = {
   labId,
   creatorId: leaderId,
   title: "Autonomous Rover",
-  status: ProjectStatus.VERIFIED,
+  status: ProjectStatus.VERIFIED as ProjectStatus,
   deletedAt: null,
   members: [
     {
@@ -245,6 +245,8 @@ describe("Phase 4 booking service", () => {
     state.futureBookings = 0;
     state.duplicate = false;
     lab.maxFutureBookingsPerProject = null;
+    lab.projectVerificationRequired = true;
+    project.status = ProjectStatus.VERIFIED;
     jest.clearAllMocks();
   });
 
@@ -268,6 +270,24 @@ describe("Phase 4 booking service", () => {
         { userId: leaderId, name: "Project Leader", role: ProjectMemberRole.LEADER },
         { userId: memberId, name: "Team Member", role: ProjectMemberRole.MEMBER },
       ],
+    });
+    expect(result.booking.participants[0]).toMatchObject({
+      userId: leaderId,
+      email: "leader@mitwpu.edu.in",
+      prn: "1032220001",
+    });
+    expect(result.booking.participants[1]).not.toHaveProperty("email");
+    expect(result.booking.participants[1]).not.toHaveProperty("prn");
+    const operationalView = await service.get(bookingId, {
+      ...viewer,
+      id: "1f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+      email: "assistant@mitwpu.edu.in",
+      roles: [UserRole.LAB_ASSISTANT],
+    });
+    expect(operationalView.participants[1]).toMatchObject({
+      userId: memberId,
+      email: "member@mitwpu.edu.in",
+      prn: "1032220002",
     });
     const createData = tx.booking.create.mock.calls[0]![0].data;
     expect(createData).not.toHaveProperty("equipment");
@@ -323,6 +343,20 @@ describe("Phase 4 booking service", () => {
         idempotencyKey,
       }),
     ).rejects.toMatchObject({ code: "PROJECT_BOOKING_LIMIT_REACHED" });
+  });
+
+  it("always requires a verified project even if a legacy policy flag is false", async () => {
+    lab.projectVerificationRequired = false;
+    project.status = ProjectStatus.MENTOR_APPROVAL_PENDING;
+
+    await expect(
+      service.create(viewer, {
+        labSlotId: slotId,
+        projectId,
+        participantIds: [leaderId],
+        idempotencyKey,
+      }),
+    ).rejects.toMatchObject({ code: "PROJECT_NOT_VERIFIED" });
   });
 
   it("returns actionable remaining capacity when concurrent demand no longer fits", async () => {
@@ -386,6 +420,20 @@ describe("Phase 4 booking service", () => {
     expect(tx.auditLog.create).toHaveBeenLastCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "booking.cancelled" }) }),
     );
+  });
+
+  it("does not replay a cancellation under a different idempotency key", async () => {
+    await service.create(viewer, {
+      labSlotId: slotId,
+      projectId,
+      participantIds: [leaderId],
+      idempotencyKey,
+    });
+    await service.cancel(bookingId, "Team unavailable", cancellationKey, viewer);
+
+    await expect(
+      service.cancel(bookingId, "Team unavailable", "ff5c6a30-8db5-4f06-90f6-1eb4e664b2f2", viewer),
+    ).rejects.toMatchObject({ code: "BOOKING_ALREADY_CANCELLED" });
   });
 
   it("never allows the generic status endpoint to bypass cancellation history", async () => {

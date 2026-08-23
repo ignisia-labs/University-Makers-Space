@@ -27,6 +27,7 @@ type BookingAccess = {
   viewerId: string;
   canManage: boolean;
   canCancelOwn: boolean;
+  canReadParticipantPii: boolean;
   now?: Date;
 };
 
@@ -110,13 +111,16 @@ export const bookingDto = (booking: BookingWithDetails, access?: BookingAccess) 
     startsAt: booking.slotStartsAtSnapshot.toISOString(),
     endsAt: booking.slotEndsAtSnapshot.toISOString(),
     participants:
-      booking.participants?.map((participant) => ({
-        userId: participant.userId,
-        name: participant.nameSnapshot,
-        email: participant.emailSnapshot,
-        ...(participant.prnSnapshot ? { prn: participant.prnSnapshot } : {}),
-        role: participant.projectRoleSnapshot,
-      })) ?? [],
+      booking.participants?.map((participant) => {
+        const canReadPii = access?.canReadParticipantPii || participant.userId === access?.viewerId;
+        return {
+          userId: participant.userId,
+          name: participant.nameSnapshot,
+          ...(canReadPii ? { email: participant.emailSnapshot } : {}),
+          ...(canReadPii && participant.prnSnapshot ? { prn: participant.prnSnapshot } : {}),
+          role: participant.projectRoleSnapshot,
+        };
+      }) ?? [],
     canCancel,
     cancellationDeadline: cancellationDeadline.toISOString(),
     createdAt: booking.createdAt.toISOString(),

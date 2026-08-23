@@ -99,7 +99,7 @@ export async function updateConfiguration(
           bookingHorizonDays: input.bookingHorizonDays,
           cancellationWindowHours: input.cancellationWindowHours,
           maxFutureBookingsPerProject: input.maxFutureBookingsPerProject,
-          projectVerificationRequired: input.projectVerificationRequired,
+          projectVerificationRequired: true,
           teamLeaderAttendanceRequired: input.teamLeaderAttendanceRequired,
           configurationVersion: { increment: 1 },
         },
@@ -372,8 +372,7 @@ export async function dailyAvailability(
         equipment.availableQuantity >= quantity,
     })) ?? [];
   const projectEligible = project
-    ? project.creatorId === viewer.id &&
-      (!lab.projectVerificationRequired || project.status === ProjectStatus.VERIFIED)
+    ? project.creatorId === viewer.id && project.status === ProjectStatus.VERIFIED
     : null;
 
   return {
@@ -397,7 +396,7 @@ export async function dailyAvailability(
           eligibilityMessage:
             project.creatorId !== viewer.id
               ? "Only the Team Leader can book for this project."
-              : lab.projectVerificationRequired && project.status !== ProjectStatus.VERIFIED
+              : project.status !== ProjectStatus.VERIFIED
                 ? "Faculty Mentor verification is required before booking."
                 : "This project is eligible to continue to booking.",
         }

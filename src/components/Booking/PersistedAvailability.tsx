@@ -10,7 +10,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { BookingCapacityBench } from "@/components/Booking/BookingCapacityBench";
@@ -212,7 +212,7 @@ function BookingFlow({
   )?.userId;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notes, setNotes] = useState("");
-  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const bookingRequest = useRef<{ signature: string; idempotencyKey: string } | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
@@ -250,7 +250,6 @@ function BookingFlow({
   useEffect(() => {
     setSelectedSlotId("");
     setConflictMessage(null);
-    setIdempotencyKey("");
   }, [participantIds, selectedDate, projectId]);
 
   useEffect(() => {
@@ -269,12 +268,24 @@ function BookingFlow({
   const createMutation = useMutation({
     mutationFn: () => {
       if (!selectedSlot) throw new Error("Choose an available slot first");
+      const normalizedNotes = notes.trim() || null;
+      const signature = JSON.stringify({
+        labSlotId: selectedSlot.id,
+        projectId,
+        participantIds: [...participantIds].sort(),
+        notes: normalizedNotes,
+      });
+      const idempotencyKey =
+        bookingRequest.current?.signature === signature
+          ? bookingRequest.current.idempotencyKey
+          : crypto.randomUUID();
+      bookingRequest.current = { signature, idempotencyKey };
       return bookingsApi.create({
         labSlotId: selectedSlot.id,
         projectId,
         participantIds,
         idempotencyKey,
-        notes: notes.trim() || null,
+        notes: normalizedNotes,
       });
     },
     onSuccess: async ({ data }) => {
@@ -282,7 +293,7 @@ function BookingFlow({
       setConfirmOpen(false);
       setSubmissionError(null);
       setNotes("");
-      setIdempotencyKey("");
+      bookingRequest.current = null;
       toast.success(data.replayed ? "Booking already confirmed" : "MakerSpace booking confirmed");
       onBooked();
     },
@@ -347,7 +358,6 @@ function BookingFlow({
   };
 
   const openConfirmation = () => {
-    if (!idempotencyKey) setIdempotencyKey(crypto.randomUUID());
     setSubmissionError(null);
     createMutation.reset();
     setConfirmOpen(true);
@@ -651,7 +661,6 @@ function BookingFlow({
           onNotesChange={(value) => {
             setNotes(value);
             if (createMutation.isError) {
-              setIdempotencyKey(crypto.randomUUID());
               setSubmissionError(null);
               createMutation.reset();
             }

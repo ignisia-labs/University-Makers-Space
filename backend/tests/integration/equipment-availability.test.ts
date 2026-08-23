@@ -79,10 +79,7 @@ jest.mock("../../src/config/db", () => {
 
 jest.mock("../../src/config/redis", () => ({
   redis: {
-    zremrangebyscore: jest.fn(),
-    zcard: jest.fn(async () => 0),
-    zadd: jest.fn(),
-    expire: jest.fn(),
+    eval: jest.fn(async () => [1, 0]),
     scanStream: jest.fn(() => ({
       async *[Symbol.asyncIterator]() {
         yield [];

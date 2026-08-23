@@ -255,6 +255,7 @@ model Lab {
   bookingHorizonDays           Int                  @default(14) @map("booking_horizon_days")
   cancellationWindowHours      Int                  @default(2) @map("cancellation_window_hours")
   maxFutureBookingsPerProject  Int?                 @map("max_future_bookings_per_project")
+  /// Version 1 RFP invariant. Enforced by a database CHECK constraint and API validation.
   projectVerificationRequired  Boolean              @default(true) @map("project_verification_required")
   teamLeaderAttendanceRequired Boolean              @default(true) @map("team_leader_attendance_required")
   configurationVersion         Int                  @default(1) @map("configuration_version")

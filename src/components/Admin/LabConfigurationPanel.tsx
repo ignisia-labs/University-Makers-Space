@@ -166,12 +166,11 @@ export function LabConfigurationPanel() {
             />
           </Field>
           <ToggleField
-            label="Require Faculty verification"
-            hint="Only eligible verified projects can proceed to booking."
-            checked={form.projectVerificationRequired}
-            onCheckedChange={(checked) =>
-              setForm({ ...form, projectVerificationRequired: checked })
-            }
+            label="Faculty verification required"
+            hint="Version 1 requires every project to be verified before its Team Leader can book."
+            checked
+            disabled
+            onCheckedChange={() => undefined}
           />
           <ToggleField
             label="Require Team Leader attendance"
@@ -279,10 +278,8 @@ function PolicySummary({ configuration }: { configuration: LabConfiguration }) {
     {
       icon: ShieldCheck,
       label: "Project gate",
-      value: configuration.projectVerificationRequired ? "Verified" : "Open",
-      note: configuration.projectVerificationRequired
-        ? "Mentor approval required"
-        : "No approval gate",
+      value: "Verified",
+      note: "Mentor approval required",
     },
   ];
   return (
@@ -595,11 +592,13 @@ function ToggleField({
   label,
   hint,
   checked,
+  disabled = false,
   onCheckedChange,
 }: {
   label: string;
   hint: string;
   checked: boolean;
+  disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
@@ -608,7 +607,12 @@ function ToggleField({
         <p className="text-sm font-semibold">{label}</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p>
       </div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={label}
+      />
     </div>
   );
 }
@@ -635,7 +639,7 @@ function configurationInput(configuration: LabConfiguration): UpdateLabConfigura
     bookingHorizonDays: configuration.bookingHorizonDays,
     cancellationWindowHours: configuration.cancellationWindowHours,
     maxFutureBookingsPerProject: configuration.maxFutureBookingsPerProject,
-    projectVerificationRequired: configuration.projectVerificationRequired,
+    projectVerificationRequired: true,
     teamLeaderAttendanceRequired: configuration.teamLeaderAttendanceRequired,
     weeklySchedule: configuration.weeklySchedule,
   };

@@ -121,12 +121,21 @@ components:
         notes: { type: string, maxLength: 500, nullable: true }
     BookingParticipant:
       type: object
-      required: [userId, name, email, role]
+      required: [userId, name, role]
       properties:
         userId: { type: string, format: uuid }
         name: { type: string }
-        email: { type: string, format: email }
-        prn: { type: string }
+        email:
+          {
+            type: string,
+            format: email,
+            description: Returned for the participant themself and operational readers only,
+          }
+        prn:
+          {
+            type: string,
+            description: Returned for the participant themself and operational readers only,
+          }
         role: { type: string, enum: [LEADER, MEMBER] }
     Booking:
       type: object
@@ -265,7 +274,12 @@ components:
         bookingHorizonDays: { type: integer, minimum: 1, maximum: 365 }
         cancellationWindowHours: { type: integer, minimum: 0, maximum: 168 }
         maxFutureBookingsPerProject: { type: integer, nullable: true, minimum: 1, maximum: 100 }
-        projectVerificationRequired: { type: boolean }
+        projectVerificationRequired:
+          {
+            type: boolean,
+            enum: [true],
+            description: Compatibility policy field that must remain true in Version 1; every booking requires a VERIFIED project,
+          }
         teamLeaderAttendanceRequired: { type: boolean }
         weeklySchedule:
           type: array

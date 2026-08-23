@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, CalendarDays, Clock3, FolderKanban, MapPin, Users } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
@@ -20,19 +20,27 @@ export function PersistedBookingDetail({ bookingId }: { bookingId: string }) {
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const cancellationRequest = useRef<{ signature: string; idempotencyKey: string } | null>(null);
 
   const cancelMutation = useMutation({
-    mutationFn: () =>
-      bookingsApi.cancel(bookingId, {
-        reason: reason.trim(),
+    mutationFn: () => {
+      const normalizedReason = reason.trim();
+      const signature = JSON.stringify({ bookingId, reason: normalizedReason });
+      const idempotencyKey =
+        cancellationRequest.current?.signature === signature
+          ? cancellationRequest.current.idempotencyKey
+          : crypto.randomUUID();
+      cancellationRequest.current = { signature, idempotencyKey };
+      return bookingsApi.cancel(bookingId, {
+        reason: normalizedReason,
         idempotencyKey,
-      }),
+      });
+    },
     onSuccess: async ({ data }) => {
       await invalidateBookingData(queryClient, data.id, data.projectId);
       setCancelOpen(false);
       setReason("");
-      setIdempotencyKey("");
+      cancellationRequest.current = null;
       toast.success("Booking cancelled and capacity released");
     },
   });
@@ -201,7 +209,6 @@ export function PersistedBookingDetail({ bookingId }: { bookingId: string }) {
               type="button"
               onClick={() => {
                 setReason("");
-                if (!idempotencyKey) setIdempotencyKey(crypto.randomUUID());
                 cancelMutation.reset();
                 setCancelOpen(true);
               }}
@@ -229,7 +236,6 @@ export function PersistedBookingDetail({ bookingId }: { bookingId: string }) {
             onChange={(event) => {
               setReason(event.target.value);
               if (cancelMutation.isError) {
-                setIdempotencyKey(crypto.randomUUID());
                 cancelMutation.reset();
               }
             }}
