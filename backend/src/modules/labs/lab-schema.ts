@@ -4,14 +4,19 @@ import { isValidLocalDate } from "./lab-time.js";
 const uuid = z.string().uuid();
 const localDate = z.string().refine(isValidLocalDate, "Use a valid date in YYYY-MM-DD format");
 const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid 24-hour time");
-const timeZone = z.string().trim().min(1).max(100).refine((value) => {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value }).format();
-    return true;
-  } catch {
-    return false;
-  }
-}, "Use a valid IANA time zone");
+const timeZone = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Use a valid IANA time zone");
 
 const labParams = z.object({ labId: uuid }).strict();
 

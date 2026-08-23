@@ -3,11 +3,7 @@ import { noContent, ok } from "../../utils/api-response.js";
 import * as service from "./lab-service.js";
 
 export async function configuration(req: Request, res: Response) {
-  return ok(
-    res,
-    "MakerSpace configuration",
-    await service.getConfiguration(req.params.labId!),
-  );
+  return ok(res, "MakerSpace configuration", await service.getConfiguration(req.params.labId!));
 }
 
 export async function updateConfiguration(req: Request, res: Response) {

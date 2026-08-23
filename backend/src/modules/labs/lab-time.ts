@@ -189,7 +189,9 @@ export function zonedLocalMinuteToUtc(localDate: string, minuteOfDay: number, ti
     verified.hour !== hour ||
     verified.minute !== minute
   ) {
-    throw new Error(`Local time ${normalizedDate} ${minuteToTime(normalizedMinute)} does not exist`);
+    throw new Error(
+      `Local time ${normalizedDate} ${minuteToTime(normalizedMinute)} does not exist`,
+    );
   }
   return result;
 }

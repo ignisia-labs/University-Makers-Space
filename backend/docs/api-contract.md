@@ -40,6 +40,7 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 | ------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Users         | Admin/Super Admin                                        | Admin manages profile activation; only Super Admin changes roles and provisioning                                |
 | Equipment     | Authenticated                                            | Lab Assistant updates availability; Admin manages catalogue                                                      |
+| Lab policy    | Authenticated availability; Admin configuration          | Admin/Super Admin changes policy, exceptions, and generated slots                                                |
 | Projects      | Student's own team, assigned mentor, or operations staff | Student leader edits eligible projects; Faculty may decide by secure email action link; Admin manages any       |
 | Bookings      | Student's own booking or operational staff               | Verified student project creates; owner cancels in policy window; Lab Assistant/Admin changes operational status |
 | Events        | Authenticated                                            | Student/faculty registration; Lab Assistant/Admin manages                                                        |
@@ -61,6 +62,11 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 - `POST /bookings/:id/cancel` cancels without deleting history.
 - `PATCH /bookings/:id/status` applies the controlled operational transition table.
 - `PATCH /equipment/:id/availability` lets Lab Assistants/Admins change only operational status or available quantity and requires an audited reason.
+- `GET /labs/:labId/availability/dates` resolves the bounded booking window from weekly policy and date exceptions without frontend timezone calculations.
+- `GET /labs/:labId/availability` returns one date's generated slots, remaining attendee places, project eligibility, and advisory equipment status.
+- `GET|PUT /labs/:labId/configuration` reads or version-checks and saves the complete operating policy. A successful save audits the before/after policy and regenerates the future horizon.
+- `PUT /labs/:labId/date-exceptions` creates or replaces a closure/special-hours override; `DELETE /labs/:labId/date-exceptions/:exceptionId` restores regular weekly hours.
+- `POST /labs/:labId/slots/regenerate` idempotently reconciles an optional bounded date range with configured policy.
 - `GET|POST|PATCH /users/provisioning` maintains deny-by-default privileged identity claims.
 - `PATCH /users/:id/roles` changes roles and revokes all of that user's active sessions.
 
@@ -68,7 +74,9 @@ Booking creation uses a serializable transaction and locks the selected lab-slot
 
 ## Domain configuration
 
-The schema makes labs, per-day schedules, closures, generated slots, capacities, booking horizon, cancellation window, equipment categories, equipment, consumable categories, consumables, departments, programmes, and academic-year choices data-driven. Authenticated read APIs now expose the Phase 1 reference values. Administrative mutation APIs for configuration records remain a subsequent implementation slice; these records are currently managed by migrations/seed or direct administration.
+The schema makes labs, per-day schedules, date closures/special hours, generated slots, capacities, booking horizon, cancellation window, optional maximum future bookings per project, Quick Visit policy, project-verification policy, equipment categories, equipment, consumable categories, consumables, departments, programmes, and academic-year choices data-driven.
+
+Phase 3 configuration writes require `lab.configure`, use optimistic `configurationVersion` checks plus a serialized Lab row lock, and record an audit event. Slot rows carry a local MakerSpace date, UTC timestamps, a policy version, and indexed Lab/date/status access. Configuration writes and explicit regeneration materialize the bounded horizon; ordinary availability traffic is read-only unless a date is missing or stale. Duplicate generation updates the same unique slot rows and never creates duplicates. Slots with booking/visit history are closed instead of deleted when a later policy removes them.
 
 ## Responses and errors
 

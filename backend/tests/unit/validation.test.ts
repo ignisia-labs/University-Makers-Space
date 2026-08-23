@@ -16,6 +16,10 @@ import { onboardingSchema } from "../../src/modules/auth/auth-schema.js";
 import { createBookingSchema } from "../../src/modules/bookings/booking-schema.js";
 import { updateEquipmentAvailabilitySchema } from "../../src/modules/equipment/equipment-schema.js";
 import {
+  updateLabConfigurationSchema,
+  upsertLabDateExceptionSchema,
+} from "../../src/modules/labs/lab-schema.js";
+import {
   createProjectSchema,
   invitationDecisionSchema,
   mentorDecisionSchema,
@@ -161,6 +165,68 @@ describe("validators", () => {
   it("allows Lab Assistants to change availability without catalogue-management access", () => {
     expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.availability.manage")).toBe(true);
     expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.manage")).toBe(false);
+  });
+
+  it("requires one valid schedule row for every day of the week", () => {
+    const body = {
+      configurationVersion: 1,
+      name: "MIT-WPU MakerSpace",
+      description: "University prototyping facility",
+      timeZone: "Asia/Kolkata",
+      slotDurationMinutes: 60,
+      bookingCapacity: 20,
+      quickVisitsEnabled: true,
+      quickVisitCapacity: 10,
+      bookingHorizonDays: 14,
+      cancellationWindowHours: 2,
+      maxFutureBookingsPerProject: null,
+      projectVerificationRequired: true,
+      weeklySchedule: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        dayOfWeek,
+        isOpen: true,
+        opensAt: "08:30",
+        closesAt: "18:30",
+      })),
+    };
+    const params = { labId: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" };
+    expect(updateLabConfigurationSchema.safeParse({ params, body }).success).toBe(true);
+    expect(
+      updateLabConfigurationSchema.safeParse({
+        params,
+        body: {
+          ...body,
+          weeklySchedule: body.weeklySchedule.map((row) => ({ ...row, dayOfWeek: 1 })),
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates closures and special operating hours as different date exceptions", () => {
+    const params = { labId: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" };
+    expect(
+      upsertLabDateExceptionSchema.safeParse({
+        params,
+        body: {
+          date: "2026-08-30",
+          isClosed: true,
+          opensAt: null,
+          closesAt: null,
+          reason: "University holiday",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      upsertLabDateExceptionSchema.safeParse({
+        params,
+        body: {
+          date: "2026-08-30",
+          isClosed: false,
+          opensAt: "14:00",
+          closesAt: "10:00",
+          reason: "Special hours",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps the five-role permission model deny-by-default", () => {

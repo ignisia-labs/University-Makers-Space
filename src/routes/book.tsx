@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { SlotBookingModal } from "@/components/Booking/SlotBookingModal";
+import { PersistedAvailability } from "@/components/Booking/PersistedAvailability";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import type { Project, Reservation } from "@/lib/makerspace-data";
 import { cn } from "@/lib/utils";
+import { useAppSession } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/book")({
   validateSearch: (search: Record<string, unknown>): { project?: string } =>
@@ -29,6 +31,16 @@ export const Route = createFileRoute("/book")({
 type Tab = "current" | "past";
 
 function BookPage() {
+  const { prototype } = useAppSession();
+  const { project } = Route.useSearch();
+  return prototype ? (
+    <PrototypeBookPage />
+  ) : (
+    <PersistedAvailability preselectedProjectId={project} />
+  );
+}
+
+function PrototypeBookPage() {
   const {
     projects,
     profile,

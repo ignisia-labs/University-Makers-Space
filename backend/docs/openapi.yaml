@@ -120,6 +120,62 @@ components:
               quantity: { type: number, exclusiveMinimum: 0 }
         notes: { type: string, maxLength: 500, nullable: true }
         idempotencyKey: { type: string, format: uuid }
+    WeeklyLabSchedule:
+      type: object
+      additionalProperties: false
+      required: [dayOfWeek, isOpen, opensAt, closesAt]
+      properties:
+        dayOfWeek: { type: integer, minimum: 0, maximum: 6 }
+        isOpen: { type: boolean }
+        opensAt: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }
+        closesAt: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }
+    LabConfigurationUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          configurationVersion,
+          name,
+          timeZone,
+          slotDurationMinutes,
+          bookingCapacity,
+          quickVisitsEnabled,
+          quickVisitCapacity,
+          bookingHorizonDays,
+          cancellationWindowHours,
+          maxFutureBookingsPerProject,
+          projectVerificationRequired,
+          weeklySchedule,
+        ]
+      properties:
+        configurationVersion: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        description: { type: string, nullable: true, maxLength: 1000 }
+        timeZone: { type: string, example: Asia/Kolkata }
+        slotDurationMinutes: { type: integer, minimum: 5, maximum: 240 }
+        bookingCapacity: { type: integer, minimum: 1, maximum: 500 }
+        quickVisitsEnabled: { type: boolean }
+        quickVisitCapacity: { type: integer, minimum: 1, maximum: 500 }
+        bookingHorizonDays: { type: integer, minimum: 1, maximum: 365 }
+        cancellationWindowHours: { type: integer, minimum: 0, maximum: 168 }
+        maxFutureBookingsPerProject:
+          { type: integer, nullable: true, minimum: 1, maximum: 100 }
+        projectVerificationRequired: { type: boolean }
+        weeklySchedule:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items: { $ref: "#/components/schemas/WeeklyLabSchedule" }
+    LabDateException:
+      type: object
+      additionalProperties: false
+      required: [date, isClosed, opensAt, closesAt, reason]
+      properties:
+        date: { type: string, format: date }
+        isClosed: { type: boolean }
+        opensAt: { type: string, nullable: true, example: "10:00" }
+        closesAt: { type: string, nullable: true, example: "16:00" }
+        reason: { type: string, minLength: 3, maxLength: 500 }
   responses:
     Unauthorized:
       description: Missing, invalid, expired, or revoked session
@@ -424,6 +480,92 @@ paths:
         "200": { description: Decision recorded }
         "409": { description: Review request already resolved }
         "410": { description: Invalid or expired email action link }
+  /labs/{labId}/availability/dates:
+    get:
+      summary: List the bounded server-derived operating-date window
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - { in: query, name: participantCount, schema: { type: integer, minimum: 1, default: 1 } }
+      responses:
+        "200": { description: Weekly policy and exceptions resolved into operating dates }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/availability:
+    get:
+      summary: Read remaining attendee places and advisory equipment status for one date
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: date, required: true, schema: { type: string, format: date } }
+        - { in: query, name: projectId, schema: { type: string, format: uuid } }
+        - { in: query, name: participantCount, schema: { type: integer, minimum: 1, default: 1 } }
+      responses:
+        "200": { description: Timezone-safe slot availability and project equipment advisory }
+        "400": { description: Date is invalid or outside the configured booking horizon }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/configuration:
+    get:
+      summary: Read bounded MakerSpace policy and upcoming date exceptions (lab.configure)
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: MakerSpace operating policy }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      summary: Version-check, audit, save policy, and regenerate future slots (lab.configure)
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabConfigurationUpdate" }
+      responses:
+        "200": { description: Policy saved and future slots regenerated }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Configuration version conflict }
+  /labs/{labId}/date-exceptions:
+    put:
+      summary: Create or replace a closure or special-hours exception (lab.configure)
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabDateException" }
+      responses:
+        "200": { description: Exception saved, audited, and affected slots regenerated }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/date-exceptions/{exceptionId}:
+    delete:
+      summary: Remove an exception and restore regular weekly hours (lab.configure)
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+        - { in: path, name: exceptionId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Exception removed and slots regenerated }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/slots/regenerate:
+    post:
+      summary: Idempotently regenerate a bounded slot range from policy (lab.configure)
+      parameters:
+        - { in: path, name: labId, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                fromDate: { type: string, format: date }
+                toDate: { type: string, format: date }
+      responses:
+        "200": { description: Slot generation counts }
+        "400": { description: Range is outside the configured horizon }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /bookings:
     get:
       {

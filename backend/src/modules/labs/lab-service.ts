@@ -289,8 +289,7 @@ export async function availabilityDates(
       const policy = resolveDayPolicy(date, lab.schedules, exceptions);
       const slotCount = policy.isOpen
         ? Math.floor(
-            ((policy.closesAtMinute ?? 0) - (policy.opensAtMinute ?? 0)) /
-              lab.slotDurationMinutes,
+            ((policy.closesAtMinute ?? 0) - (policy.opensAtMinute ?? 0)) / lab.slotDurationMinutes,
           )
         : 0;
       return {
@@ -559,7 +558,9 @@ async function reconcileDate(
     else result.created += 1;
   }
 
-  for (const slot of existing.filter((candidate) => !desiredKeys.has(candidate.startsAt.toISOString()))) {
+  for (const slot of existing.filter(
+    (candidate) => !desiredKeys.has(candidate.startsAt.toISOString()),
+  )) {
     if (slot._count.bookings > 0 || slot._count.quickVisits > 0) {
       await tx.labSlot.update({ where: { id: slot.id }, data: { status: SlotStatus.CLOSED } });
       result.closed += 1;

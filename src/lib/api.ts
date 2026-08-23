@@ -262,8 +262,7 @@ export const bookingsApi = {
 };
 
 export const labsApi = {
-  configuration: (labId: string) =>
-    api.get<LabConfiguration>(`/labs/${labId}/configuration`),
+  configuration: (labId: string) => api.get<LabConfiguration>(`/labs/${labId}/configuration`),
   updateConfiguration: (labId: string, data: UpdateLabConfigurationInput) =>
     api.put<LabConfiguration>(`/labs/${labId}/configuration`, data),
   upsertDateException: (labId: string, data: DateExceptionInput) =>
@@ -282,12 +281,7 @@ export const labsApi = {
         participantCount: String(participantCount),
       })}`,
     ),
-  dailyAvailability: (
-    labId: string,
-    date: string,
-    projectId?: string,
-    participantCount = 1,
-  ) =>
+  dailyAvailability: (labId: string, date: string, projectId?: string, participantCount = 1) =>
     api.get<DailyAvailability>(
       `/labs/${labId}/availability${toQuery({
         date,

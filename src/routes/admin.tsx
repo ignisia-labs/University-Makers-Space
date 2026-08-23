@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMakerSpace } from "@/lib/makerspace-context";
 import { AppShell } from "@/components/AppShell";
+import { LabConfigurationPanel } from "@/components/Admin/LabConfigurationPanel";
+import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -14,6 +16,18 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
+  const { prototype } = useAppSession();
+  if (!prototype) {
+    return (
+      <AppShell title="MakerSpace policy" subtitle="Admin configuration">
+        <LabConfigurationPanel />
+      </AppShell>
+    );
+  }
+  return <PrototypeAdminPage />;
+}
+
+function PrototypeAdminPage() {
   const { projects, reservations, visits, equipment, users, uploads, auditLogs } = useMakerSpace();
 
   const students = users.filter((user) => user.role === "Student").length;
