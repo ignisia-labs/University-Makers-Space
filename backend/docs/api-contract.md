@@ -41,7 +41,7 @@ Users may carry multiple roles: `STUDENT`, `FACULTY_MENTOR`, `LAB_ASSISTANT`, `A
 | Users         | Admin/Super Admin                                        | Admin manages profile activation; only Super Admin changes roles and provisioning                                |
 | Equipment     | Authenticated                                            | Lab Assistant updates availability; Admin manages catalogue                                                      |
 | Lab policy    | Authenticated availability; Admin configuration          | Admin/Super Admin changes policy, exceptions, and generated slots                                                |
-| Projects      | Student's own team, assigned mentor, or operations staff | Student leader edits eligible projects; Faculty may decide by secure email action link; Admin manages any       |
+| Projects      | Student's own team, assigned mentor, or operations staff | Student leader edits eligible projects; Faculty may decide by secure email action link; Admin manages any        |
 | Bookings      | Student's own booking or operational staff               | Verified student project creates; owner cancels in policy window; Lab Assistant/Admin changes operational status |
 | Events        | Authenticated                                            | Student/faculty registration; Lab Assistant/Admin manages                                                        |
 | Notifications | Current user's own                                       | Admin/Super Admin creates                                                                                        |

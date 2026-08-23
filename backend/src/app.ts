@@ -59,7 +59,9 @@ export function createApp() {
   if (!isProduction) app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApi));
 
   const api = express.Router();
-  api.use(rateLimit({ prefix: "general", windowSeconds: 900, max: 200 }));
+  // Public traffic may share a campus NAT; authenticated requests are keyed by JWT subject.
+  // Fine-grained sensitive routes apply stricter per-user or per-credential limits.
+  api.use(rateLimit({ prefix: "general", windowSeconds: 900, max: 100_000 }));
   api.use("/auth", authRoutes);
   api.use("/users", userRoutes);
   api.use("/equipment", equipmentRoutes);

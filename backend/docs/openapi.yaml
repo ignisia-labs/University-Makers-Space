@@ -158,8 +158,7 @@ components:
         quickVisitCapacity: { type: integer, minimum: 1, maximum: 500 }
         bookingHorizonDays: { type: integer, minimum: 1, maximum: 365 }
         cancellationWindowHours: { type: integer, minimum: 0, maximum: 168 }
-        maxFutureBookingsPerProject:
-          { type: integer, nullable: true, minimum: 1, maximum: 100 }
+        maxFutureBookingsPerProject: { type: integer, nullable: true, minimum: 1, maximum: 100 }
         projectVerificationRequired: { type: boolean }
         weeklySchedule:
           type: array

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.js";
 import { authorize } from "../../middleware/authorize.js";
+import { rateLimit } from "../../middleware/rate-limit.js";
 import { validate } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import * as controller from "./lab-controller.js";
@@ -15,17 +16,24 @@ import {
 } from "./lab-schema.js";
 
 export const labRoutes = Router();
+const availabilityLimiter = rateLimit({
+  prefix: "lab-availability",
+  windowSeconds: 60,
+  max: 120,
+});
 
 labRoutes.use(authenticate);
 labRoutes.get(
   "/:labId/availability/dates",
   authorize("lab.availability.read"),
+  availabilityLimiter,
   validate(availabilityDatesSchema),
   asyncHandler(controller.availabilityDates),
 );
 labRoutes.get(
   "/:labId/availability",
   authorize("lab.availability.read"),
+  availabilityLimiter,
   validate(dailyAvailabilitySchema),
   asyncHandler(controller.dailyAvailability),
 );

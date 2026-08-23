@@ -1,8 +1,14 @@
 import type { NextFunction, Request, Response } from "express";
+import crypto from "node:crypto";
 import { redis } from "../config/redis.js";
 import { ApiError } from "../utils/api-error.js";
 
-type RateLimitOptions = { windowSeconds: number; max: number; prefix: string };
+type RateLimitOptions = {
+  windowSeconds: number;
+  max: number;
+  prefix: string;
+  subject?: (req: Request) => string | undefined;
+};
 
 export function rateLimit(options: RateLimitOptions) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -11,7 +17,7 @@ export function rateLimit(options: RateLimitOptions) {
 }
 
 async function applyRateLimit(options: RateLimitOptions, req: Request, res: Response) {
-  const subject = req.user?.id ?? req.ip;
+  const subject = options.subject?.(req) ?? req.user?.id ?? bearerSubject(req) ?? req.ip;
   const key = `rl:${options.prefix}:${subject}`;
   const now = Date.now();
   const windowStart = now - options.windowSeconds * 1000;
@@ -27,4 +33,24 @@ async function applyRateLimit(options: RateLimitOptions, req: Request, res: Resp
   }
   await redis.zadd(key, now, `${now}:${Math.random()}`);
   await redis.expire(key, options.windowSeconds);
+}
+
+export function privateRateLimitSubject(value: unknown) {
+  if (typeof value !== "string" || !value) return undefined;
+  return crypto.createHash("sha256").update(value).digest("base64url");
+}
+
+function bearerSubject(req: Request) {
+  const authorization = req.header("authorization");
+  if (!authorization?.startsWith("Bearer ")) return undefined;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(authorization.slice(7).split(".")[1] ?? "", "base64url").toString("utf8"),
+    ) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub.length <= 128
+      ? `bearer:${payload.sub}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

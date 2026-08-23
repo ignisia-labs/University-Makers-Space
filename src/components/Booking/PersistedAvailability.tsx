@@ -48,7 +48,7 @@ export function PersistedAvailability({ preselectedProjectId }: { preselectedPro
   });
 
   useEffect(() => {
-    if (!projectId && leaderProjects.length) {
+    if (leaderProjects.length && !leaderProjects.some((project) => project.id === projectId)) {
       const preferred = leaderProjects.find((project) => project.id === preselectedProjectId);
       setProjectId(preferred?.id ?? leaderProjects[0]!.id);
     }

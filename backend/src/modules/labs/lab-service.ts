@@ -56,7 +56,7 @@ export async function getConfiguration(labId: string) {
       labId,
       localDate: {
         gte: localDateDbValue(today),
-        lte: localDateDbValue(addLocalDays(today, Math.max(lab.bookingHorizonDays, 30))),
+        lte: localDateDbValue(addLocalDays(today, 365)),
       },
     },
     orderBy: { localDate: "asc" },
@@ -123,6 +123,7 @@ export async function updateConfiguration(
       const exceptions = await loadExceptions(tx, labId, today, through);
       const generated = await reconcileRange(tx, updated, exceptions, today, through);
       await retireBeyondHorizon(tx, updated, through);
+      const displayedExceptions = await loadExceptions(tx, labId, today, addLocalDays(today, 365));
 
       await tx.auditLog.create({
         data: {
@@ -138,7 +139,7 @@ export async function updateConfiguration(
         },
       });
 
-      return configurationDto(updated, exceptions);
+      return configurationDto(updated, displayedExceptions);
     },
     {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -216,7 +217,11 @@ export async function deleteDateException(labId: string, exceptionId: string, ac
       if (!existing) throw new ApiError(404, "NOT_FOUND", "Date exception not found");
       const date = dbDateToLocalDate(existing.localDate);
       await tx.labDateException.delete({ where: { id: exceptionId } });
-      const generated = await reconcileDate(tx, lab, [], date);
+      const today = localToday(lab.timeZone);
+      const generated =
+        date >= today && date <= addLocalDays(today, lab.bookingHorizonDays)
+          ? await reconcileDate(tx, lab, [], date)
+          : { created: 0, updated: 0, closed: 0, deleted: 0 };
       await tx.auditLog.create({
         data: {
           actorUserId: actorId,
@@ -474,9 +479,12 @@ async function slotsNeedReconciliation(
       status: true,
     },
   });
-  if (desired.length === 0) return current.some((slot) => slot.status !== SlotStatus.CLOSED);
-  if (current.length !== desired.length) return true;
-  const currentByStart = new Map(current.map((slot) => [slot.startsAt.toISOString(), slot]));
+  const currentOpen = current.filter((slot) => slot.status === SlotStatus.OPEN);
+  if (desired.length === 0) return currentOpen.length > 0;
+  if (currentOpen.length !== desired.length) return true;
+  const currentByStart = new Map(
+    currentOpen.map((slot) => [slot.startsAt.toISOString(), slot]),
+  );
   return desired.some((slot) => {
     const saved = currentByStart.get(slot.startsAt.toISOString());
     return (
@@ -504,15 +512,84 @@ async function reconcileRange(
   fromDate: string,
   toDate: string,
 ) {
-  const total = { created: 0, updated: 0, closed: 0, deleted: 0 };
-  for (const date of enumerateLocalDates(fromDate, toDate)) {
-    const result = await reconcileDate(tx, lab, exceptions, date);
-    total.created += result.created;
-    total.updated += result.updated;
-    total.closed += result.closed;
-    total.deleted += result.deleted;
+  const desired = enumerateLocalDates(fromDate, toDate).flatMap((date) => {
+    const policy = resolveDayPolicy(date, lab.schedules, exceptions);
+    return buildSlotBlueprints(date, policy, lab.slotDurationMinutes, lab.timeZone);
+  });
+  const existing = await tx.labSlot.findMany({
+    where: {
+      labId: lab.id,
+      localDate: {
+        gte: localDateDbValue(fromDate),
+        lte: localDateDbValue(toDate),
+      },
+    },
+    include: { _count: { select: { bookings: true, quickVisits: true } } },
+  });
+  const desiredKeys = new Set(
+    desired.map((slot) => `${slot.startsAt.toISOString()}:${slot.endsAt.toISOString()}`),
+  );
+  const existingByKey = new Map(
+    existing.map((slot) => [`${slot.startsAt.toISOString()}:${slot.endsAt.toISOString()}`, slot]),
+  );
+  const missing = desired.filter(
+    (slot) => !existingByKey.has(`${slot.startsAt.toISOString()}:${slot.endsAt.toISOString()}`),
+  );
+  const retainedIds = desired.flatMap((slot) => {
+    const saved = existingByKey.get(`${slot.startsAt.toISOString()}:${slot.endsAt.toISOString()}`);
+    return saved ? [saved.id] : [];
+  });
+  const removed = existing.filter(
+    (slot) => !desiredKeys.has(`${slot.startsAt.toISOString()}:${slot.endsAt.toISOString()}`),
+  );
+  const closedIds = removed
+    .filter((slot) => slot._count.bookings > 0 || slot._count.quickVisits > 0)
+    .map((slot) => slot.id);
+  const deletedIds = removed
+    .filter((slot) => slot._count.bookings === 0 && slot._count.quickVisits === 0)
+    .map((slot) => slot.id);
+
+  if (missing.length) {
+    await tx.labSlot.createMany({
+      data: missing.map((slot) => ({
+        labId: lab.id,
+        localDate: localDateDbValue(slot.localDate),
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        bookingCapacity: lab.bookingCapacity,
+        quickVisitCapacity: lab.quickVisitCapacity,
+        policyVersion: lab.configurationVersion,
+        status: SlotStatus.OPEN,
+      })),
+      skipDuplicates: true,
+    });
   }
-  return total;
+  if (retainedIds.length) {
+    await tx.labSlot.updateMany({
+      where: { id: { in: retainedIds } },
+      data: {
+        bookingCapacity: lab.bookingCapacity,
+        quickVisitCapacity: lab.quickVisitCapacity,
+        policyVersion: lab.configurationVersion,
+        status: SlotStatus.OPEN,
+      },
+    });
+  }
+  if (closedIds.length) {
+    await tx.labSlot.updateMany({
+      where: { id: { in: closedIds } },
+      data: { status: SlotStatus.CLOSED },
+    });
+  }
+  if (deletedIds.length) {
+    await tx.labSlot.deleteMany({ where: { id: { in: deletedIds } } });
+  }
+  return {
+    created: missing.length,
+    updated: retainedIds.length,
+    closed: closedIds.length,
+    deleted: deletedIds.length,
+  };
 }
 
 async function reconcileDate(
@@ -577,18 +654,14 @@ async function retireBeyondHorizon(
   lab: PolicyLab,
   lastBookableDate: string,
 ) {
-  const rows = await tx.labSlot.findMany({
-    where: { labId: lab.id, localDate: { gt: localDateDbValue(lastBookableDate) } },
-    include: { _count: { select: { bookings: true, quickVisits: true } } },
-    take: 5000,
+  const outside = {
+    labId: lab.id,
+    localDate: { gt: localDateDbValue(lastBookableDate) },
+  };
+  await tx.labSlot.deleteMany({
+    where: { ...outside, bookings: { none: {} }, quickVisits: { none: {} } },
   });
-  for (const row of rows) {
-    if (row._count.bookings > 0 || row._count.quickVisits > 0) {
-      await tx.labSlot.update({ where: { id: row.id }, data: { status: SlotStatus.CLOSED } });
-    } else {
-      await tx.labSlot.delete({ where: { id: row.id } });
-    }
-  }
+  await tx.labSlot.updateMany({ where: outside, data: { status: SlotStatus.CLOSED } });
 }
 
 function configurationDto(lab: PolicyLab, exceptions: DateException[]) {
