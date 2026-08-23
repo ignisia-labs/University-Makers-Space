@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
+import jwt from "jsonwebtoken";
+import { env } from "../config/env.js";
 import { redis } from "../config/redis.js";
 import { ApiError } from "../utils/api-error.js";
 
@@ -44,10 +46,11 @@ function bearerSubject(req: Request) {
   const authorization = req.header("authorization");
   if (!authorization?.startsWith("Bearer ")) return undefined;
   try {
-    const payload = JSON.parse(
-      Buffer.from(authorization.slice(7).split(".")[1] ?? "", "base64url").toString("utf8"),
-    ) as { sub?: unknown };
-    return typeof payload.sub === "string" && payload.sub.length <= 128
+    const payload = jwt.verify(authorization.slice(7), env.JWT_SECRET) as {
+      sub?: unknown;
+      type?: unknown;
+    };
+    return payload.type === "access" && typeof payload.sub === "string" && payload.sub.length <= 128
       ? `bearer:${payload.sub}`
       : undefined;
   } catch {

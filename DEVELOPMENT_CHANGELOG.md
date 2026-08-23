@@ -2,6 +2,32 @@
 
 Material product, architecture, requirement-status, and delivery decisions are appended here. The PRD/RFP remains authoritative; changelog entries describe implementation and verification state without changing requirements.
 
+## 2026-08-23 — Phase 3 lab configuration and availability
+
+**Branch:** `development-codex`
+
+### Completed
+
+- Added Lab-scoped Admin policy for the MakerSpace name, seven-day operating schedule, date closures/special hours, slot duration, attendee capacity, horizon, cancellation window, optional future-booking limit, Quick Visit settings, and project-verification requirement.
+- Added optimistic configuration versions, database constraints, audit history, explicit confirmation UX, and deterministic bulk slot reconciliation that preserves historical or occupied records.
+- Connected production Admin configuration and Student date/slot availability UI to authenticated APIs while retaining the isolated **Prototype view** switch through Phase 7.
+- Added project/participant-aware capacity display and advisory project-equipment availability without reserving equipment or creating a booking before Phase 4.
+- Added institutional Admin provisioning through `SEED_ADMIN_EMAIL`; the local environment provisions `ignisia@mitwpu.edu.in` without hardcoding that address into authorization logic.
+- Changed request limiting so authenticated users are isolated by verified session subject and campus users behind a shared NAT are not incorrectly treated as one user; route-specific limits remain enforced.
+
+### Verification
+
+- Backend lint and TypeScript build passed; 45/45 tests passed across 9 suites. Frontend production build passed and lint has 0 errors with the same 11 Fast Refresh warnings.
+- Prisma schema validation passed; all 7 migrations are applied to local PostgreSQL.
+- Real API/PostgreSQL checks passed for configuration reads/writes, stale-version rejection, 15-day horizon, closure/reopening, slot counts, and idempotent regeneration retaining 150 unique slots.
+- Temporary QA users, date exceptions, and two regeneration audit records created by verification were removed; the original MakerSpace name and open schedule were restored.
+- Manual browser acceptance across Admin/Student roles and responsive widths remains pending before the phase is marked complete.
+
+### Next
+
+- Run the Phase 3 manual checklist in the roadmap. After acceptance, begin Phase 4 end-to-end capacity bookings.
+- Production readiness for approximately 40,000 registered users still requires Phase 8 staging load/concurrency tests, deployment sizing, monitoring, and failure/recovery acceptance.
+
 ## 2026-08-23 — Phase 2 projects, teams, and mentor verification
 
 **Branch:** `development-codex`

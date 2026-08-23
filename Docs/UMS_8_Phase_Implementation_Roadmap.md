@@ -53,7 +53,8 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Tab-scoped **Prototype view** role switch for reviewing mock workspaces. It remains intentionally available until Phase 8 and never grants backend permissions.
 - Local prototype flows for onboarding, projects, bookings, visits, equipment, notifications, user administration, and audit views.
 - Phase 1 authentication, session restoration, onboarding, reference-data, real profile rendering, role guards, and logout use the backend API and PostgreSQL.
-- Phase 2 Student profile editing, project list/search/detail/create, team invitations, Faculty Mentor selection and decisions, expected-resource declarations, project notifications, and dashboard/Faculty queues use persisted backend data. Booking, visits, equipment operations, and privileged administration remain mock until their owning consecutive phases.
+- Phase 2 Student profile editing, project list/search/detail/create, team invitations, Faculty Mentor selection and decisions, expected-resource declarations, project notifications, and dashboard/Faculty queues use persisted backend data.
+- Phase 3 Admin lab policy, weekly schedules, date exceptions, slot generation, and Student availability use persisted backend data. Booking confirmation, visits, equipment operations, and the remaining privileged administration stay mock until their owning consecutive phases.
 
 ### Backend foundations that work through the API
 
@@ -65,6 +66,7 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Equipment catalogue endpoints and audited Lab Assistant availability updates.
 - Notification, user administration, and provisioning foundations.
 - Authenticated reference reads for departments, programmes, academic years, labs, and equipment categories.
+- Lab-scoped configuration, optimistic policy-version checks, audited date exceptions, deterministic bulk slot reconciliation, and participant-aware availability with advisory project-equipment status.
 - Structured response envelopes, request IDs, Zod validation, Redis-backed rate limiting, logs, and Prisma error mapping.
 - Versioned Prisma migrations and seed data for local development.
 - Events and general uploads exist in the codebase but are Future Scope and do not count toward Version 1 completion.
@@ -75,15 +77,15 @@ Project Domain/Category is optional/future-configurable in Version 1. The requir
 - Backend TypeScript build passes.
 - Frontend production build passes.
 - Backend lint completes without errors. Frontend lint completes with zero errors and eleven existing Fast Refresh warnings.
-- Thirty-one backend unit/integration-style tests pass across seven suites.
-- Prisma schema validates and all six migrations are applied to local PostgreSQL.
+- Forty-five backend unit/integration-style tests pass across nine suites.
+- Prisma schema validates and all seven migrations are applied to local PostgreSQL.
 - Live local health and Google configuration smoke tests pass. An unauthenticated protected reference-data request correctly returns 401.
 - Root/frontend and backend dependency audits report zero known vulnerabilities after the 2026-08-23 Undici and Prisma remediation; both dependency trees validate cleanly.
 
 ## 3. What is still mock or incomplete
 
-- Lab schedules, closures, slot generation, and availability APIs/UI are missing.
-- Booking screens are not connected to real slot/project/booking APIs.
+- Lab configuration and availability are implemented; manual browser acceptance remains open.
+- The booking screen reads real project/slot availability, but booking confirmation is intentionally disabled until Phase 4.
 - Quick Visits, manual Lab Assistant check-in/out, live occupancy, late arrival, overstay, and no-show workflows are missing.
 - Most Admin configuration/reporting UI is missing; consumable inventory remains outside Version 1.
 - In-app project workflow notifications and outbox records are connected; actual asynchronous email delivery and near-real-time updates remain assigned to Phase 7.
@@ -217,7 +219,7 @@ Exit gate:
 
 ### Phase 2 — Projects, teams, and mentor verification
 
-**Status:** Complete on `development-codex` (2026-08-23); Phase 3 is the next consecutive implementation phase.
+**Status:** Complete on `development-codex` (2026-08-23); Phase 3 implementation is complete and awaiting manual browser acceptance.
 
 **Goal:** Make the complete pre-booking project journey real and remove project-related in-memory state.
 
@@ -251,6 +253,8 @@ Exit gate:
 
 ### Phase 3 — Lab configuration, schedules, and slot availability
 
+**Status:** Implementation complete on `development-codex` (2026-08-23). Automated and real PostgreSQL/API verification passed; manual browser acceptance is pending. Phase 4 must not start until that acceptance is recorded.
+
 **Goal:** Generate Version 1 MakerSpace availability entirely from configurable lab policy while retaining a future-proof Lab relationship without adding multi-lab Student booking.
 
 Deliverables:
@@ -268,6 +272,21 @@ Exit gate:
 
 - Version 1 operates the single MakerSpace through Lab-scoped data. Admin configuration produces deterministic policy-compliant slots and Students see correct future dates, remaining participant places, and advisory equipment status.
 - Multi-laboratory selection and academic-timetable integration remain Future Scope.
+
+Implementation evidence (2026-08-23):
+
+- Seven-day policy editing, closures/special hours, configurable slot duration/capacity/horizon, Quick Visit policy, project-verification policy, optimistic configuration-version checks, audited changes, deterministic bulk slot reconciliation, and date/project/participant-aware availability are connected.
+- A real PostgreSQL/API smoke test returned the configuration, a 15-day date window, ten initial daily slots, a `CONFIGURATION_CHANGED` stale-write rejection, zero slots for a closure, and ten slots after reopening. Repeating generation retained 150 horizon slots without duplication.
+- Backend build/lint passed and all 45 tests across 9 suites passed. Temporary QA users, exceptions, and regeneration audit records were removed afterward.
+
+### Manual Phase 3 acceptance checklist
+
+- Sign in as the provisioned Admin `ignisia@mitwpu.edu.in`, open `/admin`, and confirm the live configuration panel loads.
+- Change one non-critical policy field, confirm the warning dialog, save it, reload the page, and confirm the value persists; then restore the original value.
+- Add a closure for a future open day and confirm the Student availability screen shows no slots; remove the closure and confirm slots return.
+- In a real Student session with a project, open `/book`, select a date, and confirm time, remaining attendee capacity, participant-aware fit, and advisory project-equipment availability come from the API.
+- Confirm the booking action explicitly remains unavailable until Phase 4 and that the Prototype view role switch still exposes the existing mock screens.
+- Repeat the critical checks at mobile, tablet/iPad, and desktop widths and record screenshots or defects before marking Phase 3 accepted.
 
 ### Phase 4 — End-to-end capacity bookings
 
@@ -521,10 +540,10 @@ Do not skip an incomplete prerequisite phase or broaden the feature without expl
 
 Use pull requests/issues for active assignments. At minimum, record:
 
-| Phase | Work item                                           | Owner | Branch/PR           | Status   | Dependencies     | Last updated |
-| ----- | --------------------------------------------------- | ----- | ------------------- | -------- | ---------------- | ------------ |
-| 1     | Integration and identity foundation                 | Codex | `development-codex` | Complete | —                | 2026-08-23   |
-| 2     | Projects, teams, and mentor verification            | Codex | `development-codex` | Complete | Phase 1 complete | 2026-08-23   |
-| 3     | Lab configuration, schedules, and slot availability | —     | —                   | Ready    | Phase 2 complete | 2026-08-23   |
+| Phase | Work item                                           | Owner | Branch/PR           | Status             | Dependencies                                               | Last updated |
+| ----- | --------------------------------------------------- | ----- | ------------------- | ------------------ | ---------------------------------------------------------- | ------------ |
+| 1     | Integration and identity foundation                 | Codex | `development-codex` | Complete           | —                                                          | 2026-08-23   |
+| 2     | Projects, teams, and mentor verification            | Codex | `development-codex` | Complete           | Phase 1 complete                                           | 2026-08-23   |
+| 3     | Lab configuration, schedules, and slot availability | Codex | `development-codex` | Acceptance pending | Automated/API checks passed; manual browser check required | 2026-08-23   |
 
 Only the repository owner or designated technical lead should change a phase from **In progress** to **Complete**, after its exit gate has evidence.

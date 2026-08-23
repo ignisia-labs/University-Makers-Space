@@ -482,9 +482,7 @@ async function slotsNeedReconciliation(
   const currentOpen = current.filter((slot) => slot.status === SlotStatus.OPEN);
   if (desired.length === 0) return currentOpen.length > 0;
   if (currentOpen.length !== desired.length) return true;
-  const currentByStart = new Map(
-    currentOpen.map((slot) => [slot.startsAt.toISOString(), slot]),
-  );
+  const currentByStart = new Map(currentOpen.map((slot) => [slot.startsAt.toISOString(), slot]));
   return desired.some((slot) => {
     const saved = currentByStart.get(slot.startsAt.toISOString());
     return (
