@@ -37,6 +37,15 @@ bookingRoutes.post(
   validate(cancelBookingSchema),
   asyncHandler(controller.cancel),
 );
+// Ending your own session. Authorisation is ownership plus an ACTIVE status,
+// both checked in the service, so no staff permission applies here.
+bookingRoutes.post(
+  "/:id/complete",
+  authenticate,
+  bookingMutationLimiter,
+  validate(bookingIdSchema),
+  asyncHandler(controller.complete),
+);
 bookingRoutes.patch(
   "/:id/status",
   authenticate,

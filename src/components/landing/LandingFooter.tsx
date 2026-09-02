@@ -19,7 +19,7 @@ export function LandingFooter() {
 
         {/* Minimal Navigation links */}
         <div className="flex items-center gap-6 text-[10px] font-mono tracking-widest text-zinc-500 uppercase">
-          <Link to="/login" className="hover:text-[#1E2B8A] transition-colors">
+          <Link to="/" className="hover:text-[#1E2B8A] transition-colors">
             Login
           </Link>
           <span className="text-zinc-200">/</span>

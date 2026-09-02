@@ -17,7 +17,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
-import { useMakerSpace } from "@/lib/makerspace-context";
+import type { AppRole } from "@/lib/roles";
 import { roleHomes, useAppSession } from "@/lib/auth-context";
 import { notificationsApi } from "@/lib/api";
 import { projectKeys, usePersistedNotifications } from "@/lib/project-queries";
@@ -51,12 +51,11 @@ export function AppShell({
   const [expanded, setExpanded] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsMounted, setNotificationsMounted] = useState(false);
-  const mockMakerSpace = useMakerSpace();
-  const { profile, role, authenticated, onboarded, hydrated, prototype, signOut } = useAppSession();
+  const { profile, role, authenticated, onboarded, hydrated, signOut } = useAppSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const persistedNotifications = usePersistedNotifications(!prototype && authenticated);
+  const persistedNotifications = usePersistedNotifications(authenticated);
   const markReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markRead(id, true),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.notifications }),
@@ -93,31 +92,23 @@ export function AppShell({
           : studentOnly
             ? "Student"
             : null;
+  const workspaceDenied = requiredRole !== null && !canOpenWorkspace(role, requiredRole);
 
   const showSidebar = role === "Student" || (workspaceNavigation?.length ?? 0) > 1;
-  const notifications = prototype
-    ? mockMakerSpace.notifications
-    : (persistedNotifications.data ?? []).map((item) => ({
-        id: item.id,
-        title: item.title,
-        body: item.body,
-        href: item.href ?? roleHomes[role],
-        read: item.isRead,
-        createdAt: new Date(item.createdAt).toLocaleString("en-IN", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }),
-      }));
+  const notifications = (persistedNotifications.data ?? []).map((item) => ({
+    id: item.id,
+    title: item.title,
+    body: item.body,
+    href: item.href ?? roleHomes[role],
+    read: item.isRead,
+    createdAt: new Date(item.createdAt).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  }));
   const unread = notifications.filter((item) => !item.read).length;
-  const markNotificationRead = (id: string) => {
-    if (prototype) mockMakerSpace.markNotificationRead(id);
-    else markReadMutation.mutate(id);
-  };
+  const markNotificationRead = (id: string) => markReadMutation.mutate(id);
   const markAllNotificationsRead = async () => {
-    if (prototype) {
-      mockMakerSpace.markAllNotificationsRead();
-      return;
-    }
     await Promise.all(
       notifications
         .filter((item) => !item.read)
@@ -159,7 +150,7 @@ export function AppShell({
       </main>
     );
   }
-  if (requiredRole && role !== requiredRole) {
+  if (workspaceDenied) {
     return (
       <main className="grid min-h-screen place-items-center bg-background px-4">
         <section className="card-surface max-w-md p-6 text-center">
@@ -204,8 +195,17 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           {expanded && (
-            <span className="font-serif text-sm font-light tracking-wide text-zinc-800">
-              MIT-WPU MakerSpace
+            <span className="flex min-w-0 items-center gap-2.5">
+              <img
+                src="/mitwpu-logo.jpg"
+                alt="MIT World Peace University"
+                width={431}
+                height={124}
+                className="h-6 w-auto shrink-0"
+              />
+              <span className="wordmark truncate text-base font-normal tracking-wide text-zinc-800">
+                सृजन
+              </span>
             </span>
           )}
         </div>
@@ -543,4 +543,28 @@ export function AppShell({
       )}
     </div>
   );
+}
+
+/**
+ * Which workspaces each role may open.
+ *
+ * Seniority is not a straight line — a Faculty Mentor is not "below" a Lab
+ * Assistant, they simply do different jobs — so this is an explicit grant table
+ * rather than a numeric rank comparison. A Super Admin can open everything by
+ * definition; an Admin also runs the operations console.
+ *
+ * This governs navigation only. Every request is still authorised server-side
+ * against the permission model, so widening a workspace here can never widen
+ * what the account is actually allowed to do.
+ */
+const workspaceGrants: Record<AppRole, readonly AppRole[]> = {
+  "Super Admin": ["Super Admin", "Admin", "Lab Assistant", "Faculty Mentor", "Student"],
+  Admin: ["Admin", "Lab Assistant"],
+  "Lab Assistant": ["Lab Assistant"],
+  "Faculty Mentor": ["Faculty Mentor"],
+  Student: ["Student"],
+};
+
+function canOpenWorkspace(role: AppRole, required: AppRole) {
+  return workspaceGrants[role]?.includes(required) ?? false;
 }

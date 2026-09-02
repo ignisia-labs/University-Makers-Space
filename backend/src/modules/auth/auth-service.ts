@@ -20,10 +20,13 @@ type RequestMetadata = Pick<Request, "ip"> & {
 
 export function createLoginCsrf(res: Response) {
   const token = crypto.randomBytes(32).toString("base64url");
+  // Same reasoning as the refresh cookie: a cross-site deployment never gets a
+  // same-site cookie back, so the sign-in handshake would fail its own CSRF
+  // check on every attempt.
   res.cookie(LOGIN_CSRF_COOKIE, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: "strict",
+    secure: isProduction || env.CROSS_SITE_COOKIES,
+    sameSite: env.CROSS_SITE_COOKIES ? "none" : "strict",
     path: "/api/v1/auth/google",
     maxAge: 10 * 60 * 1000,
   });
@@ -146,9 +149,15 @@ export async function refresh(rawToken: string | undefined, res: Response) {
   try {
     payload = jwt.verify(rawToken, env.JWT_REFRESH_SECRET) as RefreshPayload;
   } catch {
+    // The cookie is HttpOnly, so the browser will keep replaying a dead token
+    // on every page load unless the server explicitly retires it here.
+    clearRefreshCookie(res);
     throw new ApiError(401, "UNAUTHENTICATED", "Refresh token is invalid or expired");
   }
-  if (payload.type !== "refresh") throw new ApiError(401, "UNAUTHENTICATED", "Invalid token");
+  if (payload.type !== "refresh") {
+    clearRefreshCookie(res);
+    throw new ApiError(401, "UNAUTHENTICATED", "Invalid token");
+  }
 
   const session = await prisma.session.findUnique({
     where: { id: payload.sid },
@@ -162,6 +171,9 @@ export async function refresh(rawToken: string | undefined, res: Response) {
     !session.user.isActive ||
     session.user.deletedAt
   ) {
+    // Revoked, expired, suspended or deleted: the credential can never work
+    // again, so drop it rather than letting the browser resend it forever.
+    clearRefreshCookie(res);
     throw new ApiError(401, "UNAUTHENTICATED", "Session is no longer valid");
   }
 
@@ -336,29 +348,43 @@ function assertMatchingCsrf(bodyToken: string, cookieToken: string | undefined) 
   }
 }
 
+/**
+ * How the refresh cookie is scoped.
+ *
+ * Same-site by default, which is the safest thing a session cookie can be. When
+ * the app and API are deployed to different hosts the browser will not send a
+ * same-site cookie at all — sign-in appears to work and the next request is
+ * anonymous — so a cross-site deployment must opt in, and SameSite=None is only
+ * honoured on a secure connection.
+ */
+function refreshCookieOptions() {
+  const crossSite = env.CROSS_SITE_COOKIES;
+  return {
+    httpOnly: true,
+    secure: isProduction || crossSite,
+    sameSite: crossSite ? ("none" as const) : ("strict" as const),
+    path: "/api/v1/auth/refresh",
+  };
+}
+
 function setRefreshCookie(res: Response, token: string) {
   res.cookie(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: "strict",
-    path: "/api/v1/auth/refresh",
+    ...refreshCookieOptions(),
     maxAge: REFRESH_TTL_SECONDS * 1000,
   });
 }
 
 function clearRefreshCookie(res: Response) {
-  res.clearCookie(REFRESH_COOKIE, {
-    path: "/api/v1/auth/refresh",
-    sameSite: "strict",
-    secure: isProduction,
-  });
+  // The attributes must match the ones it was set with, or the browser keeps
+  // the cookie and a signed-out session quietly resurrects itself.
+  res.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
 }
 
 function clearLoginCsrf(res: Response) {
   res.clearCookie(LOGIN_CSRF_COOKIE, {
     path: "/api/v1/auth/google",
-    sameSite: "strict",
-    secure: isProduction,
+    sameSite: env.CROSS_SITE_COOKIES ? "none" : "strict",
+    secure: isProduction || env.CROSS_SITE_COOKIES,
   });
 }
 

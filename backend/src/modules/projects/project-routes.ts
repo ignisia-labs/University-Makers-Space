@@ -76,6 +76,14 @@ projectRoutes.post(
   validate(mentorDecisionSchema),
   asyncHandler(controller.decideMentor),
 );
+// Archiving retires a project but keeps it readable; deleting hides it. Both
+// release the seats, machines and material queue the project was holding.
+projectRoutes.post(
+  "/:id/archive",
+  authenticate,
+  validate(projectIdSchema),
+  asyncHandler(controller.archive),
+);
 projectRoutes.delete(
   "/:id",
   authenticate,

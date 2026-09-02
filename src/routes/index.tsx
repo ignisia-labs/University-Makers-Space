@@ -8,7 +8,7 @@ import { LandingFooter } from "@/components/landing/LandingFooter";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "MIT-WPU MakerSpace — Prototyping Laboratory" },
+      { title: "सृजन — MIT-WPU MakerSpace" },
       {
         name: "description",
         content: "MIT-WPU MakerSpace rapid prototyping and hardware engineering laboratory.",
@@ -31,7 +31,7 @@ function LandingPage() {
         {/* Immersive Equipment Grid */}
         <EquipmentSection />
 
-        {/* Discreet staff entry points (prototype) */}
+        {/* Discreet staff access note */}
         <StaffAccess />
       </main>
 

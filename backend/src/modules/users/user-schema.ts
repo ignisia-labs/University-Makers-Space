@@ -40,6 +40,7 @@ export const provisioningSchema = z.object({
   body: z
     .object({
       email: institutionalEmail,
+      name: z.string().trim().min(2).max(100).optional(),
       roles: z.array(role).min(1),
       isActive: z.boolean().default(true),
     })
@@ -50,6 +51,7 @@ export const updateProvisioningSchema = z.object({
   params: idParam,
   body: z
     .object({
+      name: z.string().trim().min(2).max(100).nullable().optional(),
       roles: z.array(role).min(1).optional(),
       isActive: z.boolean().optional(),
     })
@@ -63,6 +65,18 @@ export const directorySearchSchema = z.object({
     .pick({ page: true, limit: true, search: true })
     .extend({ search: z.string().trim().min(2).max(100) })
     .strict(),
+});
+
+/**
+ * The faculty-mentor directory is browsable, so `search` is optional here.
+ *
+ * That is deliberately different from the student search above, which stays
+ * search-gated: dumping the full student roster to any signed-in student is a
+ * privacy leak, whereas choosing a mentor requires seeing who is on offer. A
+ * student cannot pick a name they have never heard of out of a search box.
+ */
+export const mentorDirectorySchema = z.object({
+  query: listQuery.pick({ page: true, limit: true, search: true }).strict(),
 });
 
 export const studentDirectorySearchSchema = directorySearchSchema;

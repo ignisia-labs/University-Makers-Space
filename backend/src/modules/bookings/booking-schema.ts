@@ -22,6 +22,9 @@ export const createBookingSchema = z.object({
       labSlotId: z.string().uuid(),
       projectId: z.string().uuid(),
       participantIds: z.array(z.string().uuid()).min(1).max(500),
+      // Machines the team claims for this slot. Must be a subset of the
+      // project's own requirements; an empty list books the seat only.
+      equipmentIds: z.array(z.string().uuid()).max(100).optional(),
       idempotencyKey: z.string().uuid(),
       notes: z.string().trim().max(500).nullable().optional(),
     })
@@ -29,7 +32,12 @@ export const createBookingSchema = z.object({
     .refine((value) => new Set(value.participantIds).size === value.participantIds.length, {
       message: "participantIds must be unique",
       path: ["participantIds"],
-    }),
+    })
+    .refine(
+      (value) =>
+        !value.equipmentIds || new Set(value.equipmentIds).size === value.equipmentIds.length,
+      { message: "equipmentIds must be unique", path: ["equipmentIds"] },
+    ),
 });
 
 export const cancelBookingSchema = z.object({

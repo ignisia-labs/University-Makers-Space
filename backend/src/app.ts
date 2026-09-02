@@ -17,8 +17,10 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { rateLimit } from "./middleware/rate-limit.js";
 import { requestId } from "./middleware/request-id.js";
 import { sanitizeRequest } from "./middleware/sanitize.js";
+import { adminRoutes } from "./modules/admin/admin-routes.js";
 import { authRoutes } from "./modules/auth/auth-routes.js";
 import { bookingRoutes } from "./modules/bookings/booking-routes.js";
+import { consumableClaimRoutes } from "./modules/consumables/claim-routes.js";
 import { equipmentRoutes } from "./modules/equipment/equipment-routes.js";
 import { eventRoutes } from "./modules/events/event-routes.js";
 import { labRoutes } from "./modules/labs/lab-routes.js";
@@ -27,9 +29,34 @@ import { projectRoutes } from "./modules/projects/project-routes.js";
 import { referenceDataRoutes } from "./modules/reference-data/reference-data-routes.js";
 import { uploadRoutes } from "./modules/uploads/upload-routes.js";
 import { userRoutes } from "./modules/users/user-routes.js";
+import { quickVisitRoutes, visitRoutes } from "./modules/visits/visit-routes.js";
 
-const docsPath = path.resolve(process.cwd(), "docs/openapi.yaml");
-const openApi = YAML.parse(fs.readFileSync(docsPath, "utf8"));
+/**
+ * The API reference, loaded only where it is served.
+ *
+ * This used to be read at module load, so a deployment that did not ship
+ * `docs/openapi.yaml` crashed on boot — over a document that production never
+ * serves in the first place. It is now read lazily, and a missing or unreadable
+ * file costs the docs route rather than the whole API.
+ */
+function loadOpenApiDocument() {
+  // Resolved from the working directory rather than the module's own URL:
+  // `import.meta` is unavailable under the CommonJS target the test runner
+  // compiles to, and this file is imported by every integration test.
+  const candidates = [
+    path.resolve(process.cwd(), "docs/openapi.yaml"),
+    path.resolve(process.cwd(), "backend/docs/openapi.yaml"),
+    path.resolve(process.cwd(), "../docs/openapi.yaml"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return YAML.parse(fs.readFileSync(candidate, "utf8"));
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
 
 export function createApp() {
   const app = express();
@@ -41,7 +68,7 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: [env.FRONTEND_URL],
+      origin: env.FRONTEND_URL,
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
@@ -56,7 +83,11 @@ export function createApp() {
   app.get("/health", (_req, res) =>
     res.status(200).json({ success: true, message: "OK", data: { status: "ok" } }),
   );
-  if (!isProduction) app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApi));
+  if (!isProduction) {
+    const openApi = loadOpenApiDocument();
+    if (openApi) app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApi));
+    else logger.warn("docs/openapi.yaml not found; the API reference route is disabled");
+  }
 
   const api = express.Router();
   // Public traffic may share a campus NAT; authenticated requests are keyed by JWT subject.
@@ -65,12 +96,16 @@ export function createApp() {
   api.use("/auth", authRoutes);
   api.use("/users", userRoutes);
   api.use("/equipment", equipmentRoutes);
+  api.use("/consumable-claims", consumableClaimRoutes);
   api.use("/bookings", bookingRoutes);
   api.use("/labs", labRoutes);
   api.use("/projects", projectRoutes);
   api.use("/reference-data", referenceDataRoutes);
   api.use("/events", eventRoutes);
   api.use("/notifications", notificationRoutes);
+  api.use("/visits", visitRoutes);
+  api.use("/quick-visits", quickVisitRoutes);
+  api.use("/admin", adminRoutes);
   api.use(
     "/uploads",
     authenticate,

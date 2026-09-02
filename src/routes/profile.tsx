@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, authApi, referenceApi, usersApi, type UserDto } from "@/lib/api";
 export const Route = createFileRoute("/profile")({ component: Profile });
 function Profile() {
-  const { profile, role, user, prototype, reloadCurrentUser } = useAppSession();
+  const { profile, role, user, reloadCurrentUser } = useAppSession();
   const [editOpen, setEditOpen] = useState(false);
   return (
     <AppShell title="Profile" subtitle="Your MakerSpace identity">
@@ -27,7 +27,7 @@ function Profile() {
             <h2 className="text-xl font-bold">{profile.fullName}</h2>
             <p className="text-sm text-muted-foreground">{profile.email}</p>
           </div>
-          {!prototype && role === "Student" && (
+          {role === "Student" && (
             <button
               type="button"
               onClick={() => setEditOpen(true)}
@@ -44,13 +44,11 @@ function Profile() {
           {profile.programme && (
             <Item label="Programme" value={`${profile.programme} · ${profile.academicYear}`} />
           )}
-          {!prototype && user?.studentProfile?.division && (
+          {user?.studentProfile?.division && (
             <Item label="Division" value={user.studentProfile.division} />
           )}
-          {!prototype && user?.studentProfile?.phone && (
-            <Item label="Phone" value={user.studentProfile.phone} />
-          )}
-          {!prototype && user?.lastLoginAt && (
+          {user?.studentProfile?.phone && <Item label="Phone" value={user.studentProfile.phone} />}
+          {user?.lastLoginAt && (
             <Item label="Last sign-in" value={new Date(user.lastLoginAt).toLocaleString("en-IN")} />
           )}
         </dl>

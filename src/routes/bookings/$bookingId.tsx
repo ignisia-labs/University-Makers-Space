@@ -4,7 +4,7 @@ import { PersistedBookingDetail } from "@/components/Booking/PersistedBookingDet
 export const Route = createFileRoute("/bookings/$bookingId")({
   head: () => ({
     meta: [
-      { title: "Booking details — MIT-WPU MakerSpace" },
+      { title: "Booking details — सृजन" },
       { name: "description", content: "Review a MakerSpace booking and its selected team." },
     ],
   }),

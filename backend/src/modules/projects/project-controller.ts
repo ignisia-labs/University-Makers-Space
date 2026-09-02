@@ -85,7 +85,19 @@ export async function decideMentorEmailRequest(req: Request, res: Response) {
   );
 }
 
+export async function archive(req: Request, res: Response) {
+  return ok(
+    res,
+    "Project archived",
+    await service.archive(req.params.id!, req.user!, requestContext(req)),
+  );
+}
+
 export async function remove(req: Request, res: Response) {
-  await service.remove(req.params.id!, req.user!);
+  await service.remove(req.params.id!, req.user!, requestContext(req));
   return noContent(res);
+}
+
+function requestContext(req: Request) {
+  return { requestId: req.requestId, ipAddress: req.ip, userAgent: req.get("user-agent") };
 }

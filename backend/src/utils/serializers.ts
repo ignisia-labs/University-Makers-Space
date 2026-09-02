@@ -1,4 +1,5 @@
 import type {
+  BookingEquipment,
   Booking,
   BookingParticipant,
   Equipment,
@@ -22,6 +23,7 @@ type UserWithAcademicProfile = User & {
 type EquipmentWithCategory = Equipment & { category?: EquipmentCategory };
 type BookingWithDetails = Booking & {
   participants?: BookingParticipant[];
+  equipment?: BookingEquipment[];
 };
 type BookingAccess = {
   viewerId: string;
@@ -36,6 +38,9 @@ export const userDto = (user: UserWithProfile | UserWithAcademicProfile) => ({
   name: user.name,
   email: user.email,
   roles: user.roles,
+  /// Whether a Google identity is bound. The subject itself is never exposed —
+  /// an operator only needs to know that a link exists in order to clear it.
+  googleLinked: user.googleSubject !== null,
   avatarUrl: user.avatarUrl,
   profileComplete: user.profileComplete,
   isActive: user.isActive,
@@ -64,6 +69,7 @@ export const equipmentDto = (equipment: EquipmentWithCategory) => ({
   id: equipment.id,
   labId: equipment.labId,
   categoryId: equipment.categoryId,
+  domainId: equipment.domainId,
   category: equipment.category?.name,
   name: equipment.name,
   description: equipment.description,
@@ -121,7 +127,18 @@ export const bookingDto = (booking: BookingWithDetails, access?: BookingAccess) 
           role: participant.projectRoleSnapshot,
         };
       }) ?? [],
+    equipment:
+      booking.equipment?.map((hold) => ({
+        equipmentId: hold.equipmentId,
+        name: hold.nameSnapshot,
+        quantity: hold.quantity,
+      })) ?? [],
     canCancel,
+    // A student ends their own session only once the lab has let them in;
+    // before that the lab assistant's check-in is what moves it along.
+    canComplete: Boolean(
+      booking.status === "ACTIVE" && access && access.viewerId === booking.createdById,
+    ),
     cancellationDeadline: cancellationDeadline.toISOString(),
     createdAt: booking.createdAt.toISOString(),
     updatedAt: booking.updatedAt.toISOString(),

@@ -7,7 +7,7 @@ import { asyncHandler } from "../../utils/async-handler.js";
 import * as controller from "./user-controller.js";
 import {
   listUsersSchema,
-  directorySearchSchema,
+  mentorDirectorySchema,
   provisioningSchema,
   updateProvisioningSchema,
   updateRolesSchema,
@@ -36,7 +36,7 @@ userRoutes.get(
   "/search/faculty-mentors",
   authorize("project.create"),
   directorySearchLimiter,
-  validate(directorySearchSchema),
+  validate(mentorDirectorySchema),
   asyncHandler(controller.searchFacultyMentors),
 );
 userRoutes.patch(
@@ -86,6 +86,12 @@ userRoutes.patch(
   authorize("user.roles.manage"),
   validate(updateRolesSchema),
   asyncHandler(controller.updateRoles),
+);
+userRoutes.post(
+  "/:id/unlink-google",
+  authorize("user.roles.manage"),
+  validate(userIdSchema),
+  asyncHandler(controller.unlinkGoogleIdentity),
 );
 userRoutes.delete(
   "/:id",

@@ -24,6 +24,14 @@ export async function updateRoles(req: Request, res: Response) {
   );
 }
 
+export async function unlinkGoogleIdentity(req: Request, res: Response) {
+  return ok(
+    res,
+    "Google identity unlinked — the next sign-in will re-link this account",
+    await service.unlinkGoogleIdentity(req.params.id!, req.user!.id),
+  );
+}
+
 export async function remove(req: Request, res: Response) {
   await service.remove(req.params.id!, req.user!.id);
   return noContent(res);

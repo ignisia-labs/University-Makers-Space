@@ -16,9 +16,9 @@ export function AboutSection() {
 
         {/* Concise Introduction Text */}
         <p className="mt-6 text-sm sm:text-base text-zinc-500 max-w-2xl mx-auto leading-relaxed font-serif italic font-light">
-          MIT-WPU MakerSpace is an open-access prototyping laboratory designed to bridge the gap
-          between virtual designs and physical hardware. We provide the tools, workspace, and safety
-          systems for students to engineer functional models.
+          सृजन, the MIT-WPU MakerSpace, is an open-access prototyping laboratory designed to bridge
+          the gap between virtual designs and physical hardware. We provide the tools, workspace,
+          and safety systems for students to engineer functional models.
         </p>
 
         {/* Massive, Premium Framed Image */}

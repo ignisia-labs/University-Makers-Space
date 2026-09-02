@@ -1,19 +1,16 @@
 // @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
 // or the app will break with duplicate plugins:
 //   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
+//     nitro (build-only), VITE_* env injection, @ path alias, React/TanStack dedupe,
+//     error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
-import { cloudflare } from "@cloudflare/vite-plugin";
 
 export default defineConfig({
-  // This repository ships the frontend only. Backend deployment packaging is owned
-  // by the backend team and is intentionally not part of the frontend build.
+  // This repository ships the frontend only. The API is deployed separately, and
+  // the app is a static SPA, so there is no server runtime to build here.
   nitro: false,
   vite: {
-    // Explicit plugins array prevents Wrangler from trying to auto-modify the file
-    plugins: [cloudflare({ viteEnvironment: { name: "ssr" } })],
     // Keep symlinked dependency paths intact. This avoids generated imports resolving
     // through the workspace's apostrophe-containing absolute path during Nitro builds.
     resolve: { preserveSymlinks: true },
@@ -50,7 +47,14 @@ export default defineConfig({
 
     server: {
       host: "127.0.0.1",
-      port: 5174,
+      // Dev port. 5174 is not arbitrary: it is the origin registered against
+      // this project's Google OAuth client, and Google rejects sign-in from any
+      // origin it does not know. Changing it breaks sign-in until somebody with
+      // Cloud Console access registers the new origin.
+      //
+      // Override for a one-off without editing this file:
+      //   UMS_PORT=3000 npm run dev
+      port: Number(process.env["UMS_PORT"] ?? 5174),
       strictPort: true,
       // Ignore the backend folder and its node_modules from HMR file watching.
       // This prevents ioredis / prisma / other Node.js-only packages from being
@@ -86,6 +90,13 @@ export default defineConfig({
     },
   },
   tanstackStart: {
+    // ─── Ship a single-page app ───────────────────────────────────────────────
+    // Nothing in this application is rendered from the server: every route
+    // fetches its own data with the signed-in user's token, so a server render
+    // would produce an empty shell and then re-fetch everything anyway. Building
+    // as an SPA emits a real index.html, which is what a static host such as
+    // Netlify needs, and removes the server runtime from the deployment.
+    spa: { enabled: true },
     router: {
       // TanStack Start always registers the splitter. Keep route modules whole so
       // it does not emit invalid dynamic imports for this apostrophe-containing path.

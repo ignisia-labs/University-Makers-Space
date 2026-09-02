@@ -295,6 +295,8 @@ describe("Phase 4 booking service", () => {
       prn: "1032220002",
     });
     const createData = tx.booking.create.mock.calls[0]![0].data;
+    // No machines were requested, so none are held. A booking that asks for
+    // nothing must not write an empty hold set.
     expect(createData).not.toHaveProperty("equipment");
     expect(createData).not.toHaveProperty("consumables");
     expect(createData).not.toHaveProperty("qrTokenHash");

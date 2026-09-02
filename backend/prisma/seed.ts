@@ -3,21 +3,56 @@ import { PrismaClient, UserRole } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/**
+ * Baseline seed.
+ *
+ * Two rules govern what belongs here:
+ *
+ *  1. **No people.** The only identity this creates is a *provisioning grant*
+ *     for the Super Admin — a row that says "if this institutional address ever
+ *     signs in, it holds this role". No user account is fabricated, so nobody
+ *     exists until they authenticate with Google themselves. That keeps
+ *     privileged access deny-by-default and avoids inventing accounts whose
+ *     Google identity we cannot know in advance.
+ *
+ *  2. **No institutional structure.** Departments, programmes and the courses
+ *     inside them are the university's own data, and inventing plausible-looking
+ *     ones is worse than having none: they read as real, get selected during
+ *     onboarding, and quietly attach students to a department that does not
+ *     exist. The Super Admin creates these in the administration console.
+ *
+ * What is seeded is only what the app cannot start without: the lab itself and
+ * its opening hours. Equipment and materials are deliberately absent — see the
+ * note where they used to be.
+ */
+
+const SUPER_ADMIN_EMAIL = "ignisia@mitwpu.edu.in";
+
 async function main() {
-  const cse = await prisma.department.upsert({
-    where: { code: "CSE" },
-    update: { name: "Computer Science & Engineering", isActive: true },
-    create: { code: "CSE", name: "Computer Science & Engineering" },
+  // The one identity in the seed, and it is a grant rather than an account.
+  const superAdminEmail =
+    process.env.SEED_SUPER_ADMIN_EMAIL?.trim().toLowerCase() || SUPER_ADMIN_EMAIL;
+  await prisma.userProvisioning.upsert({
+    where: { email: superAdminEmail },
+    update: { roles: [UserRole.SUPER_ADMIN], isActive: true },
+    create: { email: superAdminEmail, roles: [UserRole.SUPER_ADMIN] },
   });
-  await prisma.programme.upsert({
-    where: { departmentId_code: { departmentId: cse.id, code: "BTECH-CSE" } },
-    update: { name: "B.Tech Computer Science & Engineering", isActive: true },
-    create: {
-      departmentId: cse.id,
-      code: "BTECH-CSE",
-      name: "B.Tech Computer Science & Engineering",
-    },
-  });
+  // If that address has already signed in, apply the role now rather than
+  // waiting for their next sign-in.
+  const existing = await prisma.user.findUnique({ where: { email: superAdminEmail } });
+  if (existing && !existing.roles.includes(UserRole.SUPER_ADMIN)) {
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { roles: [UserRole.SUPER_ADMIN], profileComplete: true },
+    });
+    await prisma.session.updateMany({
+      where: { userId: existing.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  // Academic years are generic scaffolding rather than institutional structure,
+  // and onboarding cannot complete without at least one. They remain editable.
   for (const value of [1, 2, 3, 4]) {
     await prisma.academicYearOption.upsert({
       where: { value },
@@ -51,73 +86,21 @@ async function main() {
     });
   }
 
-  const printing = await prisma.equipmentCategory.upsert({
-    where: { labId_name: { labId: lab.id, name: "3D Printing" } },
-    update: { isActive: true },
-    create: { labId: lab.id, name: "3D Printing" },
-  });
-  await prisma.equipment.upsert({
-    where: { labId_name: { labId: lab.id, name: "Creality Ender-5 Plus" } },
-    update: {},
-    create: {
-      labId: lab.id,
-      categoryId: printing.id,
-      name: "Creality Ender-5 Plus",
-      description: "Large-format FDM prototyping printer.",
-      totalQuantity: 4,
-      availableQuantity: 4,
-      specs: ["350 x 350 x 400 mm", "PLA / PETG / TPU"],
-    },
-  });
+  // No equipment, no materials, no categories.
+  //
+  // An earlier version seeded a printer and a spool of filament as plausible
+  // examples. They read as real: they were selected on projects and held for
+  // bookings before anyone noticed nobody had bought them. The MakerSpace's
+  // actual stock is imported from its own inventory sheets
+  // (scripts/import-inventory.ts) or entered in the administration console.
 
-  const materialCategory = await prisma.consumableCategory.upsert({
-    where: { labId_name: { labId: lab.id, name: "Prototyping Materials" } },
-    update: { isActive: true },
-    create: { labId: lab.id, name: "Prototyping Materials" },
-  });
-  await prisma.consumable.upsert({
-    where: { labId_name: { labId: lab.id, name: "PLA Filament" } },
-    update: { isActive: true },
-    create: {
-      labId: lab.id,
-      categoryId: materialCategory.id,
-      name: "PLA Filament",
-      unit: "gram",
-      description: "Expected project requirement only; no stock is reserved.",
-    },
-  });
-
-  const facultyMentorEmail = process.env.SEED_FACULTY_MENTOR_EMAIL?.trim().toLowerCase();
-  if (facultyMentorEmail) {
-    await prisma.user.upsert({
-      where: { email: facultyMentorEmail },
-      update: { roles: [UserRole.FACULTY_MENTOR], isActive: true, profileComplete: true },
-      create: {
-        email: facultyMentorEmail,
-        name: process.env.SEED_FACULTY_MENTOR_NAME?.trim() || "Faculty Mentor",
-        roles: [UserRole.FACULTY_MENTOR],
-        profileComplete: true,
-      },
-    });
-  }
-
-  const superAdminEmail = process.env.SEED_SUPER_ADMIN_EMAIL?.trim().toLowerCase();
-  if (superAdminEmail) {
-    await prisma.userProvisioning.upsert({
-      where: { email: superAdminEmail },
-      update: { roles: [UserRole.SUPER_ADMIN], isActive: true },
-      create: { email: superAdminEmail, roles: [UserRole.SUPER_ADMIN] },
-    });
-  }
-
-  const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
-  if (adminEmail) {
-    await prisma.userProvisioning.upsert({
-      where: { email: adminEmail },
-      update: { roles: [UserRole.ADMIN], isActive: true },
-      create: { email: adminEmail, roles: [UserRole.ADMIN] },
-    });
-  }
+  console.log(
+    JSON.stringify({
+      superAdminProvisioned: superAdminEmail,
+      lab: lab.name,
+      note: "Departments, programmes, equipment and materials are intentionally not seeded — the Super Admin adds them under Administration, or imports them from the MakerSpace's own inventory sheets.",
+    }),
+  );
 }
 
 main().finally(async () => prisma.$disconnect());

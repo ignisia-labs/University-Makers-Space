@@ -66,6 +66,10 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* The सृजन wordmark. Devanagari first, with serif fallbacks that at least
+     keep the letterforms rather than dropping to a system sans. */
+  --font-devanagari:
+    "Tiro Devanagari Hindi", "Noto Serif Devanagari", "Nirmala UI", "Kohinoor Devanagari", serif;
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", Georgia, serif;
 }
@@ -286,4 +290,11 @@
     border-color: var(--color-ring);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-ring) 18%, transparent);
   }
+}
+
+/* Wordmark: सृजन. Devanagari needs a little extra line-height to keep the
+   matra (the top bar and vowel signs) from clipping against tight leading. */
+.wordmark {
+  font-family: var(--font-devanagari);
+  line-height: 1.35;
 }

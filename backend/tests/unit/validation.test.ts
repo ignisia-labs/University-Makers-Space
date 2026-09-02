@@ -65,10 +65,27 @@ describe("validators", () => {
         teamMemberEmails: ["teammate@mitwpu.edu.in"],
         mentorId: "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
         equipmentIds: [],
-        consumableIds: [],
+        // Materials carry the quantity the mentor is being asked to approve.
+        consumables: [{ consumableId: "9f5c6a30-8db5-4f06-90f6-1eb4e664b2f2", quantity: 3 }],
       },
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("refuses a material plan with no quantity", () => {
+    const parsed = createProjectSchema.safeParse({
+      body: {
+        idempotencyKey: "6f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        labId: "7f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        title: "Solar tracker",
+        description: "A two-axis solar tracking prototype.",
+        mentorId: "8f5c6a30-8db5-4f06-90f6-1eb4e664b2f2",
+        // A material with no number is not a plan: the whole claim ceiling
+        // rests on this figure, so it cannot be optional.
+        consumables: [{ consumableId: "9f5c6a30-8db5-4f06-90f6-1eb4e664b2f2" }],
+      },
+    });
+    expect(parsed.success).toBe(false);
   });
 
   it("accepts only explicit invitation decisions", () => {
@@ -136,14 +153,15 @@ describe("validators", () => {
   });
 
   it("verifies a project only when team and mentor conditions are both satisfied", () => {
-    expect(deriveProjectStatus(1, MentorRequestStatus.APPROVED)).toBe(
-      ProjectStatus.TEAM_ACCEPTANCE_PENDING,
-    );
-    expect(deriveProjectStatus(0, MentorRequestStatus.PENDING)).toBe(
+    // An unanswered invitation must not hold the project back: the mentor's
+    // decision is what verifies it, and a teammate who has not accepted simply
+    // cannot be selected as an attendee when a slot is booked.
+    expect(deriveProjectStatus(MentorRequestStatus.APPROVED)).toBe(ProjectStatus.VERIFIED);
+    expect(deriveProjectStatus(MentorRequestStatus.PENDING)).toBe(
       ProjectStatus.MENTOR_APPROVAL_PENDING,
     );
-    expect(deriveProjectStatus(0, MentorRequestStatus.APPROVED)).toBe(ProjectStatus.VERIFIED);
-    expect(deriveProjectStatus(0, MentorRequestStatus.REJECTED)).toBe(ProjectStatus.REJECTED);
+    expect(deriveProjectStatus(MentorRequestStatus.APPROVED)).toBe(ProjectStatus.VERIFIED);
+    expect(deriveProjectStatus(MentorRequestStatus.REJECTED)).toBe(ProjectStatus.REJECTED);
   });
 
   it("rejects duplicate booking participants", () => {
@@ -212,9 +230,14 @@ describe("validators", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("allows Lab Assistants to change availability without catalogue-management access", () => {
+  it("gives Lab Assistants the same catalogue authority as an Admin", () => {
+    // The people beside the machines keep the catalogue: a printer that arrives
+    // or breaks should not wait for an admin to sign in.
     expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.availability.manage")).toBe(true);
-    expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.manage")).toBe(false);
+    expect(hasPermission([UserRole.LAB_ASSISTANT], "equipment.manage")).toBe(true);
+    // Catalogue authority is not governance: roles and audit stay with Admins.
+    expect(hasPermission([UserRole.LAB_ASSISTANT], "user.roles.manage")).toBe(false);
+    expect(hasPermission([UserRole.LAB_ASSISTANT], "audit.read")).toBe(false);
   });
 
   it("requires one valid schedule row for every day of the week", () => {

@@ -3,6 +3,7 @@ import type { Express } from "express";
 import { cloudinary } from "../../config/cloudinary.js";
 import { prisma } from "../../config/db.js";
 import { ApiError } from "../../utils/api-error.js";
+import { logger } from "../../config/logger.js";
 
 const allowed = new Map([
   ["image/jpeg", [".jpg", ".jpeg"]],
@@ -22,16 +23,44 @@ export async function upload(ownerId: string, file: Express.Multer.File | undefi
     throw new ApiError(400, "FILE_TOO_LARGE", "Image file must be 5MB or smaller");
   }
   const publicId = `ums/${crypto.randomUUID()}`;
-  const result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: "auto" },
-      (err, value) => {
-        if (err || !value) reject(err);
-        else resolve(value);
-      },
+  let result: { secure_url: string; public_id: string };
+  try {
+    result = await new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { public_id: publicId, resource_type: "auto" },
+        (err, value) => {
+          if (err || !value) {
+            // The SDK rejects with a plain object, not an Error, which is why
+            // this used to surface as a bare 500 with nothing to act on.
+            const status = (err as { http_code?: number } | undefined)?.http_code;
+            const detail = (err as { message?: string } | undefined)?.message;
+            reject(
+              Object.assign(new Error(detail ?? "Image host rejected the upload"), { status }),
+            );
+          } else resolve(value);
+        },
+      );
+      stream.end(file.buffer);
+    });
+  } catch (cause) {
+    const status = (cause as { status?: number }).status;
+    logger.error({ err: cause, publicId }, "Image upload failed");
+    // 401/403 from the image host means *our* credentials are wrong — a
+    // configuration fault, not something the person uploading did. Say so,
+    // rather than leaving them to retry a file that was never the problem.
+    if (status === 401 || status === 403) {
+      throw new ApiError(
+        502,
+        "IMAGE_HOST_UNAVAILABLE",
+        "Uploads are not configured yet — ask an administrator to set the image host credentials.",
+      );
+    }
+    throw new ApiError(
+      502,
+      "IMAGE_HOST_UNAVAILABLE",
+      "The image host could not accept this file. Try again in a moment.",
     );
-    stream.end(file.buffer);
-  });
+  }
   return prisma.upload.create({
     data: {
       ownerId,

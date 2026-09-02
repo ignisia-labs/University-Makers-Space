@@ -80,7 +80,12 @@ export async function update(id: string, data: Prisma.EquipmentUncheckedUpdateIn
 
 export async function updateAvailability(
   id: string,
-  data: { status?: EquipmentStatus; availableQuantity?: number; reason: string },
+  data: {
+    status?: EquipmentStatus;
+    availableQuantity?: number;
+    imageUrl?: string | null;
+    reason: string;
+  },
   actorId: string,
 ) {
   const item = await prisma.$transaction(
@@ -109,6 +114,7 @@ export async function updateAvailability(
         where: { id },
         data: {
           ...(data.status !== undefined ? { status: data.status } : {}),
+          ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl } : {}),
           ...(data.availableQuantity !== undefined
             ? { availableQuantity: data.availableQuantity }
             : {}),
@@ -126,10 +132,12 @@ export async function updateAvailability(
             before: {
               status: existing.status,
               availableQuantity: existing.availableQuantity,
+              imageUrl: existing.imageUrl,
             },
             after: {
               status: updated.status,
               availableQuantity: updated.availableQuantity,
+              imageUrl: updated.imageUrl,
             },
           },
         },

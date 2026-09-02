@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import {
+  BookingCancellationSource,
+  BookingStatus,
+  ConsumableClaimStatus,
   DeliveryStatus,
   MentorRequestStatus,
   NotificationChannel,
@@ -12,8 +15,14 @@ import {
 import { hasPermission } from "../../config/permissions.js";
 import { prisma } from "../../config/db.js";
 import { env } from "../../config/env.js";
+import { primaryFrontendUrl } from "../../config/env.js";
 import { ApiError } from "../../utils/api-error.js";
 import { meta } from "../../utils/pagination.js";
+import { logger } from "../../config/logger.js";
+import { redis } from "../../config/redis.js";
+import { primaryRole } from "../visits/visit-shared.js";
+
+type RequestContext = { requestId?: string; ipAddress?: string; userAgent?: string };
 
 const sortFields = new Set(["title", "status", "createdAt", "updatedAt"]);
 type Viewer = NonNullable<Express.Request["user"]>;
@@ -125,7 +134,7 @@ function mentorEmailReviewHref(requestId: string, facultyId: string) {
     mentorEmailActionSecret,
     { expiresIn: "7d" },
   );
-  const reviewUrl = new URL(`/mentor-review/${requestId}`, env.FRONTEND_URL);
+  const reviewUrl = new URL(`/mentor-review/${requestId}`, primaryFrontendUrl);
   return `${reviewUrl.toString()}#token=${encodeURIComponent(token)}`;
 }
 
@@ -307,6 +316,9 @@ function detailDto(project: DetailProject, viewer: Viewer) {
       name: item.consumable.name,
       category: item.consumable.category.name,
       unit: item.consumable.unit,
+      // The approved figure is what a team may later claim against.
+      quantity: item.expectedQuantity === null ? 0 : Number(item.expectedQuantity),
+      variant: item.variant,
     })),
     bookings: project.bookings.map((booking) => ({
       id: booking.id,
@@ -382,7 +394,7 @@ type CreateInput = {
   teamMemberEmails: string[];
   mentorId: string;
   equipmentIds: string[];
-  consumableIds: string[];
+  consumables: Array<{ consumableId: string; quantity: number; variant?: string | null }>;
 };
 
 export async function create(viewer: Viewer, data: CreateInput) {
@@ -397,7 +409,11 @@ export async function create(viewer: Viewer, data: CreateInput) {
     (email) => email !== viewer.email,
   );
   const equipmentIds = [...new Set(data.equipmentIds)];
-  const consumableIds = [...new Set(data.consumableIds)];
+  // One row per material, even if the form sent it twice.
+  const consumablePlan = [
+    ...new Map(data.consumables.map((entry) => [entry.consumableId, entry])).values(),
+  ];
+  const consumableIds = consumablePlan.map((entry) => entry.consumableId);
 
   try {
     const projectId = await prisma.$transaction(async (tx) => {
@@ -487,7 +503,7 @@ export async function create(viewer: Viewer, data: CreateInput) {
           submittedAt,
           status:
             teamEmails.length > 0
-              ? ProjectStatus.TEAM_ACCEPTANCE_PENDING
+              ? ProjectStatus.MENTOR_APPROVAL_PENDING
               : ProjectStatus.MENTOR_APPROVAL_PENDING,
         },
       });
@@ -526,7 +542,12 @@ export async function create(viewer: Viewer, data: CreateInput) {
       }
       if (consumables.length) {
         await tx.projectConsumableRequirement.createMany({
-          data: consumables.map((item) => ({ projectId: project.id, consumableId: item.id })),
+          data: consumablePlan.map((entry) => ({
+            projectId: project.id,
+            consumableId: entry.consumableId,
+            expectedQuantity: entry.quantity,
+            variant: entry.variant ?? null,
+          })),
         });
       }
 
@@ -583,7 +604,7 @@ type UpdateInput = {
   title?: string;
   description?: string;
   equipmentIds?: string[];
-  consumableIds?: string[];
+  consumables?: Array<{ consumableId: string; quantity: number; variant?: string | null }>;
 };
 
 export async function update(id: string, data: UpdateInput, viewer: Viewer) {
@@ -613,8 +634,11 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
         });
       }
     }
-    if (data.consumableIds) {
-      const ids = [...new Set(data.consumableIds)];
+    if (data.consumables) {
+      const plan = [
+        ...new Map(data.consumables.map((entry) => [entry.consumableId, entry])).values(),
+      ];
+      const ids = plan.map((entry) => entry.consumableId);
       const valid = await tx.consumable.findMany({
         where: { id: { in: ids }, labId: project!.labId, isActive: true },
         select: { id: true },
@@ -625,7 +649,12 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
       await tx.projectConsumableRequirement.deleteMany({ where: { projectId: id } });
       if (ids.length) {
         await tx.projectConsumableRequirement.createMany({
-          data: ids.map((consumableId) => ({ projectId: id, consumableId })),
+          data: plan.map((entry) => ({
+            projectId: id,
+            consumableId: entry.consumableId,
+            expectedQuantity: entry.quantity,
+            variant: entry.variant ?? null,
+          })),
         });
       }
     }
@@ -639,7 +668,7 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
       const mentorRequest = await tx.mentorRequest.create({
         data: { projectId: id, facultyId: project!.currentMentorId },
       });
-      status = await pendingStatus(tx, id);
+      status = pendingStatus();
       await createNotification(tx, {
         userId: project!.currentMentorId,
         type: "MENTOR_REQUEST",
@@ -666,7 +695,7 @@ export async function update(id: string, data: UpdateInput, viewer: Viewer) {
         metadata: {
           majorDetailsChanged,
           equipmentChanged: data.equipmentIds !== undefined,
-          consumablesChanged: data.consumableIds !== undefined,
+          consumablesChanged: data.consumables !== undefined,
         },
       },
     });
@@ -731,7 +760,7 @@ export async function inviteMember(projectId: string, email: string, viewer: Vie
     });
     await tx.project.update({
       where: { id: projectId },
-      data: { status: ProjectStatus.TEAM_ACCEPTANCE_PENDING, rejectionReason: null },
+      data: { status: ProjectStatus.MENTOR_APPROVAL_PENDING, rejectionReason: null },
     });
     if (project!.status === ProjectStatus.VERIFIED && project!.currentMentorId) {
       const mentorRequest = await tx.mentorRequest.create({
@@ -864,7 +893,7 @@ export async function cancelOrRemoveMember(projectId: string, memberId: string, 
       const mentorRequest = await tx.mentorRequest.create({
         data: { projectId, facultyId: project!.currentMentorId },
       });
-      const status = await pendingStatus(tx, projectId);
+      const status = pendingStatus();
       await tx.project.update({ where: { id: projectId }, data: { status } });
       await createNotification(tx, {
         userId: project!.currentMentorId,
@@ -916,7 +945,7 @@ export async function requestMentor(projectId: string, facultyId: string, viewer
       data: { status: MentorRequestStatus.CANCELLED, respondedAt: new Date() },
     });
     const mentorRequest = await tx.mentorRequest.create({ data: { projectId, facultyId } });
-    const teamStatus = await pendingStatus(tx, projectId);
+    const teamStatus = pendingStatus();
     await tx.project.update({
       where: { id: projectId },
       data: { currentMentorId: facultyId, status: teamStatus, rejectionReason: null },
@@ -1148,10 +1177,52 @@ export async function decideMentorEmailRequest(
   return result;
 }
 
-export async function remove(id: string, viewer: Viewer) {
+/**
+ * Retire a project, keeping it in the team's history.
+ *
+ * Archiving and deleting were the same call, which is why the Archive button
+ * made a project vanish. They are now distinct: an archived project stays
+ * listed and readable, and only a delete removes it from view.
+ */
+export async function archive(id: string, viewer: Viewer, context: RequestContext = {}) {
   const project = await prisma.project.findFirst({ where: { id, deletedAt: null } });
   assertLeader(project, viewer);
-  await prisma.$transaction(async (tx) => {
+  if (project!.status === ProjectStatus.ARCHIVED) return get(id, viewer);
+
+  const released = await prisma.$transaction(async (tx) => {
+    const cancelled = await releaseProjectHolds(tx, id, viewer, "The project was archived");
+    await tx.project.update({ where: { id }, data: { status: ProjectStatus.ARCHIVED } });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: viewer.id,
+        action: "project.archived",
+        entityType: "Project",
+        entityId: id,
+        metadata: cancelled,
+        requestId: context.requestId,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      },
+    });
+    return cancelled;
+  });
+  await publishReleasedSlots(project!.labId, released.slotIds);
+  return get(id, viewer);
+}
+
+/**
+ * Remove a project from view.
+ *
+ * The rows are kept and only hidden: a session somebody actually attended is a
+ * fact about the MakerSpace, and deleting the project must not erase the
+ * attendance record or the audit trail that goes with it.
+ */
+export async function remove(id: string, viewer: Viewer, context: RequestContext = {}) {
+  const project = await prisma.project.findFirst({ where: { id, deletedAt: null } });
+  assertLeader(project, viewer);
+
+  const released = await prisma.$transaction(async (tx) => {
+    const cancelled = await releaseProjectHolds(tx, id, viewer, "The project was deleted");
     await tx.project.update({
       where: { id },
       data: { deletedAt: new Date(), status: ProjectStatus.ARCHIVED },
@@ -1159,12 +1230,145 @@ export async function remove(id: string, viewer: Viewer) {
     await tx.auditLog.create({
       data: {
         actorUserId: viewer.id,
-        action: "project.archived",
+        action: "project.deleted",
         entityType: "Project",
         entityId: id,
+        metadata: cancelled,
+        requestId: context.requestId,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
       },
     });
+    return cancelled;
   });
+  await publishReleasedSlots(project!.labId, released.slotIds);
+}
+
+/**
+ * Give back everything a project is holding.
+ *
+ * A retired project must not keep a seat, a machine, or a place in the material
+ * queue. Cancelling the booking is what frees them: equipment holds are counted
+ * only while a booking is live, so they are released by the same write.
+ */
+async function releaseProjectHolds(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  viewer: Viewer,
+  reason: string,
+) {
+  const now = new Date();
+  const live = await tx.booking.findMany({
+    where: {
+      projectId,
+      status: { in: [BookingStatus.CONFIRMED, BookingStatus.ACTIVE] },
+      slotEndsAtSnapshot: { gt: now },
+    },
+    select: {
+      id: true,
+      labSlotId: true,
+      status: true,
+      projectTitleSnapshot: true,
+    },
+  });
+
+  if (live.length > 0) {
+    // Each cancellation carries its own idempotency key and fingerprint, and a
+    // source that matches the actor's role — the bookings table enforces all of
+    // it, so these are written one row at a time rather than in a bulk update.
+    const actorRole = primaryRole(viewer.roles);
+    const source = cancellationSourceForRole(actorRole);
+    for (const booking of live) {
+      const idempotencyKey = crypto.randomUUID();
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancelledAt: now,
+          cancelledById: viewer.id,
+          cancellationReason: reason,
+          cancellationIdempotencyKey: idempotencyKey,
+          cancellationRequestFingerprint: crypto
+            .createHash("sha256")
+            .update(JSON.stringify({ version: 1, bookingId: booking.id, reason }))
+            .digest("hex"),
+          cancellationSource: source,
+          cancelledByNameSnapshot: viewer.name,
+          cancelledByRoleSnapshot: actorRole,
+          statusHistory: {
+            create: {
+              fromStatus: booking.status,
+              toStatus: BookingStatus.CANCELLED,
+              actorUserId: viewer.id,
+              actorNameSnapshot: viewer.name,
+              actorRoleSnapshot: actorRole,
+              idempotencyKey,
+              notes: reason,
+            },
+          },
+        },
+      });
+    }
+
+    // Everyone who was going needs to know the session is off.
+    const participants = await tx.bookingParticipant.findMany({
+      where: { bookingId: { in: live.map((booking) => booking.id) } },
+      select: { userId: true },
+    });
+    for (const userId of [...new Set(participants.map((entry) => entry.userId))]) {
+      await createNotification(tx, {
+        userId,
+        type: "BOOKING_CANCELLED",
+        title: `${live[0]!.projectTitleSnapshot} session cancelled`,
+        body: reason,
+        href: "/book",
+      });
+    }
+  }
+
+  // Material still waiting at the desk is withdrawn. Anything already issued
+  // stays issued — it left the shelf and is not coming back.
+  const claims = await tx.consumableClaim.updateMany({
+    where: { projectId, status: ConsumableClaimStatus.PENDING },
+    data: {
+      status: ConsumableClaimStatus.CANCELLED,
+      decidedAt: now,
+      decisionReason: reason,
+    },
+  });
+
+  return {
+    bookingsCancelled: live.length,
+    claimsWithdrawn: claims.count,
+    slotIds: [...new Set(live.map((booking) => booking.labSlotId))],
+  };
+}
+
+/** The cancellation source the bookings table demands for this actor's role. */
+function cancellationSourceForRole(role: UserRole): BookingCancellationSource {
+  if (role === UserRole.LAB_ASSISTANT) return BookingCancellationSource.LAB_ASSISTANT;
+  if (role === UserRole.ADMIN) return BookingCancellationSource.ADMIN;
+  if (role === UserRole.SUPER_ADMIN) return BookingCancellationSource.SUPER_ADMIN;
+  return BookingCancellationSource.STUDENT;
+}
+
+/**
+ * Tell anyone watching availability that these slots have places again.
+ *
+ * Best-effort: the cancellation is already committed, and a lost notification
+ * costs a stale screen until the next poll, not a wrong booking.
+ */
+async function publishReleasedSlots(labId: string, slotIds: string[]) {
+  for (const labSlotId of slotIds) {
+    try {
+      await redis.publish(
+        `lab:${labId}:availability`,
+        JSON.stringify({ type: "PROJECT_RETIRED", labSlotId }),
+      );
+    } catch (error) {
+      logger.warn({ err: error, labSlotId }, "Slot released but the publication failed");
+    }
+  }
 }
 
 function assertLeader(project: { creatorId: string } | null, viewer: Viewer) {
@@ -1174,48 +1378,41 @@ function assertLeader(project: { creatorId: string } | null, viewer: Viewer) {
   }
 }
 
-async function pendingStatus(tx: Prisma.TransactionClient, projectId: string) {
-  const unresolved = await tx.projectMember.count({
-    where: {
-      projectId,
-      role: "MEMBER",
-      status: { in: [ProjectMemberStatus.PENDING, ProjectMemberStatus.DECLINED] },
-    },
-  });
-  return unresolved > 0
-    ? ProjectStatus.TEAM_ACCEPTANCE_PENDING
-    : ProjectStatus.MENTOR_APPROVAL_PENDING;
+/** Outstanding invitations no longer gate the mentor, so this is always the
+ *  same answer — kept as a named helper so the intent stays legible. */
+function pendingStatus() {
+  return ProjectStatus.MENTOR_APPROVAL_PENDING;
 }
 
 async function recomputeProjectStatus(tx: Prisma.TransactionClient, projectId: string) {
-  const [project, unresolved] = await Promise.all([
-    tx.project.findUnique({ where: { id: projectId }, select: { status: true } }),
-    tx.projectMember.count({
-      where: {
-        projectId,
-        role: "MEMBER",
-        status: { in: [ProjectMemberStatus.PENDING, ProjectMemberStatus.DECLINED] },
-      },
-    }),
-  ]);
+  const project = await tx.project.findUnique({
+    where: { id: projectId },
+    select: { status: true },
+  });
   const mentorRequest = await tx.mentorRequest.findFirst({
     where: { projectId },
     orderBy: { requestedAt: "desc" },
     select: { status: true },
   });
-  const status = deriveProjectStatus(unresolved, mentorRequest?.status ?? null);
+  const status = deriveProjectStatus(mentorRequest?.status ?? null);
   if (project?.status !== status) {
     await tx.project.update({ where: { id: projectId }, data: { status } });
   }
   return status;
 }
 
-export function deriveProjectStatus(
-  unresolvedMembers: number,
-  mentorStatus: MentorRequestStatus | null,
-) {
+/**
+ * A project's status is decided by the Faculty Mentor alone.
+ *
+ * Teammates who have not answered their invitation deliberately do **not** hold
+ * the project back. Waiting for every last person to click accept stalls the
+ * whole team behind the slowest member — and it buys nothing, because a
+ * teammate who has not accepted simply cannot be selected as an attendee when a
+ * slot is booked. Verification is about the mentor endorsing the work; showing
+ * up is settled per booking.
+ */
+export function deriveProjectStatus(mentorStatus: MentorRequestStatus | null) {
   if (mentorStatus === MentorRequestStatus.REJECTED) return ProjectStatus.REJECTED;
-  if (unresolvedMembers > 0) return ProjectStatus.TEAM_ACCEPTANCE_PENDING;
   if (mentorStatus === MentorRequestStatus.APPROVED) return ProjectStatus.VERIFIED;
   return ProjectStatus.MENTOR_APPROVAL_PENDING;
 }

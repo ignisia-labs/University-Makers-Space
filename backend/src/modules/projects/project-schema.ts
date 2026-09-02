@@ -21,7 +21,20 @@ const body = z
     teamMemberEmails: z.array(institutionalEmail).max(20).default([]),
     mentorId: z.string().uuid(),
     equipmentIds: z.array(z.string().uuid()).max(100).default([]),
-    consumableIds: z.array(z.string().uuid()).max(100).default([]),
+    // How much of each material the project expects to use. The mentor approves
+    // this figure, and it becomes the ceiling on what the team may later claim.
+    consumables: z
+      .array(
+        z
+          .object({
+            consumableId: z.string().uuid(),
+            quantity: z.number().int().min(1).max(10_000),
+            variant: z.string().trim().max(120).nullable().optional(),
+          })
+          .strict(),
+      )
+      .max(100)
+      .default([]),
   })
   .strict();
 
@@ -43,7 +56,18 @@ export const updateProjectSchema = z.object({
       title: z.string().trim().min(2).max(160).optional(),
       description: z.string().trim().min(1).max(2000).optional(),
       equipmentIds: z.array(z.string().uuid()).max(100).optional(),
-      consumableIds: z.array(z.string().uuid()).max(100).optional(),
+      consumables: z
+        .array(
+          z
+            .object({
+              consumableId: z.string().uuid(),
+              quantity: z.number().int().min(1).max(10_000),
+              variant: z.string().trim().max(120).nullable().optional(),
+            })
+            .strict(),
+        )
+        .max(100)
+        .optional(),
     })
     .strict()
     .refine((value) => Object.keys(value).length > 0, "At least one change is required"),

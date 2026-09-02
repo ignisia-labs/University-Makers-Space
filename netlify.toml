@@ -1,0 +1,42 @@
+# Netlify deployment for the सृजन front end.
+#
+# The app is a single-page build: `npm run build` emits static assets plus an
+# index.html shell into dist/client. There is no server runtime here — every
+# screen fetches its own data from the API with the signed-in user's token — so
+# nothing but a CDN and a fallback rule is required.
+
+[build]
+  command = "npm run build"
+  publish = "dist/client"
+
+[build.environment]
+  # Netlify's default is older than this project's toolchain.
+  NODE_VERSION = "22"
+
+# Hashed asset filenames change on every build, so they can be cached forever.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# The shell must never be cached, or a returning visitor keeps loading the
+# previous deployment's asset names after a release.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Client-side routing: every path that is not a real file serves the shell, and
+# the router takes over. Without this, opening /dashboard directly is a 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

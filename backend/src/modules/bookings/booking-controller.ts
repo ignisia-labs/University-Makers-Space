@@ -46,6 +46,14 @@ export async function updateStatus(req: Request, res: Response) {
   );
 }
 
+export async function complete(req: Request, res: Response) {
+  return ok(
+    res,
+    "Session ended",
+    await service.completeOwnBooking(req.params.id!, req.user!, requestContext(req)),
+  );
+}
+
 function requestContext(req: Request) {
   return {
     requestId: req.requestId,

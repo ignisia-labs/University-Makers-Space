@@ -159,6 +159,10 @@ async function createFixtureData(target: FixtureRegistry) {
       bookingHorizonDays: 14,
       cancellationWindowHours: 0,
       maxFutureBookingsPerProject: null,
+      // This suite deliberately drives several concurrent bookings from the
+      // same leader to probe capacity and idempotency, so the one-live-session
+      // rule is lifted here. It is verified on its own in verify-slot-equipment.
+      maxLiveBookingsPerStudent: null,
       projectVerificationRequired: true,
       teamLeaderAttendanceRequired: true,
     },
@@ -696,7 +700,11 @@ async function verifyRemovedArtifacts(bookingId: string) {
       AND table_name IN ('bookings', 'quick_visits')
       AND column_name IN ('qr_token_hash', 'qr_expires_at')
   `;
-  assert(relations?.booking_equipment === null, "booking_equipment still exists");
+  // `booking_equipment` is back, deliberately: a team now holds machines for a
+  // specific slot, and those holds are released when the booking stops being
+  // live. Consumables remain a project-level expectation with no per-slot
+  // reservation, so that table must stay absent.
+  assert(relations?.booking_equipment !== null, "booking_equipment table is missing");
   assert(relations?.booking_consumables === null, "booking_consumables still exists");
   assert(qrColumns.length === 0, "Booking or Quick Visit QR columns still exist");
   const booking = await prisma.booking.findUniqueOrThrow({ where: { id: bookingId } });
@@ -704,7 +712,7 @@ async function verifyRemovedArtifacts(bookingId: string) {
     !("qrTokenHash" in booking) && !("qrExpiresAt" in booking),
     "QR fields leaked into Prisma",
   );
-  return { bookingEquipmentTable: false, bookingConsumablesTable: false, qrColumns: 0 };
+  return { bookingEquipmentTable: true, bookingConsumablesTable: false, qrColumns: 0 };
 }
 
 async function eventSetCounts(
@@ -821,6 +829,7 @@ async function cleanupFixtures(target: FixtureRegistry) {
     });
   }
   if (bookingIds.length) {
+    await prisma.bookingEquipment.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.bookingStatusHistory.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.bookingParticipant.deleteMany({ where: { bookingId: { in: bookingIds } } });
     await prisma.booking.deleteMany({ where: { id: { in: bookingIds } } });

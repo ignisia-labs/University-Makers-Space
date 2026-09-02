@@ -1,735 +1,752 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  CalendarDays,
-  Check,
-  ChevronRight,
-  Clock3,
-  Info,
-  RefreshCw,
-  Users,
-  Wrench,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, Clock3, Loader2, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
-import { BookingCapacityBench } from "@/components/Booking/BookingCapacityBench";
-import { BookingConfirmation } from "@/components/Booking/BookingConfirmation";
-import { BookingSummaryCard } from "@/components/Booking/BookingSummaryCard";
+import { ResponsiveModal } from "@/components/ResponsiveModal";
+import { SlotBookingModal } from "@/components/Booking/SlotBookingModal";
+import { ConsumableClaims } from "@/components/Booking/ConsumableClaims";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   ApiError,
   bookingsApi,
   labsApi,
-  type ApiResponse,
+  readableError,
   type BookingDto,
-  type BookingParticipantDto,
   type DailyAvailability,
   type ProjectDetail,
+  type ProjectSummary,
+  type SlotEquipment,
 } from "@/lib/api";
 import { invalidateBookingData, usePersistedBookings } from "@/lib/booking-queries";
 import { usePersistedProject, usePersistedProjectPages } from "@/lib/project-queries";
+import { useAppSession } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
-type SlotsTab = "upcoming" | "book" | "past";
+type Tab = "current" | "past";
 type AvailabilitySlot = DailyAvailability["slots"][number];
 
+/**
+ * The student's slots page.
+ *
+ * One live session at a time, mirroring the server rule: while a booking is
+ * upcoming this shows that booking and nothing else, because offering a booking
+ * form the server would refuse is worse than not offering it.
+ */
 export function PersistedAvailability({
   preselectedProjectId,
 }: {
   preselectedProjectId?: string | undefined;
 }) {
-  const [tab, setTab] = useState<SlotsTab>(preselectedProjectId ? "book" : "upcoming");
-  const [upcomingPage, setUpcomingPage] = useState(1);
-  const [pastPage, setPastPage] = useState(1);
-  const upcoming = usePersistedBookings("upcoming", upcomingPage, 20, tab === "upcoming");
-  const past = usePersistedBookings("past", pastPage, 20, tab === "past");
-  const upcomingTotal = upcoming.data?.meta?.total ?? upcoming.data?.data.length ?? 0;
-  const pastTotal = past.data?.meta?.total ?? past.data?.data.length ?? 0;
+  const [tab, setTab] = useState<Tab>("current");
+  const queryClient = useQueryClient();
+
+  const upcoming = usePersistedBookings("upcoming", 1, 20, true);
+  const past = usePersistedBookings("past", 1, 20, tab === "past");
+  const liveBooking =
+    upcoming.data?.data.find(
+      (booking) => booking.status === "CONFIRMED" || booking.status === "ACTIVE",
+    ) ?? null;
+
+  const [cancelTarget, setCancelTarget] = useState<BookingDto | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  const cancelBooking = useMutation({
+    mutationFn: (input: { id: string; reason: string }) =>
+      bookingsApi.cancel(input.id, {
+        reason: input.reason,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: async () => {
+      await invalidateBookingData(queryClient);
+      setCancelTarget(null);
+      setCancelReason("");
+      toast.success("Session cancelled — the slot and its machines are free again");
+    },
+    onError: (error) => toast.error(readableError(error, "Could not cancel this session")),
+  });
+
+  const completeBooking = useMutation({
+    mutationFn: (id: string) => bookingsApi.complete(id),
+    onSuccess: async () => {
+      await invalidateBookingData(queryClient);
+      setTab("past");
+      toast.success("Session ended — logged to your visits");
+    },
+    onError: (error) => toast.error(readableError(error, "Could not end this session")),
+  });
 
   return (
     <AppShell
       title="Slots"
-      subtitle={tab === "book" ? "Reserve MakerSpace time" : "Your MakerSpace bookings"}
+      subtitle={liveBooking ? "Your next session" : "Reserve MakerSpace time"}
     >
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-3xl">
         <div
           role="tablist"
           aria-label="Slot views"
-          className="grid rounded-2xl border border-border bg-card p-1 sm:inline-grid sm:grid-cols-3"
+          className="inline-flex rounded-full border border-border bg-card p-1"
         >
-          <TabButton
-            active={tab === "upcoming"}
-            label="Upcoming"
-            count={upcomingTotal}
-            onClick={() => setTab("upcoming")}
-          />
-          <TabButton
-            active={tab === "book"}
-            label="Available Slots"
-            onClick={() => setTab("book")}
-          />
-          <TabButton
-            active={tab === "past"}
-            label="Past"
-            count={pastTotal}
-            onClick={() => setTab("past")}
-          />
+          {(
+            [
+              { id: "current", label: liveBooking ? "Upcoming" : "Book" },
+              { id: "past", label: "Past sessions" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              onClick={() => setTab(item.id)}
+              className={cn(
+                "min-h-10 rounded-full px-5 text-xs font-semibold uppercase tracking-wider transition-colors",
+                tab === item.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
 
         <div className="mt-6">
-          {tab === "book" ? (
-            <BookingFlow
-              preselectedProjectId={preselectedProjectId}
-              onBooked={() => {
-                setUpcomingPage(1);
-                setTab("upcoming");
+          {tab === "past" ? (
+            <PastSessions bookings={past.data?.data ?? []} loading={past.isPending} />
+          ) : upcoming.isPending ? (
+            <LoadingCard label="Loading your sessions…" />
+          ) : liveBooking ? (
+            <UpcomingSession
+              booking={liveBooking}
+              busy={completeBooking.isPending}
+              onCancel={() => {
+                setCancelTarget(liveBooking);
+                setCancelReason("");
               }}
-            />
-          ) : tab === "upcoming" ? (
-            <BookingCollection
-              rows={upcoming.data?.data ?? []}
-              loading={upcoming.isLoading}
-              error={upcoming.isError}
-              meta={upcoming.data?.meta}
-              emptyTitle="No upcoming bookings"
-              emptyMessage="Choose an eligible verified project and reserve MakerSpace time for your team."
-              emptyAction="Find a slot"
-              onEmptyAction={() => setTab("book")}
-              onRetry={() => upcoming.refetch()}
-              onPageChange={setUpcomingPage}
+              onComplete={() => completeBooking.mutate(liveBooking.id)}
             />
           ) : (
-            <BookingCollection
-              rows={past.data?.data ?? []}
-              loading={past.isLoading}
-              error={past.isError}
-              meta={past.data?.meta}
-              emptyTitle="No booking history yet"
-              emptyMessage="Completed, cancelled and no-show bookings will remain here for reference."
-              onRetry={() => past.refetch()}
-              onPageChange={setPastPage}
-            />
+            <BookingFlow preselectedProjectId={preselectedProjectId} />
           )}
         </div>
       </div>
+
+      <ResponsiveModal
+        open={Boolean(cancelTarget)}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel this session?"
+        description="The reserved seats and machines are released and the booking moves to your past sessions."
+      >
+        <label className="block text-sm font-medium">
+          Reason for cancellation
+          <textarea
+            value={cancelReason}
+            onChange={(event) => setCancelReason(event.target.value)}
+            placeholder="Briefly tell the team why"
+            className="form-input mt-2 min-h-24 resize-none py-3"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!cancelReason.trim() || cancelBooking.isPending}
+          onClick={() =>
+            cancelTarget &&
+            cancelBooking.mutate({ id: cancelTarget.id, reason: cancelReason.trim() })
+          }
+          className="pressable mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-destructive px-5 text-sm font-semibold text-destructive-foreground transition-all duration-200 disabled:opacity-50"
+        >
+          {cancelBooking.isPending && <Loader2 className="size-4 animate-spin" aria-hidden />}
+          Confirm cancellation
+        </button>
+      </ResponsiveModal>
     </AppShell>
   );
 }
 
-function TabButton({
-  active,
-  label,
-  count,
-  onClick,
+/* ── Upcoming session (full page — one booking at a time) ─────── */
+
+function UpcomingSession({
+  booking,
+  busy,
+  onCancel,
+  onComplete,
 }: {
-  active: boolean;
-  label: string;
-  count?: number;
-  onClick: () => void;
+  booking: BookingDto;
+  busy: boolean;
+  onCancel: () => void;
+  onComplete: () => void;
 }) {
+  const start = new Date(booking.startsAt);
+  const end = new Date(booking.endsAt);
+  return (
+    <section className="card-surface overflow-hidden">
+      <div className="border-b border-border bg-secondary/50 px-6 py-5 sm:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Upcoming session
+          </p>
+          <StatusBadge label={booking.statusLabel} />
+        </div>
+        <h2 className="mt-3 font-serif text-2xl font-light tracking-wide sm:text-3xl">
+          {booking.projectTitle}
+        </h2>
+      </div>
+
+      <div className="grid gap-6 px-6 py-6 sm:grid-cols-2 sm:px-8">
+        <div className="space-y-4">
+          <SessionFact icon={CalendarDays} label="Date" value={longDate(start, booking.timeZone)} />
+          <SessionFact
+            icon={Clock3}
+            label="Time"
+            value={`${clock(start, booking.timeZone)} – ${clock(end, booking.timeZone)}`}
+          />
+          <SessionFact
+            icon={Users}
+            label="Attending"
+            value={`${booking.attendeeCount} ${booking.attendeeCount === 1 ? "person" : "people"}`}
+          />
+        </div>
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Team
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {booking.participants.map((participant) => (
+              <span
+                key={participant.userId}
+                className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium"
+              >
+                {participant.name}
+              </span>
+            ))}
+          </div>
+          {booking.equipment.length > 0 && (
+            <>
+              <p className="mt-5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                Reserved kit
+              </p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {booking.equipment.map((item) => (
+                  <li
+                    key={item.equipmentId}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/[0.05] px-3 py-1 text-xs font-medium text-primary"
+                  >
+                    <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+                    {item.name}
+                    <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                      held
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Materials are claimed here, during the session — not at booking time,
+          when nobody yet knows what the build will actually need. */}
+      <ConsumableClaims projectId={booking.projectId} bookingId={booking.id} />
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4 sm:px-8">
+        <p className="text-xs text-muted-foreground">
+          {booking.canComplete
+            ? "Session in progress — end it when your team is done and the machines are released."
+            : "One session at a time — cancel to book a different slot."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {booking.canCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="pressable min-h-11 rounded-xl border border-destructive/40 px-4 text-sm font-semibold text-destructive transition-all duration-200 hover:bg-destructive/10"
+            >
+              Cancel session
+            </button>
+          )}
+          {/* Ending only unlocks once the MakerSpace has checked the team in. */}
+          {booking.canComplete && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onComplete}
+              className="pressable inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-all duration-200 hover:bg-primary/90 disabled:opacity-50"
+            >
+              {busy && <Loader2 className="size-4 animate-spin" aria-hidden />}
+              End session
+            </button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SessionFact({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof CalendarDays;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+        <Icon className="size-4.5" />
+      </span>
+      <div>
+        <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-sm font-medium">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Booking flow ─────────────────────────────────────────────── */
+
+function BookingFlow({ preselectedProjectId }: { preselectedProjectId?: string | undefined }) {
+  const queryClient = useQueryClient();
+  const { user: viewer } = useAppSession();
+
+  // Verified projects only, narrowed server-side; leadership is decided from
+  // the viewer relationship the server attaches to each row.
+  const projectPages = usePersistedProjectPages({ status: "VERIFIED" });
+  // Only a verified project you lead can be booked; that is the server's rule,
+  // so the picker offers nothing else rather than failing at confirmation.
+  const bookableProjects = useMemo(
+    () =>
+      (projectPages.data?.pages.flatMap((page) => page.data) ?? []).filter(
+        (project: ProjectSummary) =>
+          project.viewerRelationship === "LEADER" && project.status === "VERIFIED",
+      ),
+    [projectPages.data],
+  );
+
+  const [projectId, setProjectId] = useState("");
+  useEffect(() => {
+    if (projectId && bookableProjects.some((project) => project.id === projectId)) return;
+    const preferred =
+      bookableProjects.find((project) => project.id === preselectedProjectId) ??
+      bookableProjects[0];
+    setProjectId(preferred?.id ?? "");
+  }, [bookableProjects, preselectedProjectId, projectId]);
+
+  const projectDetail = usePersistedProject(projectId, Boolean(projectId));
+  const project = projectDetail.data ?? null;
+  const labId = project?.labId ?? bookableProjects[0]?.labId ?? "";
+
+  // Only teammates who accepted can attend; the rest are invisible here, which
+  // is what makes a project bookable before everyone has replied.
+  const attendees = useMemo(() => acceptedAttendees(project, viewer?.id), [project, viewer?.id]);
+  const [attending, setAttending] = useState<string[]>([]);
+  useEffect(() => {
+    const leaderId = project?.creatorId;
+    setAttending(leaderId ? [leaderId] : []);
+  }, [project?.creatorId, projectId]);
+
+  const [date, setDate] = useState("");
+  const [slotId, setSlotId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const participantCount = Math.max(1, attending.length);
+
+  const dates = useQuery({
+    queryKey: ["availability-dates", labId, projectId, participantCount],
+    queryFn: () =>
+      labsApi.availabilityDates(labId, projectId, participantCount).then((r) => r.data),
+    enabled: Boolean(labId && projectId),
+    staleTime: 30_000,
+  });
+  const openDates = useMemo(
+    () => (dates.data?.dates ?? []).filter((entry) => entry.isOpen && entry.slotCount > 0),
+    [dates.data],
+  );
+  useEffect(() => {
+    if (openDates.length === 0) return;
+    if (openDates.some((entry) => entry.date === date)) return;
+    setDate(openDates[0]!.date);
+    setSlotId(null);
+  }, [openDates, date]);
+
+  const day = useQuery({
+    queryKey: ["availability-day", labId, date, projectId, participantCount],
+    queryFn: () =>
+      labsApi.dailyAvailability(labId, date, projectId, participantCount).then((r) => r.data),
+    enabled: Boolean(labId && projectId && date),
+    staleTime: 15_000,
+  });
+  const slots = day.data?.slots ?? [];
+  const selectedSlot = slots.find((slot) => slot.id === slotId) ?? null;
+
+  const createBooking = useMutation({
+    mutationFn: (equipmentIds: string[]) =>
+      bookingsApi.create({
+        labSlotId: selectedSlot!.id,
+        projectId,
+        participantIds: attending,
+        equipmentIds,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: async () => {
+      await invalidateBookingData(queryClient);
+      setConfirmOpen(false);
+      setSlotId(null);
+      toast.success("Reservation confirmed");
+    },
+    onError: (error) => {
+      // The server's reason is the useful part — a slot that filled up, or a
+      // machine another team took while this form was open.
+      toast.error(readableError(error, "Could not reserve this slot"));
+      if (error instanceof ApiError) void day.refetch();
+    },
+  });
+
+  if (projectPages.isPending) return <LoadingCard label="Loading your projects…" />;
+
+  // A failed load must say so. Falling through to the "no verified projects"
+  // empty state would blame the student for a server problem.
+  if (projectPages.isError) {
+    return (
+      <section className="card-surface px-6 py-14 text-center">
+        <p className="text-sm text-muted-foreground">
+          {readableError(projectPages.error, "Your projects could not be loaded.")}
+        </p>
+        <button
+          type="button"
+          onClick={() => void projectPages.refetch()}
+          className="pressable mt-5 inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-card px-5 text-sm font-semibold hover:bg-secondary"
+        >
+          Try again
+        </button>
+      </section>
+    );
+  }
+
+  if (bookableProjects.length === 0) {
+    return (
+      <section className="card-surface px-6 py-14 text-center sm:py-20">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Chapter 02</p>
+        <h2 className="mt-3 font-serif text-2xl font-light tracking-wide sm:text-3xl">
+          Almost there
+        </h2>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
+          Slots unlock once one of your projects is verified by its mentor.
+        </p>
+        <Link
+          to="/projects"
+          className="pressable mt-7 inline-flex min-h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          Go to projects
+        </Link>
+      </section>
+    );
+  }
+
+  const toggleAttendee = (id: string) =>
+    setAttending((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+
+  return (
+    <div className="space-y-6">
+      <Step title="Project" aside={`${bookableProjects.length} verified`}>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {bookableProjects.map((entry) => (
+            <li key={entry.id}>
+              <button
+                type="button"
+                aria-pressed={entry.id === projectId}
+                onClick={() => {
+                  setProjectId(entry.id);
+                  setSlotId(null);
+                }}
+                className={cn(
+                  "min-h-16 w-full rounded-xl border px-4 py-3 text-left transition-colors",
+                  entry.id === projectId
+                    ? "border-primary bg-primary/[0.05]"
+                    : "border-border bg-card hover:border-primary/40",
+                )}
+              >
+                <span className="block text-sm font-semibold">{entry.title}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {entry.memberCount} {entry.memberCount === 1 ? "member" : "members"}
+                  {entry.pendingMemberCount > 0 && ` · ${entry.pendingMemberCount} not replied`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Step>
+
+      <Step title="Who's coming" aside={`${attending.length} of ${attendees.length}`}>
+        {projectDetail.isPending ? (
+          <p className="py-3 text-sm text-muted-foreground">Loading your team…</p>
+        ) : (
+          <>
+            <ul className="divide-y divide-border">
+              {attendees.map((attendee) => (
+                <AttendeeRow
+                  key={attendee.id}
+                  id={attendee.id}
+                  name={attendee.name}
+                  meta={attendee.meta}
+                  checked={attending.includes(attendee.id)}
+                  onToggle={toggleAttendee}
+                />
+              ))}
+            </ul>
+            {attendees.length === 1 && (
+              <p className="pt-3 text-xs text-muted-foreground">
+                Going solo is fine. Teammates appear here once they accept their invitation.
+              </p>
+            )}
+          </>
+        )}
+      </Step>
+
+      <Step title="Date">
+        {dates.isPending ? (
+          <p className="py-3 text-sm text-muted-foreground">Loading open days…</p>
+        ) : openDates.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">
+            The MakerSpace has no open days in the booking window right now.
+          </p>
+        ) : (
+          <ul className="-mx-1 flex snap-x gap-2.5 overflow-x-auto px-1 pb-2">
+            {openDates.map((entry) => {
+              const parsed = parseLocalDate(entry.date);
+              return (
+                <li key={entry.date} className="snap-start">
+                  <button
+                    type="button"
+                    aria-pressed={entry.date === date}
+                    onClick={() => {
+                      setDate(entry.date);
+                      setSlotId(null);
+                    }}
+                    className={cn(
+                      "flex min-h-20 w-[4.5rem] flex-col items-center justify-center rounded-2xl border transition-colors",
+                      entry.date === date
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-card hover:border-primary/40",
+                    )}
+                  >
+                    <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                      {parsed.day}
+                    </span>
+                    <span className="font-serif text-2xl font-light">{parsed.date}</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                      {parsed.month}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Step>
+
+      <Step
+        title="Time"
+        aside={(project?.equipment.length ?? 0) > 0 ? "Your machines per slot" : undefined}
+      >
+        {day.isPending ? (
+          <p className="py-3 text-sm text-muted-foreground">Loading slots…</p>
+        ) : slots.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">
+            No slots remain on this day. Try another date.
+          </p>
+        ) : (
+          <ul className="grid gap-2.5 sm:grid-cols-2">
+            {slots.map((slot) => (
+              <li key={slot.id}>
+                <SlotCard
+                  slot={slot}
+                  selected={slot.id === slotId}
+                  needed={attending.length}
+                  onSelect={() => setSlotId(slot.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Step>
+
+      <button
+        type="button"
+        disabled={!selectedSlot || attending.length === 0}
+        onClick={() => setConfirmOpen(true)}
+        className="pressable inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      >
+        Review reservation
+      </button>
+
+      <SlotBookingModal
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        projectName={project?.title ?? "—"}
+        date={date ? longDateFromLocal(date) : "No date selected"}
+        slot={selectedSlot ? `${selectedSlot.startTime} – ${selectedSlot.endTime}` : "—"}
+        attendees={attending.length}
+        equipment={selectedSlot?.equipment ?? []}
+        submitting={createBooking.isPending}
+        onConfirm={(equipmentIds) => createBooking.mutate(equipmentIds)}
+      />
+    </div>
+  );
+}
+
+/** One bookable slot: seats left, and which of the project's machines are free. */
+function SlotCard({
+  slot,
+  selected,
+  needed,
+  onSelect,
+}: {
+  slot: AvailabilitySlot;
+  selected: boolean;
+  needed: number;
+  onSelect: () => void;
+}) {
+  const left = slot.remainingCapacity;
+  const full = left < Math.max(1, needed);
+  const machines = slot.equipment;
+  const freeCount = slot.equipmentAvailable;
+
   return (
     <button
       type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
+      disabled={full}
+      aria-pressed={selected}
+      onClick={onSelect}
       className={cn(
-        "flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold transition-colors",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:text-foreground",
+        "w-full rounded-xl border p-4 text-left transition-colors",
+        selected
+          ? "border-primary bg-primary/[0.05]"
+          : "border-border bg-card hover:border-primary/40",
+        full && "cursor-not-allowed opacity-45 hover:border-border",
       )}
     >
-      {label}
-      {count !== undefined && count > 0 && (
-        <span
-          className={cn(
-            "rounded-full px-2 py-0.5 text-[10px] font-mono",
-            active ? "bg-white/15 text-white" : "bg-muted text-muted-foreground",
+      <span className="flex items-center justify-between gap-3">
+        <span className="font-serif text-base font-medium tracking-wide">
+          {slot.startTime} – {slot.endTime}
+        </span>
+        <span className="flex items-center gap-2">
+          {machines.length > 0 && (
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[10px] font-mono tracking-wider",
+                freeCount === machines.length
+                  ? "border-primary/25 bg-primary/[0.06] text-primary"
+                  : freeCount === 0
+                    ? "border-border bg-muted text-muted-foreground"
+                    : "border-warning/40 bg-warning/10 text-warning-foreground",
+              )}
+            >
+              {freeCount}/{machines.length} machines
+            </span>
           )}
-        >
-          {count}
+          <span
+            className={cn(
+              "text-[10px] font-mono uppercase tracking-wider",
+              left === 0
+                ? "text-destructive"
+                : left <= 3
+                  ? "text-warning-foreground"
+                  : "text-muted-foreground",
+            )}
+          >
+            {left === 0 ? "Full" : `${left} seats`}
+          </span>
+        </span>
+      </span>
+
+      {machines.length > 0 && (
+        <span className="mt-3 block divide-y divide-border/60 border-t border-border/60">
+          {machines.map((machine) => (
+            <span
+              key={machine.equipmentId}
+              className="flex min-h-8 items-center justify-between gap-3 py-1"
+            >
+              <span
+                className={cn(
+                  "flex items-center gap-2 text-xs",
+                  machine.available ? "font-medium text-foreground" : "text-muted-foreground",
+                )}
+              >
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    machine.available
+                      ? "bg-primary shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-primary)_18%,transparent)]"
+                      : "bg-muted-foreground/40",
+                  )}
+                  aria-hidden
+                />
+                {machine.name}
+              </span>
+              <span
+                className={cn(
+                  "text-[9px] font-mono uppercase tracking-widest",
+                  machine.available ? "text-primary" : "text-muted-foreground/70",
+                )}
+              >
+                {machine.available ? "Free" : "Taken"}
+              </span>
+            </span>
+          ))}
         </span>
       )}
     </button>
   );
 }
 
-function BookingFlow({
-  preselectedProjectId,
-  onBooked,
+function AttendeeRow({
+  id,
+  name,
+  meta,
+  checked,
+  onToggle,
 }: {
-  preselectedProjectId?: string | undefined;
-  onBooked: () => void;
+  id: string;
+  name: string;
+  meta: string;
+  checked: boolean;
+  onToggle: (id: string) => void;
 }) {
-  const queryClient = useQueryClient();
-  const projects = usePersistedProjectPages({ status: "VERIFIED" });
-  const { data: projectPages, fetchNextPage, hasNextPage, isFetchingNextPage } = projects;
-  const leaderProjects = useMemo(
-    () =>
-      (projectPages?.pages.flatMap((page) => page.data) ?? []).filter(
-        (project) => project.viewerRelationship === "LEADER" && project.status === "VERIFIED",
-      ),
-    [projectPages],
-  );
-  const [projectId, setProjectId] = useState(preselectedProjectId ?? "");
-  const preselectionHandled = useRef(!preselectedProjectId);
-  const project = leaderProjects.find((item) => item.id === projectId);
-  const projectDetail = usePersistedProject(projectId, Boolean(projectId));
-  const acceptedParticipants = useMemo(
-    () => acceptedProjectParticipants(projectDetail.data),
-    [projectDetail.data],
-  );
-  const [participantProjectId, setParticipantProjectId] = useState("");
-  const [participantIds, setParticipantIds] = useState<string[]>([]);
-  const participantCount = participantIds.length;
-  const labId = project?.labId ?? "";
-  const dates = useQuery({
-    queryKey: ["availability-dates", labId, projectId, participantCount],
-    queryFn: () =>
-      labsApi
-        .availabilityDates(labId, projectId, participantCount)
-        .then((response) => response.data),
-    enabled: Boolean(labId && projectId && participantCount),
-    staleTime: 30_000,
-  });
-  const [selectedDate, setSelectedDate] = useState("");
-  const [selectedSlotId, setSelectedSlotId] = useState("");
-  const availability = useQuery({
-    queryKey: ["daily-availability", labId, selectedDate, projectId, participantCount],
-    queryFn: () =>
-      labsApi
-        .dailyAvailability(labId, selectedDate, projectId, participantCount)
-        .then((response) => response.data),
-    enabled: Boolean(labId && selectedDate && projectId && participantCount),
-    staleTime: 10_000,
-    refetchInterval: 30_000,
-  });
-  const selectedSlot = availability.data?.slots.find((slot) => slot.id === selectedSlotId);
-  const leaderRequired = availability.data?.lab.teamLeaderAttendanceRequired ?? true;
-  const leaderId = acceptedParticipants.find(
-    (participant) => participant.role === "LEADER",
-  )?.userId;
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [notes, setNotes] = useState("");
-  const bookingRequest = useRef<{ signature: string; idempotencyKey: string } | null>(null);
-  const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    const needsAnotherPage =
-      leaderProjects.length === 0 ||
-      Boolean(
-        !preselectionHandled.current &&
-        preselectedProjectId &&
-        !leaderProjects.some((item) => item.id === preselectedProjectId),
-      );
-    if (needsAnotherPage && hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, leaderProjects, preselectedProjectId]);
-
-  useEffect(() => {
-    if (!leaderProjects.length) return;
-    if (!preselectionHandled.current && preselectedProjectId) {
-      const preferred = leaderProjects.find((item) => item.id === preselectedProjectId);
-      if (preferred) {
-        preselectionHandled.current = true;
-        setProjectId(preferred.id);
-        return;
-      }
-      if (hasNextPage || isFetchingNextPage) return;
-      preselectionHandled.current = true;
-    }
-    if (!leaderProjects.some((item) => item.id === projectId)) {
-      setProjectId(leaderProjects[0]!.id);
-    }
-  }, [hasNextPage, isFetchingNextPage, leaderProjects, preselectedProjectId, projectId]);
-
-  useEffect(() => {
-    if (!projectDetail.data || participantProjectId === projectId) return;
-    setParticipantIds(acceptedProjectParticipants(projectDetail.data).map((item) => item.userId));
-    setParticipantProjectId(projectId);
-    setSelectedDate("");
-    setSelectedSlotId("");
-    setConflictMessage(null);
-  }, [participantProjectId, projectDetail.data, projectId]);
-
-  useEffect(() => {
-    if (!leaderRequired || !leaderId) return;
-    setParticipantIds((current) => (current.includes(leaderId) ? current : [leaderId, ...current]));
-  }, [leaderId, leaderRequired]);
-
-  useEffect(() => {
-    if (!dates.data) return;
-    const current = dates.data.dates.find((date) => date.date === selectedDate);
-    if (!current?.isOpen || !current.canFit) {
-      const firstOpen = dates.data.dates.find((date) => date.isOpen && date.canFit);
-      setSelectedDate(firstOpen?.date ?? "");
-    }
-  }, [dates.data, selectedDate]);
-
-  useEffect(() => {
-    setSelectedSlotId("");
-    setConflictMessage(null);
-  }, [participantIds, selectedDate, projectId]);
-
-  useEffect(() => {
-    if (!selectedSlotId || !availability.data) return;
-    const refreshed = availability.data.slots.find((slot) => slot.id === selectedSlotId);
-    if (!refreshed?.canFit) {
-      setSelectedSlotId("");
-      setConflictMessage(
-        refreshed
-          ? `That slot now has ${refreshed.remainingCapacity} ${refreshed.remainingCapacity === 1 ? "place" : "places"} remaining. Choose another time for your ${participantCount}-person team.`
-          : "That slot is no longer available. Choose another time below.",
-      );
-    }
-  }, [availability.data, participantCount, selectedSlotId]);
-
-  const createMutation = useMutation({
-    mutationFn: () => {
-      if (!selectedSlot) throw new Error("Choose an available slot first");
-      const normalizedNotes = notes.trim() || null;
-      const signature = JSON.stringify({
-        labSlotId: selectedSlot.id,
-        projectId,
-        participantIds: [...participantIds].sort(),
-        notes: normalizedNotes,
-      });
-      const idempotencyKey =
-        bookingRequest.current?.signature === signature
-          ? bookingRequest.current.idempotencyKey
-          : crypto.randomUUID();
-      bookingRequest.current = { signature, idempotencyKey };
-      return bookingsApi.create({
-        labSlotId: selectedSlot.id,
-        projectId,
-        participantIds,
-        idempotencyKey,
-        notes: normalizedNotes,
-      });
-    },
-    onSuccess: async ({ data }) => {
-      await invalidateBookingData(queryClient, data.booking.id, data.booking.projectId);
-      setConfirmOpen(false);
-      setSubmissionError(null);
-      setNotes("");
-      bookingRequest.current = null;
-      toast.success(data.replayed ? "Booking already confirmed" : "MakerSpace booking confirmed");
-      onBooked();
-    },
-    onError: (error) => {
-      if (isCapacityConflict(error)) {
-        const remaining = conflictRemainingCapacity(error);
-        setConflictMessage(
-          remaining === null
-            ? "This slot filled while you were confirming. Availability has been refreshed; choose an alternate slot."
-            : `This slot filled while you were confirming. Only ${remaining} ${remaining === 1 ? "place remains" : "places remain"}. Choose an alternate slot below.`,
-        );
-        setSelectedSlotId("");
-        setConfirmOpen(false);
-        setSubmissionError(null);
-        void availability.refetch();
-        return;
-      }
-      setSubmissionError(
-        error instanceof ApiError
-          ? error.message
-          : "The booking was not confirmed. Check your connection and try again with the same request.",
-      );
-    },
-  });
-
-  if (projects.isLoading) return <BookingFlowLoading />;
-  if (projects.isError) {
-    return (
-      <RetryState
-        title="Eligible projects could not be loaded"
-        message="Check your connection and try again. Your booking has not been started."
-        onRetry={() => projects.refetch()}
-      />
-    );
-  }
-  if (!leaderProjects.length && (hasNextPage || isFetchingNextPage)) {
-    return <BookingFlowLoading />;
-  }
-  if (!leaderProjects.length) return <NoEligibleProjects />;
-
-  const selectedParticipants = acceptedParticipants.filter((participant) =>
-    participantIds.includes(participant.userId),
-  );
-  const equipment = availability.data?.equipmentAdvisory ?? [];
-  const equipmentAvailableCount = equipment.filter((item) => item.available).length;
-  const projectEligible = availability.data?.project?.eligibleForBooking ?? true;
-
-  const changeProject = (nextProjectId: string) => {
-    preselectionHandled.current = true;
-    setProjectId(nextProjectId);
-    setParticipantProjectId("");
-    setParticipantIds([]);
-    setSelectedDate("");
-    setSelectedSlotId("");
-    setConflictMessage(null);
-    setSubmissionError(null);
-  };
-
-  const toggleParticipant = (participant: BookingParticipantDto) => {
-    if (participant.role === "LEADER" && leaderRequired) return;
-    setParticipantIds((current) =>
-      current.includes(participant.userId)
-        ? current.filter((id) => id !== participant.userId)
-        : [...current, participant.userId],
-    );
-  };
-
-  const openConfirmation = () => {
-    setSubmissionError(null);
-    createMutation.reset();
-    setConfirmOpen(true);
-  };
-
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-2xl border border-primary/15 bg-primary text-primary-foreground shadow-sm">
-        <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div>
-            <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-white/65">
-              Live capacity booking
-            </p>
-            <h1 className="mt-3 max-w-2xl font-serif text-3xl font-light leading-tight sm:text-4xl">
-              Bring the right team to the bench.
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">
-              Accepted members are selected automatically. Equipment status is guidance only and
-              never reserves a machine.
-            </p>
-          </div>
-          <div className="rounded-xl border border-white/15 bg-white/10 px-4 py-3 lg:min-w-48">
-            <div className="flex items-center gap-2 text-white/65">
-              <Users className="size-4" aria-hidden />
-              <span className="text-[10px] font-mono uppercase tracking-[0.16em]">
-                Team attending
-              </span>
-            </div>
-            <p className="mt-2 font-serif text-3xl font-light">{participantCount}</p>
-            <p className="text-xs text-white/60">Capacity is based on selected people</p>
-          </div>
-        </div>
-      </section>
-
-      <BookingStep
-        number="01"
-        title="Select a verified project"
-        aside={`${leaderProjects.length} eligible`}
-      >
-        <label htmlFor="booking-project" className="sr-only">
-          Verified project
-        </label>
-        <select
-          id="booking-project"
-          value={projectId}
-          onChange={(event) => changeProject(event.target.value)}
-          className="h-12 w-full rounded-xl border border-input bg-transparent px-4 text-sm font-semibold focus:border-primary focus:outline-none focus:ring-3 focus:ring-primary/20"
-        >
-          {leaderProjects.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.title}
-            </option>
-          ))}
-        </select>
-        {hasNextPage && (
-          <button
-            type="button"
-            disabled={isFetchingNextPage}
-            onClick={() => void fetchNextPage()}
-            className="mt-3 min-h-11 rounded-xl border border-primary/20 px-4 text-xs font-semibold text-primary disabled:opacity-50"
-          >
-            {isFetchingNextPage ? "Loading more projects…" : "Load more verified projects"}
-          </button>
-        )}
-        {project && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <StatusBadge label="Verified" />
-            <span>{project.statusMessage}</span>
-          </div>
-        )}
-      </BookingStep>
-
-      <BookingStep
-        number="02"
-        title="Choose who is coming"
-        aside={`${participantCount} of ${acceptedParticipants.length} selected`}
-      >
-        {projectDetail.isLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="h-14 animate-pulse rounded-xl bg-muted" />
-            ))}
-          </div>
-        ) : projectDetail.isError ? (
-          <RetryInline
-            label="Project team could not be loaded"
-            onRetry={() => projectDetail.refetch()}
-          />
-        ) : acceptedParticipants.length ? (
-          <ul className="divide-y divide-border">
-            {acceptedParticipants.map((participant) => {
-              const leader = participant.role === "LEADER";
-              const locked = leader && leaderRequired;
-              return (
-                <li key={participant.userId}>
-                  <label
-                    className={cn(
-                      "flex min-h-14 items-center gap-3 py-2",
-                      locked ? "cursor-default" : "cursor-pointer",
-                    )}
-                  >
-                    <Checkbox
-                      checked={participantIds.includes(participant.userId)}
-                      disabled={locked}
-                      onCheckedChange={() => toggleParticipant(participant)}
-                      className="size-6"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{participant.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {leader
-                          ? locked
-                            ? "Team Leader · Required"
-                            : "Team Leader"
-                          : participant.email}
-                      </span>
-                    </span>
-                    {participantIds.includes(participant.userId) && (
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-primary">
-                        Attending
-                      </span>
-                    )}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
-            This project has no accepted members available for booking. Refresh the project before
-            continuing.
-          </p>
-        )}
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          Only accepted project members are shown. The backend verifies every selected person again
-          when the booking is confirmed.
-        </p>
-      </BookingStep>
-
-      <BookingStep number="03" title="Choose a date">
-        {dates.isLoading ? (
-          <div className="flex gap-3 overflow-hidden">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="h-24 w-28 shrink-0 animate-pulse rounded-xl bg-muted" />
-            ))}
-          </div>
-        ) : dates.isError ? (
-          <RetryInline
-            label="Operating dates could not be loaded"
-            onRetry={() => dates.refetch()}
-          />
-        ) : participantCount === 0 ? (
-          <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            Select at least one accepted participant to see dates.
-          </p>
-        ) : (
-          <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:none]">
-            {dates.data?.dates.map((date) => {
-              const active = selectedDate === date.date;
-              return (
-                <button
-                  key={date.date}
-                  type="button"
-                  disabled={!date.isOpen || !date.canFit}
-                  onClick={() => setSelectedDate(date.date)}
-                  className={cn(
-                    "min-h-24 w-28 shrink-0 snap-start rounded-xl border px-3 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
-                    active
-                      ? "border-primary bg-primary text-primary-foreground shadow-md"
-                      : "border-border bg-card hover:border-primary/40",
-                    (!date.isOpen || !date.canFit) && "cursor-not-allowed bg-muted/50 opacity-55",
-                  )}
-                >
-                  <p
-                    className={cn(
-                      "text-[10px] font-mono uppercase tracking-wider",
-                      active ? "text-white/65" : "text-muted-foreground",
-                    )}
-                  >
-                    {date.label.split(",")[0]}
-                  </p>
-                  <p className="mt-1 font-serif text-lg font-light">{shortDate(date.date)}</p>
-                  <p
-                    className={cn(
-                      "mt-2 text-[10px]",
-                      active ? "text-white/65" : "text-muted-foreground",
-                    )}
-                  >
-                    {date.isOpen ? `${date.slotCount} slots` : (date.reason ?? "Closed")}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </BookingStep>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] lg:items-start">
-        <BookingStep number="04" title="Choose a time" aside={availability.data?.label}>
-          {conflictMessage && (
-            <div
-              role="alert"
-              className="mb-4 rounded-xl border border-warning/35 bg-warning/10 p-4 text-sm text-warning-foreground"
-            >
-              <p>{conflictMessage}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  setConflictMessage(null);
-                  void availability.refetch();
-                }}
-                className="mt-2 inline-flex min-h-11 items-center gap-2 font-semibold"
-              >
-                <RefreshCw className="size-4" aria-hidden /> Refresh availability
-              </button>
-            </div>
-          )}
-
-          {availability.isLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-24 animate-pulse rounded-xl bg-muted" />
-              ))}
-            </div>
-          ) : availability.isError ? (
-            <RetryInline
-              label="Slot availability could not be loaded"
-              onRetry={() => availability.refetch()}
-            />
-          ) : availability.data?.slots.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {availability.data.slots.map((slot) => (
-                <SlotButton
-                  key={slot.id}
-                  slot={slot}
-                  selected={slot.id === selectedSlotId}
-                  equipmentCount={equipment.length}
-                  equipmentAvailableCount={equipmentAvailableCount}
-                  onSelect={() => {
-                    setSelectedSlotId(slot.id);
-                    setConflictMessage(null);
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="px-4 py-12 text-center">
-              <Clock3 className="mx-auto size-6 text-muted-foreground" aria-hidden />
-              <p className="mt-3 text-sm text-muted-foreground">
-                {availability.data?.policy.reason ?? "No slots are available on this date."}
-              </p>
-            </div>
-          )}
-        </BookingStep>
-
-        <aside className="space-y-4 lg:sticky lg:top-28">
-          {selectedSlot ? (
-            <BookingCapacityBench
-              capacity={selectedSlot.bookingCapacity}
-              placesUsed={selectedSlot.placesUsed}
-              selectedCount={participantCount}
-            />
-          ) : (
-            <section className="rounded-2xl border border-dashed border-primary/25 bg-primary/[0.035] p-5">
-              <p className="text-sm font-semibold text-primary">MakerSpace bench</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                Select a time to see how your team fits alongside existing reservations.
-              </p>
-            </section>
-          )}
-
-          <EquipmentAdvisory items={equipment} loading={availability.isLoading} />
-
-          {!projectEligible && availability.data?.project && (
-            <p className="rounded-xl border border-warning/35 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
-              {availability.data.project.eligibilityMessage}
-            </p>
-          )}
-
-          <section className="sticky bottom-[calc(6.5rem+env(safe-area-inset-bottom))] z-20 rounded-2xl border border-primary/15 bg-card/95 p-4 shadow-xl backdrop-blur md:static md:shadow-sm">
-            <div className="flex items-start gap-3">
-              <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
-              <p className="text-xs leading-5 text-muted-foreground">
-                The server checks membership and live capacity again before confirming.
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={!selectedSlot || participantCount === 0 || !projectEligible}
-              onClick={openConfirmation}
-              className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-45"
-            >
-              Review booking <ChevronRight className="size-4" aria-hidden />
-            </button>
-          </section>
-        </aside>
-      </div>
-
-      {selectedSlot && project && (
-        <BookingConfirmation
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          projectTitle={project.title}
-          date={availability.data?.label ?? selectedDate}
-          time={`${selectedSlot.startTime}–${selectedSlot.endTime}`}
-          participants={selectedParticipants}
-          equipment={equipment}
-          capacity={selectedSlot.bookingCapacity}
-          placesUsed={selectedSlot.placesUsed}
-          notes={notes}
-          onNotesChange={(value) => {
-            setNotes(value);
-            if (createMutation.isError) {
-              setSubmissionError(null);
-              createMutation.reset();
-            }
-          }}
-          pending={createMutation.isPending}
-          error={submissionError}
-          onConfirm={() => createMutation.mutate()}
-        />
-      )}
-    </div>
+    <li>
+      <label className="flex min-h-14 cursor-pointer items-center gap-3 py-2">
+        <Checkbox checked={checked} onCheckedChange={() => onToggle(id)} className="size-6" />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{name}</span>
+          <span className="block truncate text-xs text-muted-foreground">{meta}</span>
+        </span>
+      </label>
+    </li>
   );
 }
 
-function BookingStep({
-  number,
+function Step({
   title,
   aside,
   children,
 }: {
-  number: string;
   title: string;
   aside?: string | undefined;
   children: React.ReactNode;
 }) {
   return (
-    <section className="card-surface p-5 sm:p-6">
+    <section className="card-surface p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <span className="font-mono text-[10px] tracking-wider text-primary">{number}</span>
-          {title}
-        </h2>
+        <h2 className="text-[10px] font-mono uppercase tracking-widest text-primary">{title}</h2>
         {aside && (
           <span className="shrink-0 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
             {aside}
@@ -741,320 +758,122 @@ function BookingStep({
   );
 }
 
-function SlotButton({
-  slot,
-  selected,
-  equipmentCount,
-  equipmentAvailableCount,
-  onSelect,
-}: {
-  slot: AvailabilitySlot;
-  selected: boolean;
-  equipmentCount: number;
-  equipmentAvailableCount: number;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={!slot.canFit}
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={cn(
-        "min-h-24 w-full rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
-        selected ? "border-primary bg-primary/7" : "border-border hover:border-primary/40",
-        !slot.canFit && "cursor-not-allowed bg-muted/50 opacity-55",
-      )}
-    >
-      <span className="flex items-start justify-between gap-3">
-        <span>
-          <span className="block font-serif text-lg font-light">
-            {slot.startTime}–{slot.endTime}
-          </span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            {slot.remainingCapacity} of {slot.bookingCapacity} places remain
-          </span>
-        </span>
-        <span
-          className={cn(
-            "grid size-6 shrink-0 place-items-center rounded-full border",
-            selected && "border-primary bg-primary text-primary-foreground",
-          )}
-        >
-          {selected ? <Check className="size-3.5" aria-hidden /> : null}
-        </span>
-      </span>
-      <span className="mt-3 flex items-center gap-2 border-t border-border/70 pt-2 text-[10px] text-muted-foreground">
-        <Wrench className="size-3.5" aria-hidden />
-        {equipmentCount
-          ? `${equipmentAvailableCount}/${equipmentCount} expected equipment currently available`
-          : "No expected equipment declared"}
-      </span>
-    </button>
-  );
-}
+/* ── Past sessions ────────────────────────────────────────────── */
 
-function EquipmentAdvisory({
-  items,
-  loading,
-}: {
-  items: DailyAvailability["equipmentAdvisory"];
-  loading: boolean;
-}) {
-  return (
-    <section className="card-surface p-5">
-      <div className="flex items-center gap-2">
-        <Wrench className="size-4 text-primary" aria-hidden />
-        <h2 className="text-sm font-semibold">Equipment advisory</h2>
+function PastSessions({ bookings, loading }: { bookings: BookingDto[]; loading: boolean }) {
+  if (loading) return <LoadingCard label="Loading past sessions…" />;
+  if (!bookings.length) {
+    return (
+      <div className="card-surface px-6 py-14 text-center text-sm text-muted-foreground">
+        Completed and cancelled sessions will appear here.
       </div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-        Current status for the equipment declared by this project. It does not block this booking.
-      </p>
-      {loading ? (
-        <div className="mt-4 h-20 animate-pulse rounded-xl bg-muted" />
-      ) : items.length ? (
-        <ul className="mt-4 space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.equipmentId}
-              className="flex items-center justify-between gap-3 rounded-xl border border-border px-3 py-3"
-            >
+    );
+  }
+  return (
+    <ol className="relative ml-2 space-y-4 border-l border-border pl-6">
+      {bookings.map((booking) => (
+        <li key={booking.id} className="relative">
+          <span
+            className={cn(
+              "absolute -left-[1.83rem] top-6 size-3 rounded-full border-2 border-background",
+              booking.status === "COMPLETED" ? "bg-primary" : "bg-muted-foreground/50",
+            )}
+            aria-hidden
+          />
+          <article className="card-surface p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{item.name}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Need {item.requiredQuantity} · {item.availableQuantity} available
+                <h3 className="font-serif text-base font-light tracking-wide sm:text-lg">
+                  {booking.projectTitle}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {longDate(new Date(booking.startsAt), booking.timeZone)} ·{" "}
+                  {clock(new Date(booking.startsAt), booking.timeZone)} –{" "}
+                  {clock(new Date(booking.endsAt), booking.timeZone)} · {booking.attendeeCount}{" "}
+                  {booking.attendeeCount === 1 ? "attendee" : "attendees"}
                 </p>
               </div>
-              <span
-                className={cn(
-                  "shrink-0 text-[9px] font-mono uppercase tracking-wider",
-                  item.available ? "text-success-foreground" : "text-warning-foreground",
-                )}
-              >
-                {item.available ? "Available" : "Unavailable"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-4 rounded-xl border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
-          This project has no expected equipment.
-        </p>
-      )}
-    </section>
+              <StatusBadge label={booking.statusLabel} />
+            </div>
+            {booking.cancellationReason && (
+              <p className="mt-3 rounded-xl bg-muted/70 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                {booking.cancellationReason}
+              </p>
+            )}
+          </article>
+        </li>
+      ))}
+    </ol>
   );
 }
 
-function BookingCollection({
-  rows,
-  loading,
-  error,
-  meta,
-  emptyTitle,
-  emptyMessage,
-  emptyAction,
-  onEmptyAction,
-  onRetry,
-  onPageChange,
-}: {
-  rows: BookingDto[];
-  loading: boolean;
-  error: boolean;
-  meta?: ApiResponse<BookingDto[]>["meta"];
-  emptyTitle: string;
-  emptyMessage: string;
-  emptyAction?: string;
-  onEmptyAction?: () => void;
-  onRetry: () => unknown;
-  onPageChange: (page: number) => void;
-}) {
-  if (loading) {
-    return (
-      <div className="space-y-4" aria-label="Loading bookings">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <div
-            key={index}
-            className="h-48 animate-pulse rounded-2xl border border-border bg-card"
-          />
-        ))}
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <RetryState
-        title="Bookings could not be loaded"
-        message="Check your connection and try again."
-        onRetry={onRetry}
-      />
-    );
-  }
-  if (!rows.length) {
-    return (
-      <section className="card-surface px-6 py-14 text-center sm:py-20">
-        <CalendarDays className="mx-auto size-7 text-primary" aria-hidden />
-        <h2 className="mt-4 font-serif text-2xl font-light sm:text-3xl">{emptyTitle}</h2>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-          {emptyMessage}
-        </p>
-        {emptyAction && onEmptyAction && (
-          <button
-            type="button"
-            onClick={onEmptyAction}
-            className="mt-6 min-h-12 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground"
-          >
-            {emptyAction}
-          </button>
-        )}
-      </section>
-    );
-  }
+function LoadingCard({ label }: { label: string }) {
   return (
-    <div>
-      <div className="space-y-4">
-        {rows.map((booking) => (
-          <BookingSummaryCard key={booking.id} booking={booking} />
-        ))}
-      </div>
-      {meta && meta.totalPages > 1 && (
-        <nav className="mt-6 flex items-center justify-between gap-3" aria-label="Booking pages">
-          <button
-            type="button"
-            disabled={!meta.hasPrev}
-            onClick={() => onPageChange(meta.page - 1)}
-            className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold disabled:opacity-40"
-          >
-            Previous
-          </button>
-          <span className="text-xs text-muted-foreground">
-            Page {meta.page} of {meta.totalPages}
-          </span>
-          <button
-            type="button"
-            disabled={!meta.hasNext}
-            onClick={() => onPageChange(meta.page + 1)}
-            className="min-h-11 rounded-xl border border-border px-4 text-sm font-semibold disabled:opacity-40"
-          >
-            Next
-          </button>
-        </nav>
-      )}
+    <div className="card-surface flex items-center justify-center gap-3 px-6 py-14 text-sm text-muted-foreground">
+      <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
+      {label}
     </div>
   );
 }
 
-function RetryState({
-  title,
-  message,
-  onRetry,
-}: {
-  title: string;
-  message: string;
-  onRetry: () => unknown;
-}) {
-  return (
-    <section className="card-surface px-6 py-14 text-center">
-      <h2 className="font-serif text-2xl font-light">{title}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
-      >
-        <RefreshCw className="size-4" aria-hidden /> Try again
-      </button>
-    </section>
-  );
-}
+/* ── helpers ──────────────────────────────────────────────────── */
 
-function RetryInline({ label, onRetry }: { label: string; onRetry: () => unknown }) {
-  return (
-    <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-6 text-center">
-      <p className="text-sm text-destructive">{label}.</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="mt-2 min-h-11 text-sm font-semibold text-primary"
-      >
-        Retry
-      </button>
-    </div>
-  );
-}
-
-function BookingFlowLoading() {
-  return (
-    <div className="space-y-5" aria-label="Loading booking flow">
-      <div className="h-52 animate-pulse rounded-2xl bg-primary/10" />
-      <div className="h-32 animate-pulse rounded-2xl border border-border bg-card" />
-      <div className="h-56 animate-pulse rounded-2xl border border-border bg-card" />
-    </div>
-  );
-}
-
-function NoEligibleProjects() {
-  return (
-    <section className="card-surface px-6 py-16 text-center sm:py-20">
-      <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-primary">
-        Verified project required
-      </p>
-      <h2 className="mt-3 font-serif text-3xl font-light">No project is ready to book yet</h2>
-      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-        Only the Team Leader of a verified project can reserve MakerSpace capacity. Open Projects to
-        check team acceptance and Faculty Mentor approval.
-      </p>
-      <Link
-        to="/projects"
-        className="mt-6 inline-flex min-h-12 items-center rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground"
-      >
-        Review projects
-      </Link>
-    </section>
-  );
-}
-
-function acceptedProjectParticipants(project?: ProjectDetail): BookingParticipantDto[] {
+/**
+ * The leader plus every teammate who has accepted.
+ *
+ * A pending or declined invitation is deliberately absent: the project can be
+ * verified and booked before everyone replies, and offering an unconfirmed name
+ * as an attendee would let a team reserve a seat for somebody who never joined.
+ */
+function acceptedAttendees(project: ProjectDetail | null, viewerId: string | undefined) {
   if (!project) return [];
-  return project.members
-    .filter(
-      (member): member is typeof member & { userId: string } =>
-        member.status === "ACCEPTED" && Boolean(member.userId),
-    )
+  const rows = project.members
+    .filter((member) => member.status === "ACCEPTED" && member.userId)
     .map((member) => ({
-      userId: member.userId,
-      name: member.name,
-      email: member.email,
-      role: member.role,
-    }))
-    .sort((a, b) => Number(b.role === "LEADER") - Number(a.role === "LEADER"));
+      id: member.userId!,
+      name: member.userId === viewerId ? `${member.name} (You)` : member.name,
+      meta: member.role === "LEADER" ? "Project lead" : (member.department?.name ?? member.email),
+      isLeader: member.role === "LEADER",
+    }));
+  // The leader always heads the list.
+  return rows.sort((a, b) => Number(b.isLeader) - Number(a.isLeader));
 }
 
-function isCapacityConflict(error: unknown) {
-  return (
-    error instanceof ApiError &&
-    ["SLOT_CAPACITY_EXCEEDED", "TRANSACTION_CONFLICT", "SLOT_UNAVAILABLE"].includes(error.code)
-  );
+function parseLocalDate(value: string) {
+  const [year, month, dayOfMonth] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year!, month! - 1, dayOfMonth!));
+  return {
+    day: parsed.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" }),
+    date: String(dayOfMonth).padStart(2, "0"),
+    month: parsed.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }),
+  };
 }
 
-function conflictRemainingCapacity(error: unknown) {
-  if (!(error instanceof ApiError)) return null;
-  for (const detail of error.details) {
-    if (
-      detail &&
-      typeof detail === "object" &&
-      "remainingCapacity" in detail &&
-      typeof detail.remainingCapacity === "number"
-    ) {
-      return detail.remainingCapacity;
-    }
-  }
-  return null;
-}
-
-function shortDate(value: string) {
-  return new Intl.DateTimeFormat("en-IN", {
+function longDateFromLocal(value: string) {
+  const [year, month, dayOfMonth] = value.split("-").map(Number);
+  return new Date(Date.UTC(year!, month! - 1, dayOfMonth!)).toLocaleDateString("en-GB", {
+    weekday: "short",
     day: "numeric",
     month: "short",
     timeZone: "UTC",
-  }).format(new Date(`${value}T00:00:00.000Z`));
+  });
 }
+
+function longDate(instant: Date, timeZone: string) {
+  return instant.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone,
+  });
+}
+
+function clock(instant: Date, timeZone: string) {
+  return instant.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
+}
+
+export type { SlotEquipment };

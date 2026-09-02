@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, ChevronDown, LoaderCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, LoaderCircle, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -12,15 +12,13 @@ import {
   type Department,
   type Programme,
 } from "@/lib/api";
-import { academicYears, departments, programmes } from "@/lib/makerspace-data";
-import { useMakerSpace } from "@/lib/makerspace-context";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/onboarding")({
   validateSearch: z.object({ invite: z.string().optional() }),
   head: () => ({
     meta: [
-      { title: "Complete your profile — MIT-WPU MakerSpace" },
+      { title: "Complete your profile — सृजन" },
       {
         name: "description",
         content:
@@ -49,16 +47,15 @@ type SelectOption = { value: string; label: string };
 function Onboarding() {
   const session = useAppSession();
   const { completeStudentOnboarding } = useAuth();
-  const { completeOnboarding, acceptProjectInvitation } = useMakerSpace();
   const navigate = useNavigate();
   const { invite: invitationProjectId } = Route.useSearch();
   const [form, setForm] = useState<FormState>({
     email: session.profile.email,
     fullName: session.profile.fullName,
     prn: session.profile.prn,
-    departmentId: session.prototype ? session.profile.department : "",
-    programmeId: session.prototype ? session.profile.programme : "",
-    academicYear: session.prototype ? session.profile.academicYear : "",
+    departmentId: "",
+    programmeId: "",
+    academicYear: "",
   });
   const [departmentRecords, setDepartmentRecords] = useState<Department[]>([]);
   const [programmeRecords, setProgrammeRecords] = useState<Programme[]>([]);
@@ -69,7 +66,7 @@ function Onboarding() {
     maxLength: 24,
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [isLoadingReferences, setIsLoadingReferences] = useState(!session.prototype);
+  const [isLoadingReferences, setIsLoadingReferences] = useState(true);
   const [isLoadingProgrammes, setIsLoadingProgrammes] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -88,20 +85,13 @@ function Onboarding() {
       navigate({ to: "/", replace: true });
       return;
     }
-    if (!session.prototype && session.onboarded) {
+    if (session.onboarded) {
       navigate({ to: roleHomes[session.role], replace: true });
     }
-  }, [
-    navigate,
-    session.authenticated,
-    session.hydrated,
-    session.onboarded,
-    session.prototype,
-    session.role,
-  ]);
+  }, [navigate, session.authenticated, session.hydrated, session.onboarded, session.role]);
 
   useEffect(() => {
-    if (session.prototype || !session.authenticated) return;
+    if (!session.authenticated) return;
     let cancelled = false;
     setIsLoadingReferences(true);
     void Promise.all([
@@ -129,10 +119,10 @@ function Onboarding() {
     return () => {
       cancelled = true;
     };
-  }, [session.authenticated, session.prototype]);
+  }, [session.authenticated]);
 
   useEffect(() => {
-    if (session.prototype || !form.departmentId) {
+    if (!form.departmentId) {
       setProgrammeRecords([]);
       return;
     }
@@ -158,7 +148,7 @@ function Onboarding() {
     return () => {
       cancelled = true;
     };
-  }, [form.departmentId, session.prototype]);
+  }, [form.departmentId]);
 
   useEffect(() => {
     if (!isComplete) return;
@@ -172,7 +162,12 @@ function Onboarding() {
       [key]: value,
       ...(key === "departmentId" ? { programmeId: "" } : {}),
     }));
-    setErrors((current) => ({ ...current, [key]: undefined, form: undefined }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key as keyof FormErrors];
+      delete next.form;
+      return next;
+    });
   };
 
   const validate = () => {
@@ -199,26 +194,13 @@ function Onboarding() {
     if (!validate()) return;
     setIsSaving(true);
     try {
-      if (session.prototype) {
-        const profile = {
-          email: form.email,
-          fullName: form.fullName.trim(),
-          prn: form.prn.trim().replace(/\s+/g, "").toUpperCase(),
-          department: form.departmentId,
-          programme: form.programmeId,
-          academicYear: form.academicYear,
-        };
-        completeOnboarding(profile);
-        if (invitationProjectId) acceptProjectInvitation(invitationProjectId, profile);
-      } else {
-        await completeStudentOnboarding({
-          fullName: form.fullName.trim(),
-          prn: form.prn,
-          departmentId: form.departmentId,
-          programmeId: form.programmeId,
-          academicYear: Number(form.academicYear),
-        });
-      }
+      await completeStudentOnboarding({
+        fullName: form.fullName.trim(),
+        prn: form.prn,
+        departmentId: form.departmentId,
+        programmeId: form.programmeId,
+        academicYear: Number(form.academicYear),
+      });
       toast.success("Profile completed. Welcome!");
       setIsComplete(true);
     } catch (error) {
@@ -230,15 +212,18 @@ function Onboarding() {
     }
   };
 
-  const departmentOptions: SelectOption[] = session.prototype
-    ? departments.map((label) => ({ value: label, label }))
-    : departmentRecords.map((department) => ({ value: department.id, label: department.name }));
-  const programmeOptions: SelectOption[] = session.prototype
-    ? programmes.map((label) => ({ value: label, label }))
-    : programmeRecords.map((programme) => ({ value: programme.id, label: programme.name }));
-  const yearOptions: SelectOption[] = session.prototype
-    ? academicYears.map((label) => ({ value: label, label }))
-    : yearRecords.map((year) => ({ value: String(year.value), label: year.label }));
+  const departmentOptions: SelectOption[] = departmentRecords.map((department) => ({
+    value: department.id,
+    label: department.name,
+  }));
+  const programmeOptions: SelectOption[] = programmeRecords.map((programme) => ({
+    value: programme.id,
+    label: programme.name,
+  }));
+  const yearOptions: SelectOption[] = yearRecords.map((year) => ({
+    value: String(year.value),
+    label: year.label,
+  }));
   const verifiedEmail = session.user?.email ?? session.profile.email ?? form.email;
 
   if (!session.hydrated || isLoadingReferences) {
@@ -264,15 +249,43 @@ function Onboarding() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 sm:px-6">
       <div className="card-surface animate-in fade-in slide-in-from-bottom-4 w-full max-w-lg p-8 duration-500 sm:p-10">
-        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
-          One last step
-        </p>
-        <h1 className="mt-3 font-serif text-3xl font-light tracking-wide sm:text-4xl">
-          Complete your profile
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              One last step
+            </p>
+            <h1 className="mt-3 font-serif text-3xl font-light tracking-wide sm:text-4xl">
+              Complete your profile
+            </h1>
+          </div>
+          {/* Onboarding is the one screen with no app shell around it, so
+              without this a person part-way through has no way out except
+              closing the tab — including anyone who signed in with the wrong
+              Google account. */}
+          <button
+            type="button"
+            onClick={() => void session.signOut()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <LogOut className="size-3.5" aria-hidden /> Sign out
+          </button>
+        </div>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           This is how mentors and lab staff will recognise you.
         </p>
+
+        {/* Departments are created by the Super Admin, not seeded. Until at
+            least one exists there is genuinely nothing to choose, and an empty
+            dropdown would read as a broken page rather than a setup step. */}
+        {!isLoadingReferences && departmentOptions.length === 0 && (
+          <p
+            role="status"
+            className="mt-6 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm leading-6"
+          >
+            No departments have been set up yet, so the profile cannot be completed. Ask a
+            MakerSpace administrator to add your department and programme, then reload this page.
+          </p>
+        )}
 
         <form
           noValidate
@@ -379,13 +392,13 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange?: (value: string) => void;
+  onChange?: ((value: string) => void) | undefined;
   placeholder: string;
-  error?: string;
-  help?: string;
-  type?: string;
-  readOnly?: boolean;
-  maxLength?: number;
+  error?: string | undefined;
+  help?: string | undefined;
+  type?: string | undefined;
+  readOnly?: boolean | undefined;
+  maxLength?: number | undefined;
 }) {
   return (
     <div className="space-y-1.5">
@@ -428,10 +441,10 @@ function CustomSelect({
   label: string;
   value: string;
   options: SelectOption[];
-  error?: string;
+  error?: string | undefined;
   onChange: (value: string) => void;
-  disabled?: boolean;
-  placeholder?: string;
+  disabled?: boolean | undefined;
+  placeholder?: string | undefined;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);

@@ -1,0 +1,56 @@
+# Render deployment for the सृजन API.
+#
+# This is a long-running web service, not a serverless function. The API starts
+# two background workers — the attendance reconciler and the email dispatcher —
+# which hold a Redis lease and run on a timer. A serverless platform would spin
+# the process down between requests and neither would ever run.
+
+services:
+  - type: web
+    name: srijan-api
+    runtime: node
+    plan: starter
+    rootDir: backend
+    # Migrations run at build time, before the new instance takes traffic, so a
+    # release never serves against a schema it was not compiled for.
+    buildCommand: npm ci && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render supplies PORT; the app already reads it.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # The app and API are on different hosts, so the session cookie must be
+      # SameSite=None or the browser will never send it back.
+      - key: CROSS_SITE_COOKIES
+        value: "true"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false

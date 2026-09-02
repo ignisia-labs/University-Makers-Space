@@ -102,13 +102,36 @@ export async function updateRoles(id: string, roles: UserRole[], actorId: string
   });
 }
 
-export async function remove(id: string, actorId: string) {
-  await get(id);
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
+/**
+ * Detaches the Google identity from an account.
+ *
+ * Sign-in refuses when an email already carries a *different* Google subject —
+ * that guard is what stops a recycled or spoofed address from taking over an
+ * existing account, so it must stay. But it leaves no way back: if the identity
+ * on file is wrong (an account provisioned by an import, a Workspace user
+ * deleted and recreated, a seeded row), the person is locked out permanently
+ * and only direct database access can fix it.
+ *
+ * This is that way back. The next successful Google sign-in re-binds the
+ * account to whichever identity actually authenticates, so it is deliberately
+ * restricted to `user.roles.manage` — the same privilege as granting a role —
+ * and every use is audited.
+ */
+export async function unlinkGoogleIdentity(id: string, actorId: string) {
+  const existing = await get(id);
+  if (!existing.googleSubject) {
+    throw new ApiError(
+      409,
+      "IDENTITY_ALREADY_UNLINKED",
+      "This account has no Google identity linked",
+    );
+  }
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.update({
       where: { id },
-      data: { deletedAt: new Date(), isActive: false, tokenVersion: { increment: 1 } },
+      data: { googleSubject: null, tokenVersion: { increment: 1 } },
     });
+    // Anything signed in under the old identity must stop being trusted now.
     await tx.session.updateMany({
       where: { userId: id, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -116,9 +139,76 @@ export async function remove(id: string, actorId: string) {
     await tx.auditLog.create({
       data: {
         actorUserId: actorId,
-        action: "user.deactivated",
+        action: "user.google_identity_unlinked",
         entityType: "User",
         entityId: id,
+        metadata: { previousGoogleSubject: existing.googleSubject },
+      },
+    });
+    return userDto(user);
+  });
+}
+
+/**
+ * Removes an account.
+ *
+ * The row is retired rather than dropped: bookings, attendance and audit
+ * entries all reference it, and destroying those would rewrite history that
+ * exists precisely so it cannot be rewritten.
+ *
+ * But retiring alone is not enough. `email` and `google_subject` are unique,
+ * and sign-in only ever looks at rows where `deleted_at IS NULL` — so a
+ * retired row would silently hold its address hostage: the person could never
+ * return, and the address could never be reissued, because the next sign-in
+ * would try to insert a duplicate. Both identifiers are therefore released to
+ * a tombstone form, and the originals are preserved in the audit record.
+ */
+export async function remove(id: string, actorId: string) {
+  const existing = await get(id);
+  const retiredAt = new Date();
+  const tombstone = `deleted+${id}@removed.invalid`;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id },
+      data: {
+        deletedAt: retiredAt,
+        isActive: false,
+        tokenVersion: { increment: 1 },
+        email: tombstone,
+        googleSubject: null,
+      },
+    });
+    await tx.session.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: retiredAt },
+    });
+    // The student profile goes too. `prn` is unique, so a retired profile would
+    // hold that PRN hostage exactly as the email would — the same person could
+    // never re-onboard, and the registry could never reissue it. Nothing is
+    // lost: bookings and attendance carry their own PRN and name snapshots, so
+    // history stays readable while the personal record is cleared.
+    await tx.studentProfile.deleteMany({ where: { userId: id } });
+    // Any standing grant for that address goes with it, so the role is not
+    // silently re-applied if somebody else is later given the same address.
+    await tx.userProvisioning.deleteMany({ where: { email: existing.email } });
+    // Unanswered invitations addressed to them are withdrawn.
+    await tx.projectMember.updateMany({
+      where: { email: existing.email, status: "PENDING" },
+      data: { status: "CANCELLED", removedAt: retiredAt },
+    });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: actorId,
+        action: "user.removed",
+        entityType: "User",
+        entityId: id,
+        metadata: {
+          email: existing.email,
+          name: existing.name,
+          roles: existing.roles,
+          addressReleased: true,
+        },
       },
     });
   });
@@ -143,14 +233,25 @@ export async function listProvisioning(query: Record<string, unknown>) {
 }
 
 export async function createProvisioning(
-  data: { email: string; roles: UserRole[]; isActive: boolean },
+  data: { email: string; name?: string | undefined; roles: UserRole[]; isActive: boolean },
   actorId: string,
 ) {
   return prisma.$transaction(async (tx) => {
     const provision = await tx.userProvisioning.upsert({
       where: { email: data.email },
-      update: { roles: data.roles, isActive: data.isActive },
-      create: { ...data, createdById: actorId },
+      update: {
+        roles: data.roles,
+        isActive: data.isActive,
+        // Re-provisioning without a name must not erase the one on record.
+        ...(data.name === undefined ? {} : { name: data.name }),
+      },
+      create: {
+        email: data.email,
+        name: data.name ?? null,
+        roles: data.roles,
+        isActive: data.isActive,
+        createdById: actorId,
+      },
     });
     await tx.auditLog.create({
       data: {
@@ -167,7 +268,7 @@ export async function createProvisioning(
 
 export async function updateProvisioning(
   id: string,
-  data: { roles?: UserRole[]; isActive?: boolean },
+  data: { name?: string | null | undefined; roles?: UserRole[]; isActive?: boolean },
   actorId: string,
 ) {
   const existing = await prisma.userProvisioning.findUnique({ where: { id } });
@@ -203,17 +304,24 @@ export async function updateProvisioning(
 
 export async function searchFacultyMentors(query: Record<string, unknown>, viewerId: string) {
   const page = Number(query.page ?? 1);
-  const limit = Math.min(Number(query.limit ?? 10), 20);
-  const search = String(query.search).trim();
+  const limit = Math.min(Number(query.limit ?? 50), 100);
+  // Browsable directory: an absent or blank term lists every mentor
+  // alphabetically rather than returning nothing. `contains: ""` matches every
+  // row, so the empty case needs no separate query.
+  const search = typeof query.search === "string" ? query.search.trim() : "";
   const where: Prisma.UserWhereInput = {
     id: { not: viewerId },
     isActive: true,
     deletedAt: null,
     roles: { has: Role.FACULTY_MENTOR },
-    OR: [
-      { name: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-    ],
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            { email: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
   };
   const [total, rows] = await prisma.$transaction([
     prisma.user.count({ where }),
@@ -223,9 +331,7 @@ export async function searchFacultyMentors(query: Record<string, unknown>, viewe
         id: true,
         name: true,
         email: true,
-        studentProfile: {
-          select: { department: { select: { id: true, code: true, name: true } } },
-        },
+        facultyProfile: { select: { prefix: true } },
       },
       orderBy: [{ name: "asc" }, { email: "asc" }],
       skip: (page - 1) * limit,
@@ -233,11 +339,16 @@ export async function searchFacultyMentors(query: Record<string, unknown>, viewe
     }),
   ]);
   return {
+    // `prefix` is the honorific from the faculty import ("Dr.", "Prof."). The
+    // division is deliberately absent: it is internal grouping, and department
+    // is not known for faculty, so name and address are all a student can be
+    // shown to tell two mentors apart.
     data: rows.map((row) => ({
       id: row.id,
       name: row.name,
       email: row.email,
-      department: row.studentProfile?.department ?? null,
+      prefix: row.facultyProfile?.prefix ?? null,
+      department: null,
     })),
     meta: meta(page, limit, total),
   };

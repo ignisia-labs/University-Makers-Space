@@ -1,8 +1,10 @@
 openapi: 3.0.3
 info:
   title: University Maker's Space API
-  version: 2.0.0
-  description: MIT-WPU Google Workspace identity, project verification, and capacity-safe booking API.
+  version: 3.0.0
+  description: >-
+    MIT-WPU Google Workspace identity, project verification, capacity-safe booking,
+    attendance operations, and MakerSpace administration API.
 servers:
   - url: http://localhost:4000/api/v1
 security:
@@ -20,6 +22,11 @@ components:
   parameters:
     ResourceId:
       name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    LabId:
+      name: labId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -868,3 +875,282 @@ paths:
         summary: Upload a file (upload.create),
         responses: { "201": { description: File uploaded } },
       }
+  /labs/{labId}/occupancy:
+    get:
+      parameters: [{ $ref: "#/components/parameters/LabId" }]
+      summary: Live headcount for a MakerSpace (visit.read.operational)
+      description: >-
+        Deliberately uncached. Occupancy drives physical safety decisions, so a
+        stale figure is worse than a marginally more expensive read.
+      responses:
+        "200":
+          description: Current occupants with late-arrival and overstay flags
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/console:
+    get:
+      parameters:
+        - { $ref: "#/components/parameters/LabId" }
+        - { name: date, in: query, schema: { type: string, format: date } }
+      summary: Lab Assistant console for one operating day (lab.console.read)
+      description: >-
+        Returns the whole operating day — slots, bookings, participants with
+        attendance state, Quick Visits — plus live occupancy in a single
+        response, so the console never fans out a request per booking.
+      responses:
+        "200":
+          description: Operating-day roster and occupancy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /labs/{labId}/dashboard:
+    get:
+      parameters: [{ $ref: "#/components/parameters/LabId" }]
+      summary: Operational dashboard counters (dashboard.read)
+      responses:
+        "200":
+          description: Live, daily and seven-day aggregates in one batch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+  /quick-visits:
+    get:
+      summary: List Quick Visits — own by default, all with visit.read.operational
+      responses:
+        "200": { description: Paginated Quick Visits }
+    post:
+      summary: Request a capacity-safe Quick Visit (visit.create)
+      description: >-
+        Idempotent on `idempotencyKey`. Reusing a key with a different payload
+        is rejected with IDEMPOTENCY_KEY_REUSED. A second live request for the
+        same slot by the same person is rejected by a partial unique index.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [labSlotId, purpose, idempotencyKey]
+              properties:
+                labSlotId: { type: string, format: uuid }
+                purpose: { type: string, minLength: 3, maxLength: 280 }
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        "201": { description: Quick Visit requested }
+        "200": { description: Replay of an earlier identical request }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /quick-visits/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Read one Quick Visit
+      responses:
+        "200": { description: Quick Visit }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /quick-visits/{id}/decision:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Approve or decline a Quick Visit request (quick_visit.decide)
+      description: Capacity is re-checked at approval time, not only at request time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string, nullable: true }
+      responses:
+        "200": { description: Decision applied }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /quick-visits/{id}/cancel:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Idempotently cancel an owned or managed Quick Visit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, idempotencyKey]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+                idempotencyKey: { type: string, format: uuid }
+      responses:
+        "200": { description: Cancelled, or a matching replay }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /visits:
+    get:
+      summary: Visit history — own by default, all with visit.read.operational
+      responses:
+        "200": { description: Paginated visits }
+  /visits/check-in:
+    post:
+      summary: Record attendance for a booking participant or Quick Visit (visit.check_in)
+      description: >-
+        Idempotent on `idempotencyKey`. A person may hold only one open visit at
+        a time, enforced by a partial unique index, so live occupancy is always
+        a trustworthy headcount.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [source, bookingId, userId, idempotencyKey]
+                  properties:
+                    source: { type: string, enum: [BOOKING] }
+                    bookingId: { type: string, format: uuid }
+                    userId: { type: string, format: uuid }
+                    idempotencyKey: { type: string, format: uuid }
+                    notes: { type: string, nullable: true }
+                - type: object
+                  required: [source, quickVisitId, idempotencyKey]
+                  properties:
+                    source: { type: string, enum: [QUICK_VISIT] }
+                    quickVisitId: { type: string, format: uuid }
+                    idempotencyKey: { type: string, format: uuid }
+                    notes: { type: string, nullable: true }
+      responses:
+        "201": { description: Checked in }
+        "200": { description: Attendance already recorded (replay) }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /visits/{id}:
+    get:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Read one visit
+      responses:
+        "200": { description: Visit }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /visits/{id}/check-out:
+    post:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Close a visit and record any overstay (visit.check_out)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                idempotencyKey: { type: string, format: uuid }
+                notes: { type: string, nullable: true }
+      responses:
+        "200": { description: Checked out, or a matching replay }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/audit-logs:
+    get:
+      summary: Review the append-only audit trail (audit.read)
+      description: >-
+        The audit trail has no update or delete path anywhere in the API. Filter
+        by actor, action, entity or time range.
+      responses:
+        "200": { description: Paginated audit entries }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/audit-logs/actions:
+    get:
+      summary: Distinct audit action names, for filter controls (audit.read)
+      responses:
+        "200": { description: Action names }
+  /admin/exports/{kind}:
+    get:
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [bookings, visits, quick-visits, projects, audit-logs]
+        - { name: labId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      summary: Stream a report as CSV (report.export)
+      description: >-
+        Keyset-paginated and streamed, so memory stays constant regardless of
+        row count, and hard-capped at 100,000 rows. Cells beginning with `=`,
+        `+`, `-` or `@` are neutralised against spreadsheet formula injection.
+        Each export is itself audited.
+      responses:
+        "200":
+          description: CSV attachment
+          content:
+            text/csv:
+              schema: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/reference/departments:
+    get:
+      summary: List departments with usage counts (reference_data.manage)
+      responses: { "200": { description: Departments } }
+    post:
+      summary: Create a department (reference_data.manage)
+      responses: { "201": { description: Department created } }
+  /admin/reference/departments/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Rename or deactivate a department (reference_data.manage)
+      description: >-
+        Reference rows are deactivated, never deleted, so student history is
+        never orphaned. Deactivating a department also deactivates its programmes.
+      responses: { "200": { description: Department updated } }
+  /admin/reference/programmes:
+    get:
+      summary: List programmes (reference_data.manage)
+      responses: { "200": { description: Programmes } }
+    post:
+      summary: Create a programme under an active department (reference_data.manage)
+      responses: { "201": { description: Programme created } }
+  /admin/reference/programmes/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Rename or deactivate a programme (reference_data.manage)
+      responses: { "200": { description: Programme updated } }
+  /admin/reference/academic-years:
+    get:
+      summary: List academic year options (reference_data.manage)
+      responses: { "200": { description: Academic years } }
+    put:
+      summary: Create or update an academic year option (reference_data.manage)
+      responses: { "200": { description: Academic year saved } }
+  /admin/reference/equipment-categories:
+    get:
+      summary: List equipment categories with usage counts (equipment.manage)
+      responses: { "200": { description: Equipment categories } }
+    post:
+      summary: Create an equipment category (equipment.manage)
+      responses: { "201": { description: Category created } }
+  /admin/reference/equipment-categories/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Rename or deactivate an equipment category (equipment.manage)
+      responses: { "200": { description: Category updated } }
+  /admin/reference/consumable-categories:
+    get:
+      summary: List consumable categories (consumable.manage)
+      responses: { "200": { description: Consumable categories } }
+    post:
+      summary: Create a consumable category (consumable.manage)
+      responses: { "201": { description: Category created } }
+  /admin/reference/consumable-categories/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Rename or deactivate a consumable category (consumable.manage)
+      responses: { "200": { description: Category updated } }
+  /admin/reference/consumables:
+    get:
+      summary: List consumables (consumable.manage)
+      responses: { "200": { description: Consumables } }
+    post:
+      summary: Create a consumable in an active category (consumable.manage)
+      responses: { "201": { description: Consumable created } }
+  /admin/reference/consumables/{id}:
+    patch:
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      summary: Rename, re-unit or deactivate a consumable (consumable.manage)
+      responses: { "200": { description: Consumable updated } }

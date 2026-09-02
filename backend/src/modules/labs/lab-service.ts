@@ -1,4 +1,5 @@
-import { BookingStatus, Prisma, ProjectStatus, SlotStatus } from "@prisma/client";
+import { BookingStatus, Prisma, ProjectStatus, QuickVisitStatus, SlotStatus } from "@prisma/client";
+import { isEquipmentInService } from "../equipment/equipment-availability.js";
 import { hasPermission } from "../../config/permissions.js";
 import { prisma } from "../../config/db.js";
 import { ApiError } from "../../utils/api-error.js";
@@ -20,13 +21,12 @@ import {
 type Viewer = NonNullable<Express.Request["user"]>;
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+const liveQuickVisitStatuses = [
+  QuickVisitStatus.REQUESTED,
+  QuickVisitStatus.CONFIRMED,
+  QuickVisitStatus.ACTIVE,
+];
 const capacityBookingStatuses = [BookingStatus.CONFIRMED, BookingStatus.ACTIVE];
-const unavailableEquipmentStatuses = new Set([
-  "UNAVAILABLE",
-  "UNDER_MAINTENANCE",
-  "DAMAGED",
-  "OUT_OF_SERVICE",
-]);
 
 type PolicyLab = {
   id: string;
@@ -367,22 +367,74 @@ export async function dailyAvailability(
         where: { status: { in: capacityBookingStatuses } },
         select: { attendeeCount: true },
       },
+      // Quick Visit seats are counted alongside booking places so a student can
+      // see walk-in availability without a second round trip.
+      _count: {
+        select: {
+          quickVisits: { where: { status: { in: liveQuickVisitStatuses } } },
+        },
+      },
     },
     orderBy: { startsAt: "asc" },
   });
-  const equipmentAdvisory =
-    project?.equipmentRequirements.map(({ quantity, equipment }) => ({
-      equipmentId: equipment.id,
-      name: equipment.name,
-      requiredQuantity: quantity,
-      availableQuantity: equipment.availableQuantity,
-      status: equipment.status,
-      available:
-        equipment.visible &&
-        equipment.deletedAt === null &&
-        !unavailableEquipmentStatuses.has(equipment.status) &&
-        equipment.availableQuantity >= quantity,
-    })) ?? [];
+  const requirements = project?.equipmentRequirements ?? [];
+  // Is the machine usable at all, ignoring who has claimed it? A withdrawn or
+  // broken machine is unavailable in every slot, so this is computed once.
+  const inService = isEquipmentInService;
+
+  const equipmentAdvisory = requirements.map(({ quantity, equipment }) => ({
+    equipmentId: equipment.id,
+    name: equipment.name,
+    requiredQuantity: quantity,
+    availableQuantity: equipment.availableQuantity,
+    status: equipment.status,
+    available: inService(equipment) && equipment.availableQuantity >= quantity,
+  }));
+
+  // Units of the project's machines already claimed by other teams, per slot.
+  //
+  // Only live bookings count, so a cancelled or completed session releases its
+  // machines without any explicit release: the row simply stops matching.
+  const claimedBySlot = new Map<string, Map<string, number>>();
+  if (requirements.length > 0 && slots.length > 0) {
+    const holds = await prisma.bookingEquipment.findMany({
+      where: {
+        equipmentId: { in: requirements.map((requirement) => requirement.equipment.id) },
+        booking: {
+          labSlotId: { in: slots.map((slot) => slot.id) },
+          status: { in: capacityBookingStatuses },
+        },
+      },
+      select: {
+        equipmentId: true,
+        quantity: true,
+        booking: { select: { labSlotId: true } },
+      },
+    });
+    for (const hold of holds) {
+      const perSlot = claimedBySlot.get(hold.booking.labSlotId) ?? new Map<string, number>();
+      perSlot.set(hold.equipmentId, (perSlot.get(hold.equipmentId) ?? 0) + hold.quantity);
+      claimedBySlot.set(hold.booking.labSlotId, perSlot);
+    }
+  }
+
+  const slotEquipment = (slotId: string) => {
+    const claimedHere = claimedBySlot.get(slotId);
+    return requirements.map(({ quantity, equipment }) => {
+      const claimedQuantity = claimedHere?.get(equipment.id) ?? 0;
+      const remainingQuantity = Math.max(0, equipment.availableQuantity - claimedQuantity);
+      return {
+        equipmentId: equipment.id,
+        name: equipment.name,
+        requiredQuantity: quantity,
+        totalQuantity: equipment.totalQuantity,
+        claimedQuantity,
+        remainingQuantity,
+        status: equipment.status,
+        available: inService(equipment) && remainingQuantity >= quantity,
+      };
+    });
+  };
   const projectEligible = project
     ? project.creatorId === viewer.id && project.status === ProjectStatus.VERIFIED
     : null;
@@ -419,6 +471,7 @@ export async function dailyAvailability(
     slots: slots.map((slot) => {
       const placesUsed = slot.bookings.reduce((sum, booking) => sum + booking.attendeeCount, 0);
       const remainingCapacity = Math.max(0, slot.bookingCapacity - placesUsed);
+      const equipmentForSlot = slotEquipment(slot.id);
       return {
         id: slot.id,
         startsAt: slot.startsAt.toISOString(),
@@ -429,7 +482,14 @@ export async function dailyAvailability(
         placesUsed,
         remainingCapacity,
         canFit: remainingCapacity >= participantCount,
+        quickVisitCapacity: slot.quickVisitCapacity,
+        quickVisitSeatsLeft: Math.max(0, slot.quickVisitCapacity - slot._count.quickVisits),
         status: slot.status,
+        // Per-slot machine picture, so the student can see at a glance which
+        // times still have their project's kit free.
+        equipment: equipmentForSlot,
+        equipmentAvailable: equipmentForSlot.filter((item) => item.available).length,
+        equipmentTotal: equipmentForSlot.length,
       };
     }),
   };

@@ -7,16 +7,40 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiError,
+  authApi,
   projectsApi,
   referenceApi,
   usersApi,
   type FacultyDirectoryResult,
   type ProjectDetail,
-  type StudentDirectoryResult,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useAppSession } from "@/lib/auth-context";
+import { MentorSelect } from "@/components/CreateProject/MentorSelect";
+import {
+  ResourceSelection,
+  emptyKit,
+  type ResourceKit,
+} from "@/components/CreateProject/ResourceSelection";
 
 const steps = ["The idea", "The team", "Expected resources"];
+
+/**
+ * A teammate on the invite list.
+ *
+ * Invitations are addressed to an *email*, not to an existing account: a
+ * first-year who has never opened the app can still be added to a project. When
+ * they sign in with their institutional Google account the invitation is
+ * already waiting, so nobody has to be registered by an administrator first.
+ */
+type TeamInvite = {
+  email: string;
+  name: string;
+  prn: string | null;
+  /** Whether this address already has a MakerSpace account. */
+  registered: boolean;
+};
 
 export function PersistedProjectWizard({
   onCreated,
@@ -27,14 +51,11 @@ export function PersistedProjectWizard({
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [members, setMembers] = useState<StudentDirectoryResult[]>([]);
+  const [members, setMembers] = useState<TeamInvite[]>([]);
   const [mentor, setMentor] = useState<FacultyDirectoryResult | null>(null);
   const [studentSearch, setStudentSearch] = useState("");
-  const [mentorSearch, setMentorSearch] = useState("");
-  const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
-  const [consumableIds, setConsumableIds] = useState<string[]>([]);
+  const [kit, setKit] = useState<ResourceKit>(emptyKit);
   const debouncedStudentSearch = useDebouncedValue(studentSearch, 300);
-  const debouncedMentorSearch = useDebouncedValue(mentorSearch, 300);
 
   const labs = useQuery({
     queryKey: ["phase2-reference", "labs"],
@@ -51,11 +72,15 @@ export function PersistedProjectWizard({
     queryFn: () => usersApi.searchStudents(debouncedStudentSearch).then((r) => r.data),
     enabled: debouncedStudentSearch.length >= 2,
   });
-  const mentors = useQuery({
-    queryKey: ["phase2-directory", "faculty", debouncedMentorSearch],
-    queryFn: () => usersApi.searchFacultyMentors(debouncedMentorSearch).then((r) => r.data),
-    enabled: debouncedMentorSearch.length >= 2,
+  // The permitted domain comes from the server rather than a hard-coded string,
+  // so the institution can change it in one place.
+  const identity = useQuery({
+    queryKey: ["auth", "google-config"],
+    queryFn: () => authApi.googleConfig().then((r) => r.data),
+    staleTime: 60 * 60 * 1000,
   });
+  const hostedDomain = identity.data?.hostedDomain ?? "mitwpu.edu.in";
+  const { user: viewer } = useAppSession();
 
   const createProject = useMutation({
     mutationFn: () =>
@@ -67,8 +92,8 @@ export function PersistedProjectWizard({
           description: description.trim(),
           teamMemberEmails: members.map((member) => member.email),
           mentorId: mentor!.id,
-          equipmentIds,
-          consumableIds,
+          equipmentIds: kit.equipmentIds,
+          consumables: kit.consumables,
         })
         .then((r) => r.data),
     onSuccess: (project) => {
@@ -80,7 +105,62 @@ export function PersistedProjectWizard({
     },
   });
 
-  const selectedMemberIds = useMemo(() => new Set(members.map((member) => member.id)), [members]);
+  const selectedEmails = useMemo(
+    () => new Set(members.map((member) => member.email.toLowerCase())),
+    [members],
+  );
+  const typedEmail = studentSearch.trim().toLowerCase();
+  const typedEmailIsValid =
+    /^[^\s@]+@[^\s@]+$/.test(typedEmail) && typedEmail.endsWith(`@${hostedDomain}`);
+  const canInviteTypedEmail = typedEmailIsValid && !selectedEmails.has(typedEmail);
+
+  const addInvite = (invite: TeamInvite) => {
+    setMembers((current) =>
+      current.some((entry) => entry.email.toLowerCase() === invite.email.toLowerCase())
+        ? current
+        : [...current, invite],
+    );
+    setStudentSearch("");
+  };
+
+  /**
+   * Commit a typed address, as a comma or Enter does.
+   *
+   * Every rejection says why. Silently dropping the text would leave the
+   * student staring at an empty box wondering whether it worked — and the
+   * domain rule in particular is not guessable from an empty field.
+   */
+  const commitTypedInvite = (raw: string) => {
+    const candidate = raw
+      .trim()
+      .toLowerCase()
+      .replace(/[,;]+$/, "");
+    if (!candidate) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+      toast.error(`"${candidate}" is not an email address`);
+      return;
+    }
+    if (!candidate.endsWith(`@${hostedDomain}`)) {
+      toast.error(`Only @${hostedDomain} addresses can be invited`);
+      return;
+    }
+    if (candidate === viewer?.email?.toLowerCase()) {
+      toast.error("You are already on the team as its leader");
+      return;
+    }
+    if (selectedEmails.has(candidate)) {
+      toast.error(`${candidate} is already on the list`);
+      return;
+    }
+    // A registered student keeps their real name and PRN on the chip; anyone
+    // else is invited by email alone.
+    const known = students.data?.find((student) => student.email.toLowerCase() === candidate);
+    addInvite(
+      known
+        ? { email: known.email, name: known.name, prn: known.prn, registered: true }
+        : { email: candidate, name: candidate, prn: null, registered: false },
+    );
+  };
   const canSubmit = Boolean(labId && mentor && title.trim() && description.trim());
 
   return (
@@ -158,24 +238,26 @@ export function PersistedProjectWizard({
           <DirectorySearch
             id="student-directory-search"
             label="Invite teammates"
-            hint="Search registered students by name, MIT-WPU email, or PRN."
+            hint={`Search by name or PRN, or type any @${hostedDomain} email — they do not need an account yet.`}
             value={studentSearch}
             onChange={setStudentSearch}
+            onCommit={commitTypedInvite}
             loading={students.isFetching}
           >
-            {debouncedStudentSearch.length >= 2 && students.data?.length === 0 && (
-              <p className="px-3 py-4 text-sm text-muted-foreground">No eligible students found.</p>
-            )}
             {students.data
-              ?.filter((student) => !selectedMemberIds.has(student.id))
+              ?.filter((student) => !selectedEmails.has(student.email.toLowerCase()))
               .map((student) => (
                 <button
                   key={student.id}
                   type="button"
-                  onClick={() => {
-                    setMembers((current) => [...current, student]);
-                    setStudentSearch("");
-                  }}
+                  onClick={() =>
+                    addInvite({
+                      email: student.email,
+                      name: student.name,
+                      prn: student.prn,
+                      registered: true,
+                    })
+                  }
                   className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-secondary"
                 >
                   <span>
@@ -187,67 +269,75 @@ export function PersistedProjectWizard({
                   <span className="text-xs font-semibold text-primary">Add</span>
                 </button>
               ))}
+
+            {/* Anyone with an institutional address can be invited, registered
+                or not. They receive an email and the invitation is waiting once
+                they sign in. */}
+            {canInviteTypedEmail && (
+              <button
+                type="button"
+                onClick={() =>
+                  addInvite({
+                    email: typedEmail,
+                    name: typedEmail,
+                    prn: null,
+                    registered: false,
+                  })
+                }
+                className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-secondary"
+              >
+                <span>
+                  <span className="block text-sm font-semibold">Invite {typedEmail}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    We will email them an invitation to join and set up their account.
+                  </span>
+                </span>
+                <span className="text-xs font-semibold text-primary">Invite</span>
+              </button>
+            )}
+
+            {debouncedStudentSearch.length >= 2 &&
+              students.data?.length === 0 &&
+              !canInviteTypedEmail && (
+                <p className="px-3 py-4 text-sm text-muted-foreground">
+                  No registered student matches that. Type their full @{hostedDomain} email to
+                  invite them anyway.
+                </p>
+              )}
           </DirectorySearch>
 
           {members.length > 0 && (
             <div className="flex flex-wrap gap-2" aria-label="Selected teammates">
               {members.map((member) => (
                 <button
-                  key={member.id}
+                  key={member.email}
                   type="button"
                   onClick={() =>
-                    setMembers((current) => current.filter((item) => item.id !== member.id))
+                    setMembers((current) => current.filter((item) => item.email !== member.email))
                   }
-                  className="inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-secondary/50 px-3 text-xs"
+                  title={
+                    member.registered ? member.email : `${member.email} — will be invited by email`
+                  }
+                  className={cn(
+                    "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs",
+                    member.registered
+                      ? "border-border bg-secondary/50"
+                      : "border-primary/30 bg-primary/[0.06]",
+                  )}
                 >
-                  {member.name} <X className="size-3" aria-hidden />
+                  {member.name}
+                  {!member.registered && (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+                      invite
+                    </span>
+                  )}
+                  <X className="size-3" aria-hidden />
                 </button>
               ))}
             </div>
           )}
 
-          <DirectorySearch
-            id="mentor-directory-search"
-            label="Faculty Mentor"
-            hint="Search authorized Faculty Mentors by name or university email."
-            value={mentorSearch}
-            onChange={setMentorSearch}
-            loading={mentors.isFetching}
-          >
-            {mentors.data?.map((result) => (
-              <button
-                key={result.id}
-                type="button"
-                onClick={() => {
-                  setMentor(result);
-                  setMentorSearch("");
-                }}
-                className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left hover:bg-secondary"
-              >
-                <span>
-                  <span className="block text-sm font-semibold">{result.name}</span>
-                  <span className="block text-xs text-muted-foreground">{result.email}</span>
-                </span>
-                <span className="text-xs font-semibold text-primary">Select</span>
-              </button>
-            ))}
-          </DirectorySearch>
-
-          {mentor && (
-            <div className="flex items-center justify-between rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold">{mentor.name}</p>
-                <p className="text-xs text-muted-foreground">{mentor.email}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMentor(null)}
-                className="text-xs font-semibold text-primary"
-              >
-                Change
-              </button>
-            </div>
-          )}
+          <MentorSelect value={mentor} onChange={setMentor} />
 
           <div className="flex gap-3">
             <BackButton onClick={() => setStep(1)} />
@@ -271,21 +361,10 @@ export function PersistedProjectWizard({
           </p>
           {resources.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading the configured catalogue…</p>
+          ) : resources.data ? (
+            <ResourceSelection resources={resources.data} kit={kit} onChange={setKit} />
           ) : (
-            <>
-              <ResourceChecks
-                label="Equipment"
-                items={resources.data?.equipment ?? []}
-                selected={equipmentIds}
-                onChange={setEquipmentIds}
-              />
-              <ResourceChecks
-                label="Consumables"
-                items={resources.data?.consumables ?? []}
-                selected={consumableIds}
-                onChange={setConsumableIds}
-              />
-            </>
+            <p className="text-sm text-muted-foreground">The catalogue could not be loaded.</p>
           )}
           <div className="flex gap-3">
             <BackButton onClick={() => setStep(2)} />
@@ -315,6 +394,7 @@ function DirectorySearch({
   value,
   onChange,
   loading,
+  onCommit,
   children,
 }: {
   id: string;
@@ -323,8 +403,27 @@ function DirectorySearch({
   value: string;
   onChange: (value: string) => void;
   loading: boolean;
+  onCommit?: (value: string) => void;
   children: React.ReactNode;
 }) {
+  // A comma (or Enter) commits what has been typed, the way every address field
+  // behaves. Typing an address and moving on without noticing the Invite button
+  // is the obvious mistake, so the separator people already reach for is wired
+  // to the same action. Pasting "a@x, b@x" commits each in turn.
+  const handleChange = (next: string) => {
+    if (!onCommit || !next.includes(",")) {
+      onChange(next);
+      return;
+    }
+    const parts = next.split(",");
+    const remainder = parts.pop() ?? "";
+    for (const part of parts) {
+      const candidate = part.trim();
+      if (candidate) onCommit(candidate);
+    }
+    onChange(remainder.trim());
+  };
+
   return (
     <section className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -334,7 +433,16 @@ function DirectorySearch({
         <Input
           id={id}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => handleChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (!onCommit) return;
+            // Enter would otherwise submit the wizard form.
+            if (event.key === "Enter" && value.trim()) {
+              event.preventDefault();
+              onCommit(value.trim());
+              onChange("");
+            }
+          }}
           className="pl-9"
         />
         {loading && (
@@ -350,71 +458,6 @@ function DirectorySearch({
   );
 }
 
-function ResourceChecks({
-  label,
-  items,
-  selected,
-  onChange,
-}: {
-  label: string;
-  items: Array<{
-    id: string;
-    name: string;
-    description?: string | null;
-    category: { name: string };
-  }>;
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  return (
-    <section>
-      <p className="text-[10px] font-mono uppercase tracking-widest text-primary">{label}</p>
-      {items.length ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {items.map((item) => {
-            const active = selected.includes(item.id);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() =>
-                  onChange(
-                    active ? selected.filter((id) => id !== item.id) : [...selected, item.id],
-                  )
-                }
-                className={cn(
-                  "flex min-h-16 items-center gap-3 rounded-xl border px-4 py-3 text-left",
-                  active
-                    ? "border-primary bg-primary/[0.05]"
-                    : "border-border hover:border-primary/40",
-                )}
-              >
-                <span
-                  className={cn(
-                    "grid size-5 shrink-0 place-items-center rounded-full border",
-                    active && "border-primary bg-primary text-primary-foreground",
-                  )}
-                >
-                  {active && <Check className="size-3" />}
-                </span>
-                <span>
-                  <span className="block text-sm font-medium">{item.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">
-                    {item.category.name}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="mt-2 text-sm text-muted-foreground">No configured {label.toLowerCase()}.</p>
-      )}
-    </section>
-  );
-}
-
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -425,13 +468,4 @@ function BackButton({ onClick }: { onClick: () => void }) {
       <ArrowLeft className="size-4" /> Back
     </button>
   );
-}
-
-function useDebouncedValue(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value.trim());
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setDebounced(value.trim()), delay);
-    return () => window.clearTimeout(timeout);
-  }, [delay, value]);
-  return debounced;
 }

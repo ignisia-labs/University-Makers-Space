@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isEquipmentInService } from "../equipment/equipment-availability.js";
 import {
   BookingCancellationSource,
   BookingStatus,
@@ -9,6 +10,8 @@ import {
   ProjectMemberStatus,
   ProjectStatus,
   UserRole,
+  VisitCloseReason,
+  AttendanceStatus,
 } from "@prisma/client";
 import { prisma } from "../../config/db.js";
 import { logger } from "../../config/logger.js";
@@ -25,7 +28,7 @@ const maxTransactionAttempts = 3;
 const maxSerializationBackoffMs = 150;
 
 type Viewer = NonNullable<Express.Request["user"]>;
-type BookingRecord = Prisma.BookingGetPayload<{ include: { participants: true } }>;
+type BookingRecord = Prisma.BookingGetPayload<{ include: { participants: true; equipment: true } }>;
 type RequestContext = {
   requestId?: string;
   ipAddress?: string;
@@ -35,6 +38,7 @@ type BookingInput = {
   labSlotId: string;
   projectId: string;
   participantIds: string[];
+  equipmentIds?: string[];
   idempotencyKey: string;
   notes?: string | null;
 };
@@ -60,7 +64,16 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
           ? { participants: { some: { userId: String(query.userId) } } }
           : {}
         : {
-            OR: [{ createdById: viewer.id }, { participants: { some: { userId: viewer.id } } }],
+            OR: [
+              { createdById: viewer.id },
+              { participants: { some: { userId: viewer.id } } },
+              // A Faculty Mentor sees sessions for the projects they mentor.
+              // They are neither the booker nor an attendee, so without this
+              // their sessions view would be permanently empty.
+              ...(hasPermission(viewer.roles, "project.read.mentored")
+                ? [{ project: { currentMentorId: viewer.id } }]
+                : []),
+            ],
           },
       temporalScope,
     ],
@@ -73,7 +86,7 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
     prisma.booking.count({ where }),
     prisma.booking.findMany({
       where,
-      include: { participants: true },
+      include: { participants: true, equipment: true },
       orderBy: [{ slotStartsAtSnapshot: order }, { id: order }],
       skip: (page - 1) * limit,
       take: limit,
@@ -88,10 +101,10 @@ export async function list(query: Record<string, unknown>, viewer: Viewer) {
 export async function get(id: string, viewer: Viewer) {
   const booking = await prisma.booking.findUnique({
     where: { id },
-    include: { participants: true },
+    include: { participants: true, equipment: true },
   });
   if (!booking) throw new ApiError(404, "NOT_FOUND", "Booking not found");
-  assertCanRead(booking, viewer);
+  await assertCanRead(booking, viewer);
   return bookingDto(booking, bookingAccess(viewer));
 }
 
@@ -120,7 +133,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
                 idempotencyKey: data.idempotencyKey,
               },
             },
-            include: { participants: true },
+            include: { participants: true, equipment: true },
           });
           if (replay) {
             assertCreationFingerprint(replay, requestFingerprint);
@@ -256,6 +269,34 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
             );
           }
 
+          // One live session at a time, by default.
+          //
+          // The slots page shows a single upcoming session and asks the student
+          // to cancel before taking another, so the server enforces the same
+          // thing rather than letting the UI be the only guard. The limit is a
+          // lab policy: null lifts it. Checked inside the locked transaction so
+          // two racing requests cannot both pass it.
+          const liveBookingLimit = slot.lab.maxLiveBookingsPerStudent;
+          if (liveBookingLimit !== null) {
+            const liveElsewhere = await tx.booking.count({
+              where: {
+                createdById: viewer.id,
+                status: { in: capacityStatuses },
+                slotEndsAtSnapshot: { gt: now },
+              },
+            });
+            if (liveElsewhere >= liveBookingLimit) {
+              throw new ApiError(
+                409,
+                "ACTIVE_BOOKING_EXISTS",
+                liveBookingLimit === 1
+                  ? "You already have an upcoming session. Cancel it before booking another slot."
+                  : `You already hold ${liveElsewhere} upcoming sessions, which is the limit.`,
+                [{ liveBookings: liveElsewhere, limit: liveBookingLimit }],
+              );
+            }
+          }
+
           const reserved = await tx.booking.aggregate({
             where: { labSlotId: slot.id, status: { in: capacityStatuses } },
             _sum: { attendeeCount: true },
@@ -275,6 +316,76 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
                 },
               ],
             );
+          }
+
+          // ── Machines for this slot ──────────────────────────────────────
+          //
+          // A team may claim only machines its own project asked for, and only
+          // units nobody else holds at the same time. Both the slot and the
+          // project are already locked above, so the count below cannot be
+          // undercut by a concurrent booking of the same slot.
+          const requestedEquipmentIds = data.equipmentIds ?? [];
+          let equipmentHolds: { equipmentId: string; quantity: number; nameSnapshot: string }[] =
+            [];
+          if (requestedEquipmentIds.length > 0) {
+            const requirements = await tx.projectEquipmentRequirement.findMany({
+              where: { projectId: project.id, equipmentId: { in: requestedEquipmentIds } },
+              include: { equipment: true },
+            });
+            if (requirements.length !== requestedEquipmentIds.length) {
+              throw new ApiError(
+                400,
+                "EQUIPMENT_NOT_IN_PROJECT",
+                "You can only reserve equipment listed on this project",
+              );
+            }
+
+            const claimed = await tx.bookingEquipment.groupBy({
+              by: ["equipmentId"],
+              where: {
+                equipmentId: { in: requestedEquipmentIds },
+                booking: { labSlotId: slot.id, status: { in: capacityStatuses } },
+              },
+              _sum: { quantity: true },
+              orderBy: { equipmentId: "asc" },
+            });
+            const claimedByEquipment = new Map(
+              claimed.map((row) => [row.equipmentId, row._sum.quantity ?? 0]),
+            );
+
+            for (const requirement of requirements) {
+              const { equipment } = requirement;
+              if (!isEquipmentInService(equipment)) {
+                throw new ApiError(
+                  409,
+                  "EQUIPMENT_OUT_OF_SERVICE",
+                  `${equipment.name} is not currently in service`,
+                  [{ equipmentId: equipment.id }],
+                );
+              }
+              const alreadyHeld = claimedByEquipment.get(equipment.id) ?? 0;
+              const free = equipment.availableQuantity - alreadyHeld;
+              if (free < requirement.quantity) {
+                throw new ApiError(
+                  409,
+                  "EQUIPMENT_UNAVAILABLE",
+                  `${equipment.name} was taken for this slot while you were booking.`,
+                  [
+                    {
+                      equipmentId: equipment.id,
+                      requested: requirement.quantity,
+                      remaining: Math.max(0, free),
+                    },
+                  ],
+                );
+              }
+            }
+
+            equipmentHolds = requirements.map((requirement) => ({
+              equipmentId: requirement.equipmentId,
+              quantity: requirement.quantity,
+              nameSnapshot: requirement.equipment.name,
+            }));
           }
 
           const actorRole = primaryRole(viewer.roles);
@@ -303,6 +414,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
                   projectRoleSnapshot: member.role,
                 })),
               },
+              ...(equipmentHolds.length ? { equipment: { create: equipmentHolds } } : {}),
               statusHistory: {
                 create: {
                   fromStatus: null,
@@ -314,7 +426,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
                 },
               },
             },
-            include: { participants: true },
+            include: { participants: true, equipment: true },
           });
           await createBookingNotifications(tx, {
             userIds: [project.creatorId, ...selectedMembers.map((member) => member.userId!)],
@@ -334,6 +446,7 @@ export async function create(viewer: Viewer, data: BookingInput, context: Reques
                 labSlotId: slot.id,
                 attendeeCount: selectedMembers.length,
                 participantIds: selectedMembers.map((member) => member.userId),
+                equipmentIds: equipmentHolds.map((hold) => hold.equipmentId),
               },
               requestId: context.requestId,
               ipAddress: context.ipAddress,
@@ -383,7 +496,7 @@ export async function cancel(
   const requestFingerprint = cancellationFingerprint(id, reason);
   const keyOwner = await prisma.booking.findFirst({
     where: { cancelledById: viewer.id, cancellationIdempotencyKey: idempotencyKey },
-    include: { participants: true },
+    include: { participants: true, equipment: true },
   });
   if (keyOwner && keyOwner.id !== id) {
     throw new ApiError(
@@ -403,7 +516,7 @@ export async function cancel(
           await lockBooking(tx, id);
           const booking = await tx.booking.findUnique({
             where: { id },
-            include: { participants: true },
+            include: { participants: true, equipment: true },
           });
           if (!booking) throw new ApiError(404, "NOT_FOUND", "Booking not found");
           const access = bookingAccess(viewer);
@@ -469,7 +582,7 @@ export async function cancel(
                 },
               },
             },
-            include: { participants: true },
+            include: { participants: true, equipment: true },
           });
           await createBookingNotifications(tx, {
             userIds: [
@@ -520,7 +633,7 @@ export async function cancel(
       if (isUniqueConflict(error)) {
         const replay = await prisma.booking.findFirst({
           where: { cancelledById: viewer.id, cancellationIdempotencyKey: idempotencyKey },
-          include: { participants: true },
+          include: { participants: true, equipment: true },
         });
         if (replay?.id === id) {
           return cancellationReplay(replay, requestFingerprint, idempotencyKey, viewer);
@@ -578,7 +691,7 @@ export async function updateStatus(
       await lockBooking(tx, id);
       const existing = await tx.booking.findUnique({
         where: { id },
-        include: { participants: true },
+        include: { participants: true, equipment: true },
       });
       if (!existing) throw new ApiError(404, "NOT_FOUND", "Booking not found");
       if (!allowed[existing.status].includes(status)) {
@@ -604,7 +717,7 @@ export async function updateStatus(
             },
           },
         },
-        include: { participants: true },
+        include: { participants: true, equipment: true },
       });
       await tx.auditLog.create({
         data: {
@@ -613,6 +726,91 @@ export async function updateStatus(
           entityType: "Booking",
           entityId: id,
           metadata: { from: existing.status, to: status, notes },
+          requestId: context.requestId,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+        },
+      });
+      return booking;
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      maxWait: 5_000,
+      timeout: 10_000,
+    },
+  );
+  await publishAvailability(updated, "BOOKING_STATUS_CHANGED");
+  return bookingDto(updated, bookingAccess(viewer));
+}
+
+/**
+ * The team leader ends their own session.
+ *
+ * Only from ACTIVE — that is, after a lab assistant has checked the team in.
+ * A student cannot "complete" a session they never attended, which would
+ * otherwise be a way to dodge a no-show. Completing releases the machines,
+ * because holds are only counted while the booking is live.
+ */
+export async function completeOwnBooking(id: string, viewer: Viewer, context: RequestContext = {}) {
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      await lockBooking(tx, id);
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) throw new ApiError(404, "NOT_FOUND", "Booking not found");
+      if (existing.createdById !== viewer.id) {
+        throw new ApiError(403, "FORBIDDEN", "Only the Team Leader can end this session");
+      }
+      if (existing.status === BookingStatus.COMPLETED) {
+        // Ending an already-ended session is a no-op, not an error: a double
+        // tap on a slow connection must not surface a failure.
+        return tx.booking.findUniqueOrThrow({
+          where: { id },
+          include: { participants: true, equipment: true },
+        });
+      }
+      if (existing.status !== BookingStatus.ACTIVE) {
+        throw new ApiError(
+          409,
+          "BOOKING_NOT_ACTIVE",
+          "You can end a session only after the MakerSpace has checked your team in",
+        );
+      }
+
+      // Close any visit still open against this booking, so attendance and the
+      // booking cannot disagree about whether the team is still in the lab.
+      await tx.visit.updateMany({
+        where: { bookingId: id, status: AttendanceStatus.CHECKED_IN },
+        data: {
+          status: AttendanceStatus.CHECKED_OUT,
+          checkedOutAt: new Date(),
+          closeReason: VisitCloseReason.STUDENT_ENDED,
+        },
+      });
+
+      const booking = await tx.booking.update({
+        where: { id },
+        data: {
+          status: BookingStatus.COMPLETED,
+          statusHistory: {
+            create: {
+              fromStatus: existing.status,
+              toStatus: BookingStatus.COMPLETED,
+              actorUserId: viewer.id,
+              actorNameSnapshot: viewer.name,
+              actorRoleSnapshot: primaryRole(viewer.roles),
+              notes: "Ended by the Team Leader",
+            },
+          },
+        },
+        include: { participants: true, equipment: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: viewer.id,
+          action: "booking.completed_by_student",
+          entityType: "Booking",
+          entityId: id,
+          metadata: { from: existing.status, to: BookingStatus.COMPLETED },
           requestId: context.requestId,
           ipAddress: context.ipAddress,
           userAgent: context.userAgent,
@@ -660,15 +858,25 @@ function bookingAccess(viewer: Viewer) {
   };
 }
 
-function assertCanRead(
-  booking: { createdById: string; participants: Array<{ userId: string }> },
+async function assertCanRead(
+  booking: { createdById: string; projectId: string; participants: Array<{ userId: string }> },
   viewer: Viewer,
 ) {
   const canRead =
     booking.createdById === viewer.id ||
     booking.participants.some((participant) => participant.userId === viewer.id) ||
     hasPermission(viewer.roles, "booking.read.operational");
-  if (!canRead) throw new ApiError(403, "FORBIDDEN", "You do not have permission for this booking");
+  if (canRead) return;
+  // Mentors are checked against the live project rather than a snapshot, so a
+  // mentor who has been replaced loses access to the sessions immediately.
+  if (hasPermission(viewer.roles, "project.read.mentored")) {
+    const mentored = await prisma.project.findFirst({
+      where: { id: booking.projectId, currentMentorId: viewer.id },
+      select: { id: true },
+    });
+    if (mentored) return;
+  }
+  throw new ApiError(403, "FORBIDDEN", "You do not have permission for this booking");
 }
 
 function assertCanCancel(booking: { createdById: string }, viewer: Viewer, canManage: boolean) {
@@ -685,6 +893,7 @@ function creationFingerprint(data: BookingInput) {
     labSlotId: data.labSlotId,
     projectId: data.projectId,
     participantIds: [...data.participantIds].sort(),
+    equipmentIds: [...(data.equipmentIds ?? [])].sort(),
     notes: data.notes ?? null,
   });
 }
@@ -700,7 +909,7 @@ function fingerprint(value: unknown) {
 async function findCreationReplay(userId: string, idempotencyKey: string) {
   return prisma.booking.findUnique({
     where: { createdById_idempotencyKey: { createdById: userId, idempotencyKey } },
-    include: { participants: true },
+    include: { participants: true, equipment: true },
   });
 }
 
@@ -750,7 +959,7 @@ function cancellationReplay(
 async function findCancellationReplay(userId: string, idempotencyKey: string) {
   return prisma.booking.findFirst({
     where: { cancelledById: userId, cancellationIdempotencyKey: idempotencyKey },
-    include: { participants: true },
+    include: { participants: true, equipment: true },
   });
 }
 

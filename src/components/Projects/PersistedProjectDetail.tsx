@@ -1,7 +1,9 @@
+import { ResourceSelection, type ResourceKit } from "@/components/CreateProject/ResourceSelection";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Archive,
+  Trash2,
   ArrowRight,
   Check,
   Loader2,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { MentorSelect } from "@/components/CreateProject/MentorSelect";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Input } from "@/components/ui/input";
@@ -20,12 +23,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ApiError,
+  authApi,
   projectsApi,
+  readableError,
   referenceApi,
   usersApi,
   type FacultyDirectoryResult,
   type ProjectDetail,
-  type StudentDirectoryResult,
 } from "@/lib/api";
 import { useAppSession } from "@/lib/auth-context";
 import {
@@ -49,6 +53,7 @@ export function PersistedProjectDetail({
   const [mentorOpen, setMentorOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const isLeader = project.viewerRelationship === "LEADER";
   const latestMentorRequest = project.mentorRequests[0];
   const canDecide = Boolean(
@@ -294,14 +299,25 @@ export function PersistedProjectDetail({
         )}
       </section>
 
-      {isLeader && project.status !== "ARCHIVED" && (
-        <button
-          type="button"
-          onClick={() => setArchiveOpen(true)}
-          className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-destructive"
-        >
-          <Archive className="size-4" /> Archive project
-        </button>
+      {isLeader && (
+        <div className="flex flex-wrap items-center gap-4">
+          {project.status !== "ARCHIVED" && (
+            <button
+              type="button"
+              onClick={() => setArchiveOpen(true)}
+              className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <Archive className="size-4" /> Archive project
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="size-4" /> Delete project
+          </button>
+        </div>
       )}
 
       <ResponsiveModal
@@ -317,7 +333,7 @@ export function PersistedProjectDetail({
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         title="Invite a teammate"
-        description="Search registered MIT-WPU Students. Adding a teammate requires renewed verification."
+        description="Search registered students, or invite any MIT-WPU address — they do not need an account yet. Adding a teammate requires renewed Faculty Mentor verification."
       >
         <InviteMemberForm
           projectId={project.id}
@@ -354,7 +370,7 @@ export function PersistedProjectDetail({
         open={archiveOpen}
         onOpenChange={setArchiveOpen}
         title={`Archive ${project.title}?`}
-        description="The project remains in history and can no longer be edited."
+        description="It stays in your list and stays readable, but is retired: any booked slot is released and the team can no longer collect materials for it."
       >
         <div className="flex gap-3">
           <button
@@ -369,16 +385,48 @@ export function PersistedProjectDetail({
             disabled={mutate.isPending}
             onClick={() =>
               mutate.mutate(() =>
-                projectsApi.delete(project.id).then(() => {
-                  toast.success("Project archived");
+                projectsApi.archive(project.id).then(() => {
+                  toast.success("Project archived — its slot has been released");
                   setArchiveOpen(false);
+                }),
+              )
+            }
+            className="min-h-12 flex-1 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+          >
+            Archive project
+          </button>
+        </div>
+      </ResponsiveModal>
+
+      <ResponsiveModal
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete ${project.title}?`}
+        description="The project disappears from your list and any booked slot is released. Sessions your team already attended stay in the MakerSpace's records."
+      >
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(false)}
+            className="min-h-12 flex-1 rounded-xl border border-border px-5 text-sm font-semibold"
+          >
+            Keep project
+          </button>
+          <button
+            type="button"
+            disabled={mutate.isPending}
+            onClick={() =>
+              mutate.mutate(() =>
+                projectsApi.delete(project.id).then(() => {
+                  toast.success("Project deleted — its slot has been released");
+                  setDeleteOpen(false);
                   onArchived?.();
                 }),
               )
             }
             className="min-h-12 flex-1 rounded-xl bg-destructive px-5 text-sm font-semibold text-destructive-foreground disabled:opacity-50"
           >
-            Archive project
+            Delete project
           </button>
         </div>
       </ResponsiveModal>
@@ -404,14 +452,28 @@ function ProjectBookingRow({
   );
 }
 
+/**
+ * Editing a project.
+ *
+ * The same domain-first picker the wizard uses, so a team edits its kit the way
+ * it chose it. Materials carry quantities here too — this form was still
+ * sending a bare list of ids, which the server no longer accepts, so saving a
+ * kit change failed outright.
+ */
 function EditProjectForm({ project, onDone }: { project: ProjectDetail; onDone: () => void }) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(project.title);
   const [description, setDescription] = useState(project.description);
-  const [equipmentIds, setEquipmentIds] = useState(project.equipment.map((item) => item.id));
-  const [consumableIds, setConsumableIds] = useState(project.consumables.map((item) => item.id));
+  const [kit, setKit] = useState<ResourceKit>({
+    equipmentIds: project.equipment.map((item) => item.id),
+    consumables: project.consumables.map((item) => ({
+      consumableId: item.id,
+      quantity: item.quantity || 1,
+      variant: item.variant ?? null,
+    })),
+  });
   const resources = useQuery({
-    queryKey: ["phase2-reference", "project-resources", project.labId],
+    queryKey: ["project-resources", project.labId],
     queryFn: () => referenceApi.projectResources(project.labId).then((r) => r.data),
   });
   const mutation = useMutation({
@@ -419,16 +481,15 @@ function EditProjectForm({ project, onDone }: { project: ProjectDetail; onDone: 
       projectsApi.update(project.id, {
         title: title.trim(),
         description: description.trim(),
-        equipmentIds,
-        consumableIds,
+        equipmentIds: kit.equipmentIds,
+        consumables: kit.consumables,
       }),
     onSuccess: async () => {
       await invalidateProjectData(queryClient, project.id);
       toast.success("Project updated");
       onDone();
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Could not update project"),
+    onError: (error) => toast.error(readableError(error, "Could not update project")),
   });
   return (
     <form
@@ -457,22 +518,17 @@ function EditProjectForm({ project, onDone }: { project: ProjectDetail; onDone: 
           required
         />
       </div>
-      <CompactResourceChecks
-        label="Equipment"
-        items={resources.data?.equipment ?? []}
-        selected={equipmentIds}
-        onChange={setEquipmentIds}
-      />
-      <CompactResourceChecks
-        label="Consumables"
-        items={resources.data?.consumables ?? []}
-        selected={consumableIds}
-        onChange={setConsumableIds}
-      />
+      {resources.isPending ? (
+        <p className="text-sm text-muted-foreground">Loading the catalogue…</p>
+      ) : resources.data ? (
+        <ResourceSelection resources={resources.data} kit={kit} onChange={setKit} />
+      ) : (
+        <p className="text-sm text-muted-foreground">The catalogue could not be loaded.</p>
+      )}
       <button
         type="submit"
         disabled={mutation.isPending || !title.trim() || !description.trim()}
-        className="min-h-12 w-full rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+        className="pressable min-h-12 w-full rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
       >
         {mutation.isPending ? "Saving…" : "Save changes"}
       </button>
@@ -497,21 +553,33 @@ function InviteMemberForm({
     queryFn: () => usersApi.searchStudents(debounced).then((r) => r.data),
     enabled: debounced.length >= 2,
   });
+  const identity = useQuery({
+    queryKey: ["auth", "google-config"],
+    queryFn: () => authApi.googleConfig().then((r) => r.data),
+    staleTime: 60 * 60 * 1000,
+  });
+  const hostedDomain = identity.data?.hostedDomain ?? "mitwpu.edu.in";
   const mutation = useMutation({
-    mutationFn: (student: StudentDirectoryResult) =>
-      projectsApi.addMember(projectId, student.email),
+    mutationFn: (email: string) => projectsApi.addMember(projectId, email),
     onSuccess: async () => {
       await invalidateProjectData(queryClient, projectId);
-      toast.success("Teammate invited");
+      toast.success("Teammate invited — we have emailed them");
       onDone();
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : "Could not invite teammate"),
   });
+
+  const typedEmail = search.trim().toLowerCase();
+  const canInviteTypedEmail =
+    /^[^\s@]+@[^\s@]+$/.test(typedEmail) &&
+    typedEmail.endsWith(`@${hostedDomain}`) &&
+    !existingEmails.map((email) => email.toLowerCase()).includes(typedEmail);
+
   return (
     <SearchPicker
       id="invite-student-search"
-      label="Student name, email, or PRN"
+      label={`Name, PRN, or any @${hostedDomain} email`}
       search={search}
       onSearch={setSearch}
       loading={results.isFetching}
@@ -523,14 +591,41 @@ function InviteMemberForm({
             key={student.id}
             title={student.name}
             subtitle={`${student.email} · PRN ${student.prn}`}
-            onClick={() => mutation.mutate(student)}
+            onClick={() => mutation.mutate(student.email)}
             disabled={mutation.isPending}
           />
         ))}
+
+      {/* An address without an account is still a valid invitee: they are
+          emailed, and the invitation is waiting once they sign in. */}
+      {canInviteTypedEmail && (
+        <PickerRow
+          title={`Invite ${typedEmail}`}
+          subtitle="We will email them an invitation to join and set up their account."
+          onClick={() => mutation.mutate(typedEmail)}
+          disabled={mutation.isPending}
+        />
+      )}
+
+      {debounced.length >= 2 && results.data?.length === 0 && !canInviteTypedEmail && (
+        <p className="px-3 py-4 text-sm text-muted-foreground">
+          No registered student matches that. Type their full @{hostedDomain} email to invite them
+          anyway.
+        </p>
+      )}
     </SearchPicker>
   );
 }
 
+/**
+ * Changing the Faculty Mentor.
+ *
+ * This used to be a search box that showed nothing until two characters were
+ * typed, then hid the current mentor from the results — so a MakerSpace with a
+ * single mentor offered an empty list and the button appeared to do nothing.
+ * It now uses the same browsable picker as project creation, which shows every
+ * mentor and marks the one already assigned.
+ */
 function ChangeMentorForm({
   projectId,
   currentMentorId,
@@ -541,13 +636,7 @@ function ChangeMentorForm({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const debounced = useDebouncedValue(search);
-  const results = useQuery({
-    queryKey: ["phase2-directory", "faculty", debounced],
-    queryFn: () => usersApi.searchFacultyMentors(debounced).then((r) => r.data),
-    enabled: debounced.length >= 2,
-  });
+  const [selected, setSelected] = useState<FacultyDirectoryResult | null>(null);
   const mutation = useMutation({
     mutationFn: (mentor: FacultyDirectoryResult) => projectsApi.requestMentor(projectId, mentor.id),
     onSuccess: async () => {
@@ -555,29 +644,28 @@ function ChangeMentorForm({
       toast.success("Faculty Mentor request sent");
       onDone();
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : "Could not change mentor"),
+    onError: (error) => toast.error(readableError(error, "Could not change mentor")),
   });
+
+  const unchanged = selected !== null && selected.id === currentMentorId;
+
   return (
-    <SearchPicker
-      id="change-mentor-search"
-      label="Faculty Mentor name or email"
-      search={search}
-      onSearch={setSearch}
-      loading={results.isFetching}
-    >
-      {results.data
-        ?.filter((mentor) => mentor.id !== currentMentorId)
-        .map((mentor) => (
-          <PickerRow
-            key={mentor.id}
-            title={mentor.name}
-            subtitle={mentor.email}
-            onClick={() => mutation.mutate(mentor)}
-            disabled={mutation.isPending}
-          />
-        ))}
-    </SearchPicker>
+    <div className="space-y-4">
+      <MentorSelect value={selected} onChange={setSelected} />
+      {unchanged && (
+        <p className="text-xs text-muted-foreground">
+          That is already this project's mentor. Choose a different one to send a new request.
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={!selected || unchanged || mutation.isPending}
+        onClick={() => selected && mutation.mutate(selected)}
+        className="pressable inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+      >
+        {mutation.isPending ? "Sending…" : "Request this mentor"}
+      </button>
+    </div>
   );
 }
 
