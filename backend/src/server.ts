@@ -3,32 +3,34 @@ import { env } from "./config/env.js";
 import { logger } from "./config/logger.js";
 import { prisma } from "./config/db.js";
 import { redis } from "./config/redis.js";
-import { startAttendanceReconciler } from "./jobs/attendance-reconciler.js";
-import { requeueStalledDeliveries, startEmailDispatcher } from "./jobs/email-dispatcher.js";
 import { closeMailer } from "./config/mailer.js";
 
+/**
+ * The long-running entry point.
+ *
+ * Scheduled maintenance — releasing no-shows, closing overstayed visits,
+ * draining the mail outbox — no longer runs on in-process timers. It is
+ * triggered by a scheduler calling `POST /api/v1/jobs/run` with `JOBS_TOKEN`,
+ * so the same build runs unchanged on a serverless platform where no process
+ * survives between requests.
+ *
+ * That work still has to happen. Without a scheduler pointed at that endpoint,
+ * no-show slots are never released and no invitation email is ever sent.
+ */
 const server = createApp().listen(env.PORT, () => {
-  logger.info({ port: env.PORT }, "UMS backend listening");
+  logger.info(
+    { port: env.PORT, scheduledMaintenance: env.JOBS_TOKEN ? "external" : "not configured" },
+    "UMS backend listening",
+  );
+  if (!env.JOBS_TOKEN) {
+    logger.warn(
+      "JOBS_TOKEN is unset, so POST /api/v1/jobs/run is disabled. No-shows will not be released and queued email will not be sent until a scheduler is configured.",
+    );
+  }
 });
-
-// Safe to start on every instance: a Redis lease elects one worker per tick.
-const reconciler = startAttendanceReconciler();
-const emailDispatcher = startEmailDispatcher();
-
-// A crash mid-send leaves rows stuck in PROCESSING. Recover them on boot so a
-// restart never silently swallows an invitation.
-void requeueStalledDeliveries()
-  .then((recovered) => {
-    if (recovered.notifications || recovered.invitations) {
-      logger.info({ recovered }, "Requeued stalled email deliveries");
-    }
-  })
-  .catch((error: unknown) => logger.error({ err: error }, "Stalled delivery recovery failed"));
 
 async function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down");
-  clearInterval(reconciler);
-  clearInterval(emailDispatcher);
   server.close(async () => {
     await closeMailer();
     await prisma.$disconnect();

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ImageOff, MapPin } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Pagination } from "@/components/Pagination";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import { equipmentApi, referenceApi, type EquipmentDto } from "@/lib/api";
@@ -11,6 +12,7 @@ const usableStatuses = new Set(["AVAILABLE", "PARTIALLY_AVAILABLE", "IN_USE"]);
 /** The machine catalogue students browse before choosing a project's kit. */
 export function PersistedEquipment() {
   const [filter, setFilter] = useState("All");
+  const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const categories = useQuery({
@@ -18,18 +20,24 @@ export function PersistedEquipment() {
     queryFn: () => referenceApi.equipmentCategories().then((response) => response.data),
     staleTime: 300_000,
   });
+  // Paged server-side, and filtered server-side too: narrowing to a category
+  // client-side would only ever narrow the current page, so a machine on page
+  // two would look as if it did not exist.
   const equipment = useQuery({
-    queryKey: ["equipment", "catalogue"],
-    queryFn: () => equipmentApi.list({ limit: "100" }),
+    queryKey: ["equipment", "catalogue", filter, page],
+    queryFn: () =>
+      equipmentApi.list({
+        page: String(page),
+        limit: "24",
+        ...(filter === "All" ? {} : { category: filter }),
+      }),
     staleTime: 60_000,
+    placeholderData: (previous) => previous,
   });
 
   const items = useMemo(
-    () =>
-      (equipment.data?.data ?? []).filter(
-        (item) => item.visible && (filter === "All" || item.category === filter),
-      ),
-    [equipment.data, filter],
+    () => (equipment.data?.data ?? []).filter((item) => item.visible),
+    [equipment.data],
   );
   const tabs = ["All", ...(categories.data ?? []).map((category) => category.name)];
   const selected = (equipment.data?.data ?? []).find((item) => item.id === selectedId) ?? null;
@@ -52,7 +60,10 @@ export function PersistedEquipment() {
             <button
               type="button"
               aria-pressed={filter === category}
-              onClick={() => setFilter(category)}
+              onClick={() => {
+                setFilter(category);
+                setPage(1);
+              }}
               className={cn(
                 "min-h-10 rounded-full border px-4 text-[11px] font-mono uppercase tracking-wider transition-colors",
                 filter === category
@@ -77,6 +88,13 @@ export function PersistedEquipment() {
           ))}
         </div>
       )}
+
+      <Pagination
+        meta={equipment.data?.meta}
+        onPage={setPage}
+        busy={equipment.isFetching}
+        noun="machines"
+      />
 
       <ResponsiveModal
         open={Boolean(selected)}

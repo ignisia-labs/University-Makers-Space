@@ -1,9 +1,10 @@
 # Render deployment for the सृजन API.
 #
-# This is a long-running web service, not a serverless function. The API starts
-# two background workers — the attendance reconciler and the email dispatcher —
-# which hold a Redis lease and run on a timer. A serverless platform would spin
-# the process down between requests and neither would ever run.
+# The API no longer runs background workers in-process, so it deploys equally
+# well here or on a serverless platform. What it does need is a scheduler: the
+# cron job below calls the maintenance endpoint every minute to release no-shows,
+# close overstayed visits and drain the mail outbox. Without it those things
+# simply never happen.
 
 services:
   - type: web
@@ -36,6 +37,9 @@ services:
       # SameSite=None or the browser will never send it back.
       - key: CROSS_SITE_COOKIES
         value: "true"
+      # Shared with the cron job below. Generated once and used by both.
+      - key: JOBS_TOKEN
+        generateValue: true
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
@@ -53,4 +57,23 @@ services:
       - key: SMTP_PASSWORD
         sync: false
       - key: MAIL_FROM
+        sync: false
+
+  # Scheduled maintenance. The web service exposes the work over HTTP; this calls
+  # it. Set JOBS_TOKEN here to the same value the web service generated.
+  - type: cron
+    name: srijan-maintenance
+    runtime: node
+    plan: starter
+    rootDir: backend
+    schedule: "* * * * *"
+    buildCommand: npm ci
+    startCommand: >-
+      curl --fail --silent --show-error -X POST
+      "$API_URL/api/v1/jobs/run"
+      -H "X-Jobs-Token: $JOBS_TOKEN"
+    envVars:
+      - key: API_URL
+        sync: false
+      - key: JOBS_TOKEN
         sync: false

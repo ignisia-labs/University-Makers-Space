@@ -156,7 +156,12 @@ export const updateDivisionSchema = z.object({
 
 export const listFacultySchema = z.object({
   query: z
-    .object({ search: z.string().trim().max(120).optional(), divisionId: uuid.optional() })
+    .object({
+      search: z.string().trim().max(120).optional(),
+      divisionId: uuid.optional(),
+      page: z.coerce.number().int().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(200).optional(),
+    })
     .strict(),
 });
 

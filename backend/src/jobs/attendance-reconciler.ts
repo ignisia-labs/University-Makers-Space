@@ -32,7 +32,6 @@ import { redis } from "../config/redis.js";
 
 const LOCK_KEY = "ums:jobs:attendance-reconciler";
 const LOCK_TTL_MS = 55_000;
-const TICK_INTERVAL_MS = 60_000;
 const PAGE_SIZE = 200;
 const MAX_PAGES = 25;
 
@@ -396,22 +395,3 @@ export async function runReconcilerTick(): Promise<ReconcileSummary | null> {
   }
 }
 
-export function startAttendanceReconciler() {
-  const timer = setInterval(() => {
-    void runReconcilerTick()
-      .then((summary) => {
-        if (
-          summary &&
-          (summary.bookingsMarkedNoShow ||
-            summary.visitsAutoClosed ||
-            summary.bookingsCompleted ||
-            summary.quickVisitsMarkedNoShow)
-        ) {
-          logger.info({ summary }, "Attendance reconciled");
-        }
-      })
-      .catch((error: unknown) => logger.error({ err: error }, "Attendance reconciler tick failed"));
-  }, TICK_INTERVAL_MS);
-  timer.unref();
-  return timer;
-}

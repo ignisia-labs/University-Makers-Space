@@ -23,6 +23,7 @@ import { bookingRoutes } from "./modules/bookings/booking-routes.js";
 import { consumableClaimRoutes } from "./modules/consumables/claim-routes.js";
 import { equipmentRoutes } from "./modules/equipment/equipment-routes.js";
 import { eventRoutes } from "./modules/events/event-routes.js";
+import { jobRoutes } from "./modules/jobs/job-routes.js";
 import { labRoutes } from "./modules/labs/lab-routes.js";
 import { notificationRoutes } from "./modules/notifications/notification-routes.js";
 import { projectRoutes } from "./modules/projects/project-routes.js";
@@ -106,6 +107,7 @@ export function createApp() {
   api.use("/visits", visitRoutes);
   api.use("/quick-visits", quickVisitRoutes);
   api.use("/admin", adminRoutes);
+  api.use("/jobs", jobRoutes);
   api.use(
     "/uploads",
     authenticate,

@@ -4,6 +4,7 @@ import { prisma } from "../../config/db.js";
 import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/api-error.js";
 import { invalidate } from "../../utils/cache.js";
+import { meta } from "../../utils/pagination.js";
 import type { RequestContext, Viewer } from "../visits/visit-shared.js";
 
 /**
@@ -155,10 +156,18 @@ function facultyDto(row: FacultyRow) {
   };
 }
 
+/**
+ * The faculty directory, paged.
+ *
+ * A real faculty list is hundreds of people — the first import was 403 — so this
+ * returns one page and a total rather than everything. Search is applied by the
+ * database, not the page, so a name is reachable however deep it sits.
+ */
 export async function listFaculty(query: Record<string, unknown>) {
   const search = typeof query.search === "string" ? query.search.trim() : "";
-  const rows = await prisma.user.findMany({
-    where: {
+  const page = Math.max(1, Number(query.page ?? 1));
+  const limit = Math.min(Math.max(1, Number(query.limit ?? 50)), 200);
+  const where = {
       roles: { has: UserRole.FACULTY_MENTOR },
       deletedAt: null,
       ...(search
@@ -170,12 +179,19 @@ export async function listFaculty(query: Record<string, unknown>) {
           }
         : {}),
       ...(query.divisionId ? { facultyProfile: { divisionId: String(query.divisionId) } } : {}),
-    },
-    select: facultySelect,
-    orderBy: [{ name: "asc" }],
-    take: 500,
-  });
-  return rows.map(facultyDto);
+  } satisfies Prisma.UserWhereInput;
+
+  const [total, rows] = await prisma.$transaction([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      select: facultySelect,
+      orderBy: [{ name: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+  return { data: rows.map(facultyDto), meta: meta(page, limit, total) };
 }
 
 function normaliseEmail(email: string) {

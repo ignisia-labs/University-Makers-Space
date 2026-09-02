@@ -220,7 +220,8 @@ export async function deleteDivision(req: Request, res: Response) {
 }
 
 export async function listFaculty(req: Request, res: Response) {
-  return ok(res, "Faculty", await faculty.listFaculty(req.query));
+  const result = await faculty.listFaculty(req.query);
+  return ok(res, "Faculty", result.data, result.meta);
 }
 export async function addFaculty(req: Request, res: Response) {
   return created(

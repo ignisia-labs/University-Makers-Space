@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImagePlus, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { Pagination } from "@/components/Pagination";
 import { ResponsiveModal } from "@/components/ResponsiveModal";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
@@ -54,17 +55,17 @@ const emptyDraft: Draft = {
  */
 export function EquipmentManager({ labId }: { labId: string | null }) {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Draft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<EquipmentDto | null>(null);
   const [categoryDraft, setCategoryDraft] = useState("");
 
   const equipment = useQuery({
-    queryKey: ["equipment", "manage", labId],
-    // The response's meta is kept: 100 is the server's ceiling, and a catalogue
-    // that outgrows it must say so rather than quietly showing a subset.
-    queryFn: () => equipmentApi.list({ labId: labId!, limit: "100" }),
+    queryKey: ["equipment", "manage", labId, page],
+    queryFn: () => equipmentApi.list({ labId: labId!, page: String(page), limit: "24" }),
     enabled: Boolean(labId),
     staleTime: 30_000,
+    placeholderData: (previous) => previous,
   });
   const domains = useQuery({
     queryKey: ["admin-domains", labId],
@@ -191,8 +192,7 @@ export function EquipmentManager({ labId }: { labId: string | null }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[10px] uppercase tracking-widest text-primary">
-          {items.length} {items.length === 1 ? "machine" : "machines"}
-          {totalEquipment > items.length && ` of ${totalEquipment}`}
+          {totalEquipment} {totalEquipment === 1 ? "machine" : "machines"}
         </p>
         <button
           type="button"
@@ -207,13 +207,6 @@ export function EquipmentManager({ labId }: { labId: string | null }) {
       {activeCategories.length === 0 && (
         <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-xs leading-5 text-warning-foreground">
           Add a category first — every machine belongs to one.
-        </p>
-      )}
-
-      {totalEquipment > items.length && (
-        <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-xs leading-5 text-warning-foreground">
-          Showing the first {items.length} of {totalEquipment} machines — this screen does not page
-          yet, so the rest are edited from Administration.
         </p>
       )}
 
@@ -249,6 +242,13 @@ export function EquipmentManager({ labId }: { labId: string | null }) {
           ))}
         </div>
       )}
+
+      <Pagination
+        meta={equipment.data?.meta}
+        onPage={setPage}
+        busy={equipment.isFetching}
+        noun="machines"
+      />
 
       <section className="card-surface p-5 sm:p-6">
         <p className="font-mono text-[10px] uppercase tracking-widest text-primary">Categories</p>

@@ -56,6 +56,21 @@ const schema = z.object({
       "Every FRONTEND_URL entry must be an absolute http(s) origin",
     ),
   /**
+   * Shared secret for the scheduled-maintenance endpoint.
+   *
+   * Set it and a platform cron can POST /api/v1/jobs/run to release no-shows,
+   * close overstayed visits and drain the mail outbox. Leave it unset and the
+   * endpoint does not exist — which is the right default for a deployment that
+   * runs the work in-process instead.
+   */
+  JOBS_TOKEN: z
+    .preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.string().min(24).optional(),
+    )
+    .describe("At least 24 characters; it guards booking-mutating maintenance."),
+
+  /**
    * Whether the browser will send the refresh cookie cross-site.
    *
    * When the app and the API share an origin — a dev proxy, or a single domain

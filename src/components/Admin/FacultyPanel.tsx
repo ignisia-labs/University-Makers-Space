@@ -8,6 +8,7 @@ import {
   type FacultyDto,
   type FacultyImportOutcome,
 } from "@/lib/api";
+import { Pagination, type PageMeta } from "@/components/Pagination";
 import { AdminError, AdminSkeleton, SubmitButton } from "./AdminPrimitives";
 
 /**
@@ -24,6 +25,8 @@ export function FacultyPanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [facultyMeta, setFacultyMeta] = useState<PageMeta | undefined>(undefined);
 
   const [divisionDraft, setDivisionDraft] = useState("");
   const [editingDivision, setEditingDivision] = useState<string | null>(null);
@@ -40,16 +43,23 @@ export function FacultyPanel() {
     try {
       const [divisionsResponse, facultyResponse] = await Promise.all([
         governanceApi.divisions(),
-        governanceApi.faculty(search.trim() ? { search: search.trim() } : undefined),
+        // Search is applied by the database, so a name is reachable however
+        // deep it sits — 400 faculty do not fit on a page.
+        governanceApi.faculty({
+          page: String(page),
+          limit: "50",
+          ...(search.trim() ? { search: search.trim() } : {}),
+        }),
       ]);
       setDivisions(divisionsResponse.data);
       setFaculty(facultyResponse.data);
+      setFacultyMeta(facultyResponse.meta as PageMeta | undefined);
       setState("ready");
     } catch (cause) {
       setError(readableError(cause, "Faculty data could not be loaded."));
       setState("error");
     }
-  }, [search]);
+  }, [search, page]);
 
   useEffect(() => {
     void load();
@@ -294,7 +304,10 @@ export function FacultyPanel() {
           <p className="font-mono text-[10px] uppercase tracking-widest text-primary">Faculty</p>
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Search name or email"
             aria-label="Search faculty"
             className="rounded-full border border-border bg-transparent px-3 py-1.5 text-xs"
@@ -421,6 +434,8 @@ export function FacultyPanel() {
             </li>
           ) : null}
         </ul>
+
+        <Pagination meta={facultyMeta} onPage={setPage} busy={busy !== null} noun="faculty" />
 
         <form
           onSubmit={(event) => {

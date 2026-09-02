@@ -12,37 +12,41 @@ during a demo.
 
 These must be settled before students use the system.
 
-### Cloudinary API secret is wrong
-
-`backend/.env` has ten asterisks where the API secret should be — Cloudinary's
-dashboard masks the value and the masked text was copied. The cloud name and key
-are accepted; only the signature fails.
-
-**Until this is fixed: no photo anywhere can be uploaded.** Equipment photos,
-domain tile images, and any future file upload all fail with
-`IMAGE_HOST_UNAVAILABLE`. Reveal the secret in the Cloudinary console and paste
-the real value.
-
-### Email is not configured
-
-`SMTP_HOST` is unset, so the app uses a console transport: invitation and
-notification emails are written to the log and **never sent**. A student invited
-to a project will not hear about it. Set the SMTP variables (Brevo, Postmark,
-SES) before inviting anyone who is not sitting next to you.
-
 ### Everything runs on one laptop
 
 Postgres and Redis are local Docker containers. Both must move to managed
 services before deployment — see `DEPLOYMENT.md`.
 
+### Nothing schedules the maintenance job
+
+The API no longer runs background timers, so it deploys to a serverless platform
+unchanged. The work still has to happen: `POST /api/v1/jobs/run` releases
+no-show slots, closes overstayed visits and sends queued email, and something
+must call it every minute.
+
+Until a scheduler is pointed at it, a team that never turns up keeps its slot
+forever and no invitation email is ever sent. `DEPLOYMENT.md` §3 covers Render
+Cron, Vercel Cron and a plain external scheduler.
+
 ---
 
 ## 2. Known gaps in what is built
 
-### Photos
-No equipment or domain has an image. The placeholders are designed for this, so
-nothing looks broken, but the catalogue is plainer than it should be. Blocked on
-the Cloudinary secret above.
+### No photos have been uploaded yet
+Uploading works — Cloudinary is configured and verified. But no equipment or
+domain has an image, so every card shows its placeholder. The placeholders are
+designed for this and nothing looks broken; the catalogue is simply plainer than
+it needs to be.
+
+Worth doing for the four domain tiles and the two dozen distinctive machines.
+Not worth doing for 150 resistor values.
+
+### The email sender address is the Brevo login
+`MAIL_FROM` is `MIT-WPU MakerSpace <b69efa001@smtp-brevo.com>`. Mail is being
+delivered, but students see a machine-generated Brevo address as the sender.
+Verify a proper sender in Brevo — ideally `no-reply@mitwpu.edu.in`, which needs
+the domain verified — and change `MAIL_FROM` to it. Deliverability improves too;
+mail from an unrelated domain is more likely to be filtered.
 
 ### Four inventory rows need a human
 From the JN305 sheet, imported as-is because guessing would be worse:
@@ -57,17 +61,6 @@ From the JN305 sheet, imported as-is because guessing would be worse:
 ### One faculty row has a typo in the source
 `sandeep.singhal@mitwu.edu.in` is missing the *p* in `mitwpu`. He was skipped.
 Fix the cell and re-import; the import is idempotent.
-
-### Two retired catalogue rows still exist
-`Creality Ender-5 Plus` and `PLA Filament` came from an old seed. They are hidden
-from every screen but the rows remain, because they are referenced by real
-bookings and an issued claim. Deleting them would mean rewriting attendance
-history. They disappear for good once the projects and bookings that reference
-them are gone.
-
-### Equipment lists page at 100
-The catalogue screens fetch 100 items and say so when there are more. Past 100
-machines they need real pagination. There are 24 today.
 
 ### Consumable units are guessed
 The import read units from the quantity cell (`1 Bundle` → bundle). Most rows

@@ -2,13 +2,16 @@
 
 Front end on Netlify, API on Render, with managed Postgres and Redis.
 
-**Why Render and not Vercel for the API.** The API is a long-running server, not
-a set of functions. It starts two background workers — the attendance reconciler
-and the email dispatcher — that hold a Redis lease and run on a timer. On a
-serverless platform the process is suspended between requests, so neither would
-ever run: no-shows would never be released, and no invitation email would ever
-be sent. Render, Railway and Fly all run it correctly. Vercel would appear to
-work and quietly do half the job.
+**The API runs anywhere.** It holds no state between requests and starts no
+background workers, so the same build runs on Render, Railway, Fly or a
+serverless platform such as Vercel. `src/server.ts` binds a port for a normal
+Node host; `api/index.ts` exports the same Express app as a request handler.
+
+**But it needs a scheduler.** Releasing no-show slots, closing overstayed visits
+and sending queued email used to run on in-process timers. They now run when
+something calls `POST /api/v1/jobs/run` with the `JOBS_TOKEN` secret. Set that up
+or none of it happens: a team that never turns up keeps its slot forever, and no
+invitation email is ever sent. Section 3 covers it.
 
 ---
 
@@ -46,6 +49,12 @@ Web Service by hand with:
 | Start command | `npm run start` |
 | Health check path | `/health` |
 
+To deploy the API to Vercel instead, use `backend/vercel.json`: it builds the
+same code and serves `api/index.ts` as a function. Set `connection_limit=1` in
+`DATABASE_URL` and use your provider's pooled endpoint — a serverless platform
+opens a connection per cold start, and that is the usual way to exhaust a small
+database plan.
+
 Migrations run in the build, before the new instance takes traffic, so a release
 never serves against a schema it was not compiled for.
 
@@ -61,6 +70,7 @@ never serves against a schema it was not compiled for.
 | `GOOGLE_CLIENT_ID` | from the Google Cloud console |
 | `FRONTEND_URL` | `https://YOUR-SITE.netlify.app` |
 | `CROSS_SITE_COOKIES` | `true` |
+| `JOBS_TOKEN` | 32+ random characters — the scheduler's password |
 | `CLOUDINARY_CLOUD_NAME` | from Cloudinary |
 | `CLOUDINARY_API_KEY` | from Cloudinary |
 | `CLOUDINARY_API_SECRET` | from Cloudinary — **reveal it first, do not copy the masked value** |
@@ -108,7 +118,51 @@ from Excel**.
 
 ---
 
-## 3. Front end on Netlify
+## 3. The scheduler — do not skip this
+
+Nothing runs between requests. Something outside the API must call it every
+minute, or no-shows are never released and queued email is never sent.
+
+`POST /api/v1/jobs/run` is the endpoint. It authenticates two ways, because
+schedulers differ:
+
+```
+X-Jobs-Token: <JOBS_TOKEN>          # Render Cron, GitHub Actions, cron-job.org
+Authorization: Bearer <JOBS_TOKEN>  # Vercel Cron, which cannot set custom headers
+```
+
+It takes a Redis lease, so two overlapping calls are harmless — and a manual call
+while a scheduled one is running is safe.
+
+**On Render** — `backend/render.yaml` declares a cron service alongside the web
+service. Set `API_URL` to your API's URL and `JOBS_TOKEN` to the same value the
+web service uses.
+
+**On Vercel** — `backend/vercel.json` declares the cron. Set `CRON_SECRET` and
+`JOBS_TOKEN` to the same value; Vercel sends `CRON_SECRET` as a bearer token.
+Minute-level schedules need a Pro plan; on Hobby the finest is daily, which is
+too coarse for releasing no-shows.
+
+**Anywhere else** — a free scheduler such as cron-job.org works:
+
+```
+POST https://YOUR-API/api/v1/jobs/run
+Header: X-Jobs-Token: <JOBS_TOKEN>
+Every minute
+```
+
+Check it is working:
+
+```bash
+curl -X POST https://YOUR-API/api/v1/jobs/run -H "X-Jobs-Token: $JOBS_TOKEN"
+# {"success":true,"message":"Maintenance complete","data":{...}}
+```
+
+A 404 means `JOBS_TOKEN` is unset on the API. A 401 means the two values differ.
+
+---
+
+## 4. Front end on Netlify
 
 Connect the repository. `netlify.toml` supplies the build command, publish
 directory, caching and the single-page fallback, so the only thing to set is:
@@ -124,7 +178,7 @@ a redeploy, not a restart.
 
 ---
 
-## 4. Google sign-in
+## 5. Google sign-in
 
 In the Google Cloud console, under the OAuth client's **Authorised JavaScript
 origins**, add your Netlify URL:
@@ -139,7 +193,7 @@ which is the single most common cause of "the button does nothing".
 
 ---
 
-## 5. Check it worked
+## 6. Check it worked
 
 ```bash
 curl https://YOUR-API.onrender.com/health
@@ -155,10 +209,12 @@ Then in the browser, on the Netlify URL:
    not `true`, or `FRONTEND_URL` does not exactly match the site's origin.
 4. Open a deep link such as `/dashboard` directly. It should load, not 404 —
    that proves the SPA fallback.
+5. Call the maintenance endpoint by hand once (section 3). If it returns 200,
+   the scheduler will too.
 
 ---
 
-## 6. After the first deploy
+## 7. After the first deploy
 
 - Render's free tier sleeps after inactivity; the first request then takes ~50
   seconds. Use a paid instance for anything students rely on.

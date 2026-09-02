@@ -30,7 +30,6 @@ import {
 
 const LOCK_KEY = "ums:jobs:email-dispatcher";
 const LOCK_TTL_MS = 25_000;
-const TICK_INTERVAL_MS = 15_000;
 const BATCH_SIZE = 25;
 const MAX_BATCHES = 8;
 
@@ -267,26 +266,6 @@ export async function runEmailDispatcherTick(): Promise<DispatchSummary | null> 
       logger.warn({ err: error }, "Email dispatcher lease release failed; it will expire");
     }
   }
-}
-
-export function startEmailDispatcher() {
-  const timer = setInterval(() => {
-    void runEmailDispatcherTick()
-      .then((summary) => {
-        if (
-          summary &&
-          (summary.notificationsSent ||
-            summary.invitationsSent ||
-            summary.notificationsFailed ||
-            summary.invitationsFailed)
-        ) {
-          logger.info({ summary }, "Email dispatched");
-        }
-      })
-      .catch((error: unknown) => logger.error({ err: error }, "Email dispatcher tick failed"));
-  }, TICK_INTERVAL_MS);
-  timer.unref();
-  return timer;
 }
 
 /** Exposed so a stalled PROCESSING row (a crash mid-send) can be recovered. */
