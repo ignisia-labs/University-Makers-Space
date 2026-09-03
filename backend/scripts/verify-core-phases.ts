@@ -114,6 +114,11 @@ async function createFixture() {
       bookingCapacity: 20,
       quickVisitCapacity: 10,
       bookingHorizonDays: 7,
+      // No cancellation window. Otherwise whether a fixture booking can be
+      // released depends on how close the clock is to the lab's opening hours,
+      // and the suite passes in the afternoon and fails in the morning. The
+      // cancellation deadline is policy, tested where policy is the subject.
+      cancellationWindowHours: 0,
       schedules: {
         create: Array.from({ length: 7 }, (_, dayOfWeek) => ({
           dayOfWeek,
