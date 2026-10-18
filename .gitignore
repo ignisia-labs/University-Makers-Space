@@ -50,3 +50,9 @@ backend/scripts/tmp-*.ts
 # The raw demo capture: real student and faculty records, never published.
 # scripts/build-demo-fixtures.mjs turns it into the committed fixtures.json.
 src/mocks/fixtures.full.json
+
+# The demo branch deploys with `npm install`, not `npm ci`: npm cannot write a
+# lockfile that satisfies both eslint (ajv 6) and an optional peer wanting
+# ajv 8, and the resulting file fails `npm ci` on the build host. The full
+# stack on development-codex keeps its lockfile.
+package-lock.json
