@@ -2,10 +2,11 @@
  * Builds the demo fixture bundle the static site answers its own API calls
  * from.
  *
- * Input is `src/mocks/fixtures.full.json` — the untouched capture from the
- * production API, which is deliberately NOT committed. Output is
- * `src/mocks/fixtures.json`, which is, and which therefore has to be safe to
- * publish: this repository is public and the built site is served to anyone.
+ * Input is `src/mocks/fixtures.full.json` — the untouched capture produced by
+ * scripts/capture-demo-fixtures.mjs in the makerspace-local folder, which is
+ * deliberately NOT committed. Output is `src/mocks/fixtures.json`, which is,
+ * and which therefore has to be safe to publish: this repository is public and
+ * the built site is served to anyone.
  *
  * Two privacy decisions are applied here rather than at capture time, so they
  * stay visible and can be changed by editing one constant and re-running:
@@ -24,6 +25,14 @@ import fs from "node:fs";
 
 const MASK_FACULTY_EMAILS = true;
 
+/** Paths whose pages are merged into one collection and re-paginated at runtime. */
+const PAGED = new Set([
+  "/admin/faculty",
+  "/users",
+  "/users/search/faculty-mentors",
+  "/equipment",
+]);
+
 const source = new URL("../src/mocks/fixtures.full.json", import.meta.url);
 const target = new URL("../src/mocks/fixtures.json", import.meta.url);
 
@@ -37,7 +46,52 @@ if (!fs.existsSync(source)) {
   process.exit(1);
 }
 
-const bundle = JSON.parse(fs.readFileSync(source, "utf8"));
+const raw = JSON.parse(fs.readFileSync(source, "utf8"));
+const LAB = raw.labId;
+
+// ─── shape the bundle ──────────────────────────────────────────────────────
+
+const responses = {};
+const collections = {};
+
+/**
+ * Query parameters sorted into a stable order, so a lookup matches however the
+ * caller happened to order them. Pagination is deliberately dropped: pages are
+ * merged into a collection and re-paginated at runtime.
+ */
+function key(path) {
+  const [bare, query] = path.split("?");
+  const base = bare.replace(LAB, ":labId");
+  if (!query) return base;
+  const params = new URLSearchParams(query);
+  params.delete("page");
+  params.delete("limit");
+  const rest = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return rest.length ? `${base}?${new URLSearchParams(rest).toString()}` : base;
+}
+
+for (const { role, path, status, body } of raw.captured) {
+  if (body == null) continue;
+  responses[role] ??= {};
+  collections[role] ??= {};
+
+  const base = path.split("?")[0].replace(LAB, ":labId");
+
+  if (status === 200 && PAGED.has(base) && Array.isArray(body.data)) {
+    (collections[role][base] ??= []).push(...body.data);
+    continue;
+  }
+
+  // Stored twice: once under the full query, which is what a date-driven
+  // screen like slot booking asks for, and once under the bare path as the
+  // fallback for a query this capture never saw. First write wins, so page 1
+  // of a list is not clobbered by page 2.
+  const full = key(path);
+  responses[role][full] ??= { status, body };
+  if (full !== base) responses[role][base] ??= { status, body };
+}
+
+// ─── filter what is not safe to publish ────────────────────────────────────
 
 let prns = 0;
 let students = 0;
@@ -56,7 +110,10 @@ const LAST = [
 function alias(seed) {
   let hash = 0;
   for (const ch of String(seed)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const name = `${FIRST[hash % FIRST.length]} ${LAST[(hash >> 5) % LAST.length]}`;
+  // Both shifts are unsigned. `>>` is signed, so any hash above 2^31 went
+  // negative, indexed off the end of the array and produced names like
+  // "Aarav undefined" — which then showed up in the profile and the sidebar.
+  const name = `${FIRST[hash % FIRST.length]} ${LAST[(hash >>> 5) % LAST.length]}`;
   return {
     name,
     email: `${name.toLowerCase().replace(" ", ".")}${hash % 97}@mitwpu.edu.in`,
@@ -103,11 +160,21 @@ function walk(node) {
   for (const value of Object.values(node)) walk(value);
 }
 
+const bundle = { labId: LAB, responses, collections };
 walk(bundle);
 fs.writeFileSync(target, JSON.stringify(bundle));
 
+// ─── report ────────────────────────────────────────────────────────────────
+
 const kb = Math.round(fs.statSync(target).size / 1024);
+for (const role of Object.keys(responses)) {
+  const paths = Object.keys(responses[role]).length;
+  const cols = Object.entries(collections[role] ?? {})
+    .map(([k, v]) => `${k}=${v.length}`)
+    .join(" ");
+  console.log(`${role.padEnd(13)} ${String(paths).padStart(4)} paths   ${cols}`);
+}
 console.log(
-  `wrote src/mocks/fixtures.json (${kb} KB): ` +
+  `\nwrote src/mocks/fixtures.json (${kb} KB): ` +
     `${students} student records replaced, ${prns} PRNs replaced, ${masked} emails masked`,
 );

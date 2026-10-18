@@ -17,7 +17,7 @@ import bundle from "./fixtures.json";
 
 type Role = "student" | "labAssistant" | "superAdmin";
 
-type Captured = { __status: number; body: unknown };
+type Captured = { status: number; body: unknown };
 
 type Bundle = {
   labId: string;
@@ -147,35 +147,128 @@ function paginate(rows: unknown[], params: URLSearchParams) {
   };
 }
 
-/** Finds a captured response, falling back to the most privileged persona. */
+/**
+ * What this role recorded for this path, and nothing else.
+ *
+ * Deliberately strict. An earlier version fell back to the Super Admin's
+ * capture whenever a role had no entry of its own, which quietly handed a
+ * Student the faculty administration list and every user account — the real
+ * API answers 403 there, and the demo has to refuse where the real system
+ * refuses. The capture covers every list path for every role, so a miss here
+ * means a genuine gap rather than a permission to borrow.
+ */
 function captured(role: Role, path: string): Captured | undefined {
-  return data.responses[role]?.[path] ?? data.responses.superAdmin?.[path];
+  return data.responses[role]?.[path];
+}
+
+/**
+ * The bundle key for a request, matching how the builder wrote it: parameters
+ * sorted so order does not matter, and pagination dropped because pages are
+ * merged into a collection and re-paginated here.
+ *
+ * Slot booking depends on this. Its screens differ only by `date` and
+ * `projectId`, so keying on the bare path would answer every day with
+ * whichever day happened to be captured first.
+ */
+function keyFor(path: string, params: URLSearchParams): string {
+  const rest = [...params.entries()]
+    .filter(([name]) => name !== "page" && name !== "limit")
+    .sort(([a], [b]) => a.localeCompare(b));
+  return rest.length ? `${path}?${new URLSearchParams(rest).toString()}` : path;
 }
 
 function collection(role: Role, path: string): unknown[] | undefined {
-  return data.collections[role]?.[path] ?? data.collections.superAdmin?.[path];
+  return data.collections[role]?.[path];
 }
 
 // ─── request handling ──────────────────────────────────────────────────────
 
+/**
+ * Finds a row by id anywhere the bundle holds one — the overlay first, then
+ * the collections, then the body of any captured list.
+ *
+ * This is what answers a detail route for something created during the visit,
+ * which by definition has no captured response of its own.
+ */
+function findRowById(role: Role, id: string): unknown {
+  for (const rows of created.values()) {
+    const hit = rows.find((row) => (row as { id?: string }).id === id);
+    if (hit) return hit;
+  }
+  for (const rows of Object.values(data.collections[role] ?? {})) {
+    const hit = rows.find((row) => (row as { id?: string }).id === id);
+    if (hit) return hit;
+  }
+  for (const entry of Object.values(data.responses[role] ?? {})) {
+    const rows = (entry.body as { data?: unknown })?.data;
+    if (!Array.isArray(rows)) continue;
+    const hit = rows.find((row) => (row as { id?: string }).id === id);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/** Whether a captured list body is a collection of rows. */
+function listBody(entry: Captured | undefined) {
+  const rows = (entry?.body as { data?: unknown })?.data;
+  return Array.isArray(rows) ? rows : null;
+}
+
 function handleGet(role: Role, path: string, params: URLSearchParams): Response {
+  // The query-specific capture first, then the bare path as the fallback for a
+  // combination the capture never saw.
+  const hit = captured(role, keyFor(path, params)) ?? captured(role, path);
+
+  // 1. A refusal this role actually received. Checked before anything else so
+  //    the demo denies exactly where the real system denies, rather than
+  //    finding the data by another route.
+  if (hit && hit.status !== 200) return ok(hit.body, hit.status);
+
+  // 2. A merged, re-paginated collection: /equipment, /admin/faculty, …
   const rows = collection(role, path);
   if (rows) {
-    // `/equipment` is read unpaginated by some screens and paginated by
-    // others; the meta is harmless when ignored.
     const { rows: pageRows, meta } = paginate(applyOverlay(path, rows), params);
     return ok(envelope(pageRows, meta));
   }
 
-  const hit = captured(role, path);
-  if (!hit) return failure(404, "NOT_FOUND", `No fixture captured for ${path}`);
-  if (hit.__status !== 200) return ok(hit.body, hit.__status);
-
-  const body = hit.body as { data?: unknown };
-  if (Array.isArray(body.data)) {
-    return ok({ ...body, data: applyOverlay(path, body.data) });
+  // 3. An exactly captured response. Detail routes land here, because the
+  //    capture walked every id the lists mentioned.
+  if (hit) {
+    const body = hit.body as { data?: unknown };
+    const id = trailingId(path);
+    if (Array.isArray(body.data)) {
+      return ok({ ...body, data: applyOverlay(path, body.data) });
+    }
+    // Replay a single record with any edits made during this visit applied.
+    const patch = id ? patched.get(id) : undefined;
+    if (patch && body.data && typeof body.data === "object") {
+      return ok({ ...body, data: { ...(body.data as object), ...patch } });
+    }
+    return ok(body);
   }
-  return ok(body);
+
+  // 4. A detail route for a row created or edited during this visit.
+  const id = trailingId(path);
+  if (id) {
+    if (removed.has(id)) return failure(404, "NOT_FOUND", "That record no longer exists.");
+    const row = findRowById(role, id);
+    if (row) {
+      const patch = patched.get(id);
+      return ok(envelope(patch ? { ...(row as object), ...patch } : row));
+    }
+  }
+
+  // 5. Nothing captured. Answer with the empty shape the caller expects rather
+  //    than a 404: an unanswered query leaves a screen on "Loading…" forever,
+  //    and an empty list or record renders as "nothing here yet", which is
+  //    honest and costs the demo nothing. The warning is for whoever extends
+  //    the capture next.
+  console.warn(`[mock api] no fixture for ${path} — answering empty`);
+  const sibling = captured(role, collectionPathFor(path));
+  if (listBody(sibling) || !trailingId(path)) {
+    return ok(envelope([], { page: 1, limit: 50, total: 0, totalPages: 1, hasNext: false, hasPrev: false }));
+  }
+  return ok(envelope(null));
 }
 
 /** The id at the end of a path, when there is one. */
