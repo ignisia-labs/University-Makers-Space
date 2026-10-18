@@ -1,6 +1,7 @@
 {
-  "name": "MIT-WPU MakerSpace",
-  "short_name": "MakerSpace",
+  "name": "सृजन — MIT-WPU MakerSpace",
+  "description": "MIT-WPU MakerSpace",
+  "short_name": "सृजन",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

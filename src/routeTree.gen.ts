@@ -24,6 +24,7 @@ import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SuperAdminRouteImport } from './routes/super-admin'
 import { Route as VisitsRouteImport } from './routes/visits'
+import { Route as BookingsBookingIdRouteImport } from './routes/bookings/$bookingId'
 import { Route as InvitationsProjectIdRouteImport } from './routes/invitations/$projectId'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 
@@ -102,6 +103,11 @@ const VisitsRoute = VisitsRouteImport.update({
   path: '/visits',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BookingsBookingIdRoute = BookingsBookingIdRouteImport.update({
+  id: '/bookings/$bookingId',
+  path: '/bookings/$bookingId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvitationsProjectIdRoute = InvitationsProjectIdRouteImport.update({
   id: '/invitations/$projectId',
   path: '/invitations/$projectId',
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/super-admin': typeof SuperAdminRoute
   '/visits': typeof VisitsRoute
+  '/bookings/$bookingId': typeof BookingsBookingIdRoute
   '/invitations/$projectId': typeof InvitationsProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
 }
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/super-admin': typeof SuperAdminRoute
   '/visits': typeof VisitsRoute
+  '/bookings/$bookingId': typeof BookingsBookingIdRoute
   '/invitations/$projectId': typeof InvitationsProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
 }
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/super-admin': typeof SuperAdminRoute
   '/visits': typeof VisitsRoute
+  '/bookings/$bookingId': typeof BookingsBookingIdRoute
   '/invitations/$projectId': typeof InvitationsProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
 }
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/super-admin'
     | '/visits'
+    | '/bookings/$bookingId'
     | '/invitations/$projectId'
     | '/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/super-admin'
     | '/visits'
+    | '/bookings/$bookingId'
     | '/invitations/$projectId'
     | '/projects/$projectId'
   id:
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/super-admin'
     | '/visits'
+    | '/bookings/$bookingId'
     | '/invitations/$projectId'
     | '/projects/$projectId'
   fileRoutesById: FileRoutesById
@@ -247,6 +259,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SuperAdminRoute: typeof SuperAdminRoute
   VisitsRoute: typeof VisitsRoute
+  BookingsBookingIdRoute: typeof BookingsBookingIdRoute
   InvitationsProjectIdRoute: typeof InvitationsProjectIdRoute
 }
 
@@ -357,6 +370,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VisitsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/bookings/$bookingId': {
+      id: '/bookings/$bookingId'
+      path: '/bookings/$bookingId'
+      fullPath: '/bookings/$bookingId'
+      preLoaderRoute: typeof BookingsBookingIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invitations/$projectId': {
       id: '/invitations/$projectId'
       path: '/invitations/$projectId'
@@ -402,6 +422,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SuperAdminRoute: SuperAdminRoute,
   VisitsRoute: VisitsRoute,
+  BookingsBookingIdRoute: BookingsBookingIdRoute,
   InvitationsProjectIdRoute: InvitationsProjectIdRoute,
 }
 export const routeTree = rootRouteImport

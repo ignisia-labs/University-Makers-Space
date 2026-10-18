@@ -11,7 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
-import { MakerSpaceProvider } from "@/lib/makerspace-context";
+import { AuthProvider } from "@/lib/auth-context";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
 function NotFoundComponent() {
@@ -79,14 +79,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
+      { title: "सृजन — MIT-WPU MakerSpace" },
       {
         name: "description",
         content:
           "Book slots, manage projects and explore 3D printing, laser, electronics and robotics equipment at the MIT-WPU MakerSpace.",
       },
       { name: "theme-color", content: "#4338ca" },
-      { property: "og:title", content: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
+      { property: "og:title", content: "सृजन — MIT-WPU MakerSpace" },
       {
         property: "og:description",
         content:
@@ -95,7 +95,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "MIT-WPU MakerSpace — Build, Prototype, Iterate" },
+      { name: "twitter:title", content: "सृजन — MIT-WPU MakerSpace" },
       {
         name: "twitter:description",
         content:
@@ -123,7 +123,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&display=swap",
+        // Tiro Devanagari Hindi carries the सृजन wordmark. It is a true serif
+        // Devanagari, so it sits alongside Cormorant Garamond without the
+        // wordmark falling back to a system sans and losing the editorial feel.
+        href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Tiro+Devanagari+Hindi:ital@0;1&display=swap",
       },
     ],
   }),
@@ -152,11 +155,11 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MakerSpaceProvider>
+      <AuthProvider>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster position="top-center" />
-      </MakerSpaceProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

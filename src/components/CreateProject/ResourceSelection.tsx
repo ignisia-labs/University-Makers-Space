@@ -1,50 +1,83 @@
-import { Check, Minus, Plus } from "lucide-react";
-import { useState } from "react";
-import {
-  resourceDomains,
-  type ConsumableSelection,
-  type DomainConsumable,
-  type ResourceKit,
-} from "@/lib/project-resources";
+import { Minus, Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { DomainConsumable, ProjectResources, ResourceDomain } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+export type ConsumablePlan = { consumableId: string; quantity: number; variant?: string | null };
+export type ResourceKit = { equipmentIds: string[]; consumables: ConsumablePlan[] };
+
+export const emptyKit: ResourceKit = { equipmentIds: [], consumables: [] };
+
+/**
+ * Choosing what a project needs, by domain.
+ *
+ * A build is a kind of work before it is a particular machine, so the domain is
+ * the entry point and everything inside it — machines from any category, and
+ * the materials that go with them — follows from that choice. Quantities are
+ * asked for here because the number the mentor approves becomes the ceiling on
+ * what the team may collect later.
+ */
 export function ResourceSelection({
+  resources,
   kit,
   onChange,
 }: {
+  resources: ProjectResources;
   kit: ResourceKit;
   onChange: (kit: ResourceKit) => void;
 }) {
-  const [domainId, setDomainId] = useState(resourceDomains[0]!.id);
-  const domain = resourceDomains.find((d) => d.id === domainId) ?? resourceDomains[0]!;
+  const domains = resources.domains;
+  const [domainId, setDomainId] = useState(domains[0]?.id ?? "");
+  useEffect(() => {
+    if (domains.length && !domains.some((entry) => entry.id === domainId)) {
+      setDomainId(domains[0]!.id);
+    }
+  }, [domains, domainId]);
+  const domain = domains.find((entry) => entry.id === domainId) ?? domains[0];
 
-  const toggleEquipment = (name: string) =>
+  // A stock room holds hundreds of parts — the electronics domain alone came in
+  // at 24 machines and 150 materials. Scrolling that to find one resistor value
+  // is not a choice anyone can make, so the domain's contents are filterable.
+  const [filter, setFilter] = useState("");
+  const needle = filter.trim().toLowerCase();
+  const matches = (name: string, extra?: string) =>
+    !needle || name.toLowerCase().includes(needle) || (extra ?? "").toLowerCase().includes(needle);
+  const shownEquipment = (domain?.equipment ?? []).filter((item) =>
+    matches(item.name, item.category.name),
+  );
+  const shownConsumables = (domain?.consumables ?? []).filter((item) =>
+    matches(item.name, item.category.name),
+  );
+
+  const toggleEquipment = (id: string) =>
     onChange({
       ...kit,
-      equipment: kit.equipment.includes(name)
-        ? kit.equipment.filter((item) => item !== name)
-        : [...kit.equipment, name],
+      equipmentIds: kit.equipmentIds.includes(id)
+        ? kit.equipmentIds.filter((entry) => entry !== id)
+        : [...kit.equipmentIds, id],
     });
 
-  const setConsumable = (item: DomainConsumable, variant: string, qty: number) => {
-    const others = kit.consumables.filter((c) => c.name !== item.name);
+  const setConsumable = (item: DomainConsumable, quantity: number, variant: string | null) => {
+    const others = kit.consumables.filter((entry) => entry.consumableId !== item.id);
+    const ceiling = item.maxPerProject ?? 999;
     onChange({
       ...kit,
       consumables:
-        qty <= 0 ? others : [...others, { name: item.name, variant, qty: Math.min(qty, item.max) }],
+        quantity <= 0
+          ? others
+          : [...others, { consumableId: item.id, quantity: Math.min(quantity, ceiling), variant }],
     });
   };
 
-  const domainCount = (id: string) => {
-    const d = resourceDomains.find((entry) => entry.id === id)!;
-    const equipmentCount = d.equipment.filter((e) => kit.equipment.includes(e.name)).length;
-    const consumableCount = d.consumables.filter((c) =>
-      kit.consumables.some((sel) => sel.name === c.name),
-    ).length;
-    return equipmentCount + consumableCount;
-  };
+  if (domains.length === 0) {
+    return (
+      <p className="rounded-xl border border-border bg-secondary/40 px-4 py-6 text-center text-sm text-muted-foreground">
+        The MakerSpace catalogue is empty. Ask an administrator to add domains and equipment.
+      </p>
+    );
+  }
 
-  const totalCount = kit.equipment.length + kit.consumables.length;
+  const chosenCount = kit.equipmentIds.length + kit.consumables.length;
 
   return (
     <section aria-labelledby="resource-selection-title" className="min-w-0 max-w-full">
@@ -52,141 +85,160 @@ export function ResourceSelection({
         Choose your resources
       </h2>
 
-      {/* Domain selector — graphical entry point */}
       <div
         className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3"
         role="tablist"
         aria-label="MakerSpace domains"
       >
-        {resourceDomains.map((d) => {
-          const active = d.id === domainId;
-          const count = domainCount(d.id);
-          return (
-            <button
-              key={d.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setDomainId(d.id)}
-              className={cn(
-                "group relative aspect-[4/3] overflow-hidden rounded-2xl text-left transition-all duration-300",
-                active
-                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "opacity-80 hover:opacity-100",
-              )}
-            >
-              <img
-                src={d.image}
-                alt=""
-                className={cn(
-                  "absolute inset-0 size-full object-cover transition-transform duration-500",
-                  active ? "scale-105" : "group-hover:scale-105",
-                )}
+        {domains.map((entry) => (
+          <DomainTile
+            key={entry.id}
+            domain={entry}
+            active={entry.id === domain?.id}
+            count={countIn(entry, kit)}
+            onSelect={() => {
+              setDomainId(entry.id);
+              // A filter typed for one domain means nothing in the next.
+              setFilter("");
+            }}
+          />
+        ))}
+      </div>
+
+      {domain && (
+        <>
+          {(domain.equipment.length + domain.consumables.length > 12 || needle) && (
+            <div className="relative mt-5">
+              <Search
+                className="pointer-events-none absolute left-3 top-3 size-4 text-muted-foreground"
+                aria-hidden
               />
-              <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
-              {count > 0 && (
-                <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-primary font-mono text-[10px] font-semibold text-primary-foreground">
-                  {count}
+              <input
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                placeholder={`Search ${domain.name.toLowerCase()} — name or category`}
+                aria-label="Filter this domain"
+                className="form-input pl-9"
+              />
+            </div>
+          )}
+
+          <div className="mt-6">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              Equipment
+              {needle && domain.equipment.length > 0 && (
+                <span className="ml-2 text-muted-foreground">
+                  {shownEquipment.length} of {domain.equipment.length}
                 </span>
               )}
-              <span className="absolute inset-x-0 bottom-0 p-3">
-                <span className="block font-serif text-sm font-medium leading-tight text-white">
-                  {d.name}
-                </span>
-                <span className="mt-0.5 block text-[9px] font-mono uppercase tracking-widest text-white/60">
-                  {d.tagline}
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+            </p>
+            {shownEquipment.length ? (
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {shownEquipment.map((item) => {
+                  const active = kit.equipmentIds.includes(item.id);
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleEquipment(item.id)}
+                        className={cn(
+                          "flex min-h-16 w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all duration-200",
+                          active
+                            ? "border-primary bg-primary/[0.05] shadow-sm"
+                            : "border-border bg-card hover:border-primary/40",
+                        )}
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{item.name}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                            {item.specs[0] ?? item.category.name}
+                          </span>
+                        </span>
+                        <span
+                          className={cn(
+                            "grid size-5 shrink-0 place-items-center rounded-md border text-[10px]",
+                            active
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border",
+                          )}
+                          aria-hidden
+                        >
+                          {active ? "✓" : ""}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                {needle
+                  ? `No machines here match “${filter.trim()}”.`
+                  : "No machines are filed under this domain yet."}
+              </p>
+            )}
+          </div>
 
-      {/* Equipment in the selected domain */}
-      <div className="mt-6">
-        <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Equipment</p>
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {domain.equipment.map((item) => {
-            const active = kit.equipment.includes(item.name);
-            return (
-              <li key={item.name}>
-                <button
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => toggleEquipment(item.name)}
-                  className={cn(
-                    "flex min-h-16 w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all duration-200",
-                    active
-                      ? "border-primary bg-primary/[0.05] shadow-sm"
-                      : "border-border bg-card hover:border-primary/40",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "grid size-5 shrink-0 place-items-center rounded-full border transition-colors",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-card",
-                    )}
-                  >
-                    {active && <Check className="size-3 stroke-[3]" />}
+          {domain.consumables.length > 0 && (
+            <div className="mt-6">
+              <p className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                Materials
+                {needle && (
+                  <span className="ml-2 text-muted-foreground">
+                    {shownConsumables.length} of {domain.consumables.length}
                   </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium">{item.name}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                      {item.spec}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {/* Consumables in the selected domain */}
-      {domain.consumables.length > 0 && (
-        <div className="mt-6">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-primary">Materials</p>
-          <ul className="mt-3 space-y-2">
-            {domain.consumables.map((item) => {
-              const selection = kit.consumables.find((c) => c.name === item.name);
-              return (
-                <ConsumableRow
-                  key={item.name}
-                  item={item}
-                  selection={selection}
-                  onSelect={(variant, qty) => setConsumable(item, variant, qty)}
-                />
-              );
-            })}
-          </ul>
-        </div>
+                )}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Ask for what you expect to use. Your mentor approves this figure, and it is the most
+                you can collect during your sessions.
+              </p>
+              <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto">
+                {shownConsumables.map((item) => (
+                  <ConsumableRow
+                    key={item.id}
+                    item={item}
+                    plan={kit.consumables.find((entry) => entry.consumableId === item.id)}
+                    onChange={(quantity, variant) => setConsumable(item, quantity, variant)}
+                  />
+                ))}
+                {shownConsumables.length === 0 && (
+                  <li className="py-3 text-sm text-muted-foreground">
+                    No materials here match “{filter.trim()}”.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Kit summary */}
       <div className="mt-6 rounded-xl border border-border bg-secondary/50 px-4 py-3">
-        {totalCount ? (
+        {chosenCount ? (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
               Your kit
             </span>
-            {kit.equipment.map((name) => (
+            {kit.equipmentIds.map((id) => (
               <span
-                key={name}
+                key={id}
                 className="rounded-full border border-primary/20 bg-card px-2.5 py-1 text-[11px] font-medium text-primary"
               >
-                {name}
+                {resources.equipment.find((item) => item.id === id)?.name ?? "Equipment"}
               </span>
             ))}
-            {kit.consumables.map((c) => (
-              <span
-                key={c.name}
-                className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground"
-              >
-                {c.name} × {c.qty}
-              </span>
-            ))}
+            {kit.consumables.map((entry) => {
+              const item = resources.consumables.find((row) => row.id === entry.consumableId);
+              return (
+                <span
+                  key={entry.consumableId}
+                  className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground"
+                >
+                  {item?.name ?? "Material"} × {entry.quantity} {item?.unit ?? ""}
+                </span>
+              );
+            })}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -198,32 +250,95 @@ export function ResourceSelection({
   );
 }
 
-function ConsumableRow({
-  item,
-  selection,
+function DomainTile({
+  domain,
+  active,
+  count,
   onSelect,
 }: {
-  item: DomainConsumable;
-  selection: ConsumableSelection | undefined;
-  onSelect: (variant: string, qty: number) => void;
+  domain: ResourceDomain;
+  active: boolean;
+  count: number;
+  onSelect: () => void;
 }) {
-  const variant = selection?.variant ?? item.variants[0]!;
-  const qty = selection?.qty ?? 0;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onSelect}
+      className={cn(
+        "group relative aspect-[4/3] overflow-hidden rounded-2xl bg-secondary text-left transition-all duration-300",
+        active
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : "opacity-85 hover:opacity-100",
+      )}
+    >
+      {domain.imageUrl ? (
+        <img
+          src={domain.imageUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className={cn(
+            "absolute inset-0 size-full object-cover transition-transform duration-500",
+            active ? "scale-105" : "group-hover:scale-105",
+          )}
+        />
+      ) : (
+        // Without a photo the tile still needs depth, or the wordmark sits on
+        // flat grey and the grid reads as unfinished rather than unillustrated.
+        <span className="absolute inset-0 bg-gradient-to-br from-primary/70 to-primary/30" />
+      )}
+      <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+      {count > 0 && (
+        <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-primary font-mono text-[10px] font-semibold text-primary-foreground">
+          {count}
+        </span>
+      )}
+      <span className="absolute inset-x-0 bottom-0 p-3">
+        <span className="block font-serif text-sm font-medium leading-tight text-white">
+          {domain.name}
+        </span>
+        {domain.tagline && (
+          <span className="mt-0.5 block text-[9px] font-mono uppercase tracking-widest text-white/60">
+            {domain.tagline}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function ConsumableRow({
+  item,
+  plan,
+  onChange,
+}: {
+  item: DomainConsumable;
+  plan: ConsumablePlan | undefined;
+  onChange: (quantity: number, variant: string | null) => void;
+}) {
+  const variant = plan?.variant ?? item.variants[0] ?? null;
+  const quantity = plan?.quantity ?? 0;
+  const ceiling = item.maxPerProject ?? 99;
+
   return (
     <li className="rounded-xl border border-border bg-card px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium">{item.name}</p>
           <p className="mt-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-            per {item.unit} · max {item.max}
+            per {item.unit}
+            {item.maxPerProject !== null && ` · max ${item.maxPerProject}`}
           </p>
         </div>
         <div className="flex items-center gap-1" aria-label={`${item.name} quantity`}>
           <button
             type="button"
             aria-label={`Fewer ${item.name}`}
-            disabled={qty === 0}
-            onClick={() => onSelect(variant, qty - 1)}
+            disabled={quantity === 0}
+            onClick={() => onChange(quantity - 1, variant)}
             className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary disabled:opacity-35"
           >
             <Minus className="size-3.5" />
@@ -231,16 +346,16 @@ function ConsumableRow({
           <span
             className={cn(
               "w-8 text-center font-mono text-sm",
-              qty ? "font-semibold text-primary" : "text-muted-foreground",
+              quantity ? "font-semibold text-primary" : "text-muted-foreground",
             )}
           >
-            {qty}
+            {quantity}
           </span>
           <button
             type="button"
             aria-label={`More ${item.name}`}
-            disabled={qty >= item.max}
-            onClick={() => onSelect(variant, qty + 1)}
+            disabled={quantity >= ceiling}
+            onClick={() => onChange(quantity + 1, variant)}
             className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-secondary disabled:opacity-35"
           >
             <Plus className="size-3.5" />
@@ -254,10 +369,10 @@ function ConsumableRow({
               key={option}
               type="button"
               aria-pressed={option === variant}
-              onClick={() => onSelect(option, qty || 1)}
+              onClick={() => onChange(quantity || 1, option)}
               className={cn(
                 "min-h-8 rounded-full border px-3 text-[11px] font-medium transition-colors",
-                option === variant && qty
+                option === variant && quantity
                   ? "border-primary bg-primary text-primary-foreground"
                   : option === variant
                     ? "border-primary/50 text-primary"
@@ -271,4 +386,12 @@ function ConsumableRow({
       )}
     </li>
   );
+}
+
+function countIn(domain: ResourceDomain, kit: ResourceKit) {
+  const equipment = domain.equipment.filter((item) => kit.equipmentIds.includes(item.id)).length;
+  const consumables = domain.consumables.filter((item) =>
+    kit.consumables.some((entry) => entry.consumableId === item.id),
+  ).length;
+  return equipment + consumables;
 }

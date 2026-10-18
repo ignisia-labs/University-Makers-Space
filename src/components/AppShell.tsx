@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   CalendarClock,
@@ -16,7 +17,10 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { IgnisiaCredit } from "@/components/IgnisiaCredit";
-import { useMakerSpace } from "@/lib/makerspace-context";
+import type { AppRole } from "@/lib/roles";
+import { roleHomes, useAppSession } from "@/lib/auth-context";
+import { notificationsApi } from "@/lib/api";
+import { projectKeys, usePersistedNotifications } from "@/lib/project-queries";
 
 const studentNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -47,19 +51,15 @@ export function AppShell({
   const [expanded, setExpanded] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsMounted, setNotificationsMounted] = useState(false);
-  const {
-    profile,
-    role,
-    notifications,
-    authenticated,
-    onboarded,
-    hydrated,
-    signOut,
-    markNotificationRead,
-    markAllNotificationsRead,
-  } = useMakerSpace();
+  const { profile, role, authenticated, onboarded, hydrated, signOut } = useAppSession();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const persistedNotifications = usePersistedNotifications(authenticated);
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => notificationsApi.markRead(id, true),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: projectKeys.notifications }),
+  });
 
   // Send signed-out visitors back to the landing page rather than showing a wall.
   useEffect(() => {
@@ -73,6 +73,14 @@ export function AppShell({
     .join("")
     .slice(0, 2);
 
+  const studentOnly = [
+    "/dashboard",
+    "/projects",
+    "/book",
+    "/bookings",
+    "/visits",
+    "/equipment",
+  ].some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const requiredRole = pathname.startsWith("/faculty")
     ? "Faculty Mentor"
     : pathname.startsWith("/operations")
@@ -81,10 +89,33 @@ export function AppShell({
         ? "Super Admin"
         : pathname.startsWith("/admin")
           ? "Admin"
-          : null;
+          : studentOnly
+            ? "Student"
+            : null;
+  const workspaceDenied = requiredRole !== null && !canOpenWorkspace(role, requiredRole);
 
   const showSidebar = role === "Student" || (workspaceNavigation?.length ?? 0) > 1;
+  const notifications = (persistedNotifications.data ?? []).map((item) => ({
+    id: item.id,
+    title: item.title,
+    body: item.body,
+    href: item.href ?? roleHomes[role],
+    read: item.isRead,
+    createdAt: new Date(item.createdAt).toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+  }));
   const unread = notifications.filter((item) => !item.read).length;
+  const markNotificationRead = (id: string) => markReadMutation.mutate(id);
+  const markAllNotificationsRead = async () => {
+    await Promise.all(
+      notifications
+        .filter((item) => !item.read)
+        .map((item) => notificationsApi.markRead(item.id, true)),
+    );
+    await queryClient.invalidateQueries({ queryKey: projectKeys.notifications });
+  };
   const openNotifications = () => {
     setNotificationsMounted(true);
     window.requestAnimationFrame(() => setNotificationsOpen(true));
@@ -94,6 +125,13 @@ export function AppShell({
     if (notificationsOpen) closeNotifications();
     else openNotifications();
   };
+  if (!hydrated) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
+        Restoring your secure session...
+      </main>
+    );
+  }
   if (!authenticated) {
     return (
       <main className="grid min-h-screen place-items-center bg-background px-4">
@@ -103,16 +141,16 @@ export function AppShell({
             Use your MIT-WPU institutional account to continue.
           </p>
           <Link
-            to="/login"
+            to="/"
             className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
           >
-            Go to sign in
+            Go to landing page
           </Link>
         </section>
       </main>
     );
   }
-  if (requiredRole && role !== requiredRole) {
+  if (workspaceDenied) {
     return (
       <main className="grid min-h-screen place-items-center bg-background px-4">
         <section className="card-surface max-w-md p-6 text-center">
@@ -121,7 +159,7 @@ export function AppShell({
             Your MIT-WPU account does not have permission to open this workspace.
           </p>
           <Link
-            to="/dashboard"
+            to={roleHomes[role]}
             className="mt-5 inline-flex min-h-12 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
           >
             Go to dashboard
@@ -157,8 +195,17 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           {expanded && (
-            <span className="font-serif text-sm font-light tracking-wide text-zinc-800">
-              MIT-WPU MakerSpace
+            <span className="flex min-w-0 items-center gap-2.5">
+              <img
+                src="/mitwpu-logo.jpg"
+                alt="MIT World Peace University"
+                width={431}
+                height={124}
+                className="h-6 w-auto shrink-0"
+              />
+              <span className="wordmark truncate text-base font-normal tracking-wide text-zinc-800">
+                सृजन
+              </span>
             </span>
           )}
         </div>
@@ -229,14 +276,16 @@ export function AppShell({
             {expanded && (
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{profile.fullName}</p>
-                <p className="truncate text-xs text-muted-foreground">PRN {profile.prn}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {profile.prn ? `PRN ${profile.prn}` : role}
+                </p>
               </div>
             )}
           </div>
           {expanded && (
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => void signOut()}
               className="mt-3 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs font-semibold text-muted-foreground hover:bg-sidebar-accent"
             >
               <LogOut className="size-3.5" />
@@ -284,7 +333,7 @@ export function AppShell({
               {!showSidebar && (
                 <button
                   type="button"
-                  onClick={signOut}
+                  onClick={() => void signOut()}
                   className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
                 >
                   <LogOut className="size-4" />
@@ -358,9 +407,9 @@ export function AppShell({
                       <div className="max-h-[min(60vh,30rem)] overflow-y-auto p-2">
                         {notifications.length ? (
                           notifications.map((item) => (
-                            <Link
+                            <a
                               key={item.id}
-                              to={item.href as "/projects"}
+                              href={item.href}
                               onClick={() => {
                                 markNotificationRead(item.id);
                                 closeNotifications();
@@ -387,7 +436,7 @@ export function AppShell({
                                   </span>
                                 </span>
                               </span>
-                            </Link>
+                            </a>
                           ))
                         ) : (
                           <p className="px-3 py-8 text-center text-sm text-muted-foreground">
@@ -399,7 +448,7 @@ export function AppShell({
                         <div className="border-t p-3">
                           <button
                             type="button"
-                            onClick={markAllNotificationsRead}
+                            onClick={() => void markAllNotificationsRead()}
                             disabled={!unread}
                             className="min-h-11 w-full rounded-xl text-sm font-semibold text-primary transition-colors hover:bg-primary/5 disabled:text-muted-foreground disabled:hover:bg-transparent"
                           >
@@ -494,4 +543,28 @@ export function AppShell({
       )}
     </div>
   );
+}
+
+/**
+ * Which workspaces each role may open.
+ *
+ * Seniority is not a straight line — a Faculty Mentor is not "below" a Lab
+ * Assistant, they simply do different jobs — so this is an explicit grant table
+ * rather than a numeric rank comparison. A Super Admin can open everything by
+ * definition; an Admin also runs the operations console.
+ *
+ * This governs navigation only. Every request is still authorised server-side
+ * against the permission model, so widening a workspace here can never widen
+ * what the account is actually allowed to do.
+ */
+const workspaceGrants: Record<AppRole, readonly AppRole[]> = {
+  "Super Admin": ["Super Admin", "Admin", "Lab Assistant", "Faculty Mentor", "Student"],
+  Admin: ["Admin", "Lab Assistant"],
+  "Lab Assistant": ["Lab Assistant"],
+  "Faculty Mentor": ["Faculty Mentor"],
+  Student: ["Student"],
+};
+
+function canOpenWorkspace(role: AppRole, required: AppRole) {
+  return workspaceGrants[role]?.includes(required) ?? false;
 }

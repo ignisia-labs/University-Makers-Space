@@ -1,6 +1,13 @@
 import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/react-start";
+import { setResponseHeader } from "@tanstack/react-start/server";
 
 import { renderErrorPage } from "./lib/error-page";
+
+const browserSecurityMiddleware = createMiddleware().server(async ({ next }) => {
+  // Keep the opener relationship used by the Google Identity Services popup.
+  setResponseHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  return await next();
+});
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
@@ -25,5 +32,5 @@ const csrfMiddleware = createCsrfMiddleware({
 });
 
 export const startInstance = createStart(() => ({
-  requestMiddleware: [errorMiddleware, csrfMiddleware],
+  requestMiddleware: [browserSecurityMiddleware, errorMiddleware, csrfMiddleware],
 }));

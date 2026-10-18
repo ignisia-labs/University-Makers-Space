@@ -31,3 +31,22 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build output
+backend/dist
+dist/client
+dist/server
+
+# Local database dumps and scratch files
+*.dump
+*.sqlite
+backend/scripts/tmp-*.ts
+
+# A database dump carries real names, email addresses and PRNs.
+# Never commit one — export it, import it, delete it.
+*.sql
+!backend/prisma/migrations/**/*.sql
+
+# The raw demo capture: real student and faculty records, never published.
+# scripts/build-demo-fixtures.mjs turns it into the committed fixtures.json.
+src/mocks/fixtures.full.json
