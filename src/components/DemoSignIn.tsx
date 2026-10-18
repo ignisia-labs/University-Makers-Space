@@ -1,5 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { readableError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { personas } from "@/mocks/server";
@@ -87,35 +88,44 @@ export function DemoSignIn({
         onClick={() => setOpen(true)}
         className="absolute inset-0 z-20 cursor-pointer rounded-full opacity-0"
       />
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Choose a demo role"
-          onClick={() => !busy && setOpen(false)}
-        >
+      {/* Rendered into <body> rather than in place.
+          The hero button this sits inside carries `backdrop-filter: blur()`,
+          and a filtered element becomes the containing block for any `fixed`
+          descendant — so the dialog was being positioned against the button
+          instead of the viewport, and then clipped by its `overflow-hidden`.
+          It showed up as a sliver of text across the button. */}
+      {open &&
+        createPortal(
           <div
-            className="w-full max-w-sm rounded-2xl border border-white/15 bg-neutral-900/95 p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-5 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a demo role"
+            onClick={() => !busy && setOpen(false)}
           >
-            <h2 className="text-center text-base font-medium text-white">Explore the demo</h2>
-            <p className="mt-1.5 mb-5 text-center text-xs leading-5 text-white/60">
-              This is a preview with no live backend. Pick a role to look around
-              as — everything you change is kept only in this browser tab.
-            </p>
-            {list}
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              disabled={Boolean(busy)}
-              className="mt-4 w-full cursor-pointer rounded-lg px-3 py-2 text-xs text-white/50 transition hover:text-white/80 disabled:opacity-40"
+            <div
+              className="w-full max-w-sm rounded-2xl border border-white/15 bg-neutral-900/95 p-6 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
             >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+              <h2 className="text-center text-base font-medium text-white">Explore the demo</h2>
+              <p className="mt-1.5 mb-5 text-center text-xs leading-5 text-white/60">
+                This is a preview with no live backend. Pick a role to look
+                around as — everything you change is kept only in this browser
+                tab.
+              </p>
+              {list}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={Boolean(busy)}
+                className="mt-4 w-full cursor-pointer rounded-lg px-3 py-2 text-xs text-white/50 transition hover:text-white/80 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

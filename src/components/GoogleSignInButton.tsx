@@ -2,13 +2,11 @@ import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { authApi, readableError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+// The static demo has no API to verify a Google credential against, so the
+// role chooser stands in for the real flow. See `demoMode` for why it is on
+// by default.
+import { demoMode as DEMO_MODE } from "@/mocks/server";
 import { DemoSignIn } from "./DemoSignIn";
-
-/**
- * The static demo build has no API to verify a Google credential against, so
- * the role chooser stands in for the real flow. Set by `VITE_DEMO_MODE`.
- */
-const DEMO_MODE = import.meta.env["VITE_DEMO_MODE"] === "true";
 
 type GoogleCredentialResponse = { credential?: string };
 

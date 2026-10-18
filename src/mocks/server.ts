@@ -382,4 +382,14 @@ export function installMockApi() {
   };
 }
 
-export const demoMode = true;
+/**
+ * Whether this build is the public demo. The single source of truth — the
+ * sign-in control and the landing copy both read it, so they cannot disagree
+ * about whether there is a real backend behind the page.
+ *
+ * On by default: this branch exists only to be the demo, and it is deployed by
+ * Cloudflare, which reads neither netlify.toml nor vercel.json. Depending on a
+ * build variable meant an unset one shipped the genuine Google button to a
+ * site with no API behind it. Set `VITE_DEMO_MODE=false` for the real flow.
+ */
+export const demoMode = import.meta.env["VITE_DEMO_MODE"] !== "false";

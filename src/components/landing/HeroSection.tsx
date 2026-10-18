@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { roleHomes, useAppSession } from "@/lib/auth-context";
+import { demoMode } from "@/mocks/server";
 
 /**
  * Where the hero film is served from.
@@ -11,7 +12,13 @@ import { roleHomes, useAppSession } from "@/lib/auth-context";
  * dynamic import so the bytes are requested *after* the page is interactive
  * rather than as part of the first paint.
  */
-const heroVideoUrl = import.meta.env["VITE_HERO_VIDEO_URL"] as string | undefined;
+// Defaulted in source rather than left to the host. This branch is the demo
+// and is deployed by Cloudflare, which reads neither netlify.toml nor
+// vercel.json — relying on a build variable meant the film silently did not
+// play in production while working fine locally.
+const heroVideoUrl =
+  (import.meta.env["VITE_HERO_VIDEO_URL"] as string | undefined) ??
+  "https://res.cloudinary.com/b8aehfw4/video/upload/v1792348368/srijan/landing/hero.mp4";
 const heroPosterUrl = import.meta.env["VITE_HERO_POSTER_URL"] as string | undefined;
 
 /**
@@ -180,15 +187,18 @@ export function HeroSection() {
                 style={glassTopEdge}
               />
               <span aria-hidden="true" className="relative z-10">
-                Sign in with Google
+                {demoMode ? "Explore the demo" : "Sign in with Google"}
               </span>
               {/* Transparent, stretched, and on top: this is what is actually
-                  clicked. It carries Google's own accessible label, so the
-                  decorative text above is hidden from assistive tech. */}
+                  clicked. It carries its own accessible label, so the
+                  decorative text above is hidden from assistive tech.
+
+                  autoPrompt is deliberately off in the demo: it opens Google's
+                  One Tap chooser, which has nothing to sign in to here. */}
               <GoogleSignInButton
                 onSuccess={(destination) => navigate({ to: destination })}
                 onError={setSignInError}
-                autoPrompt
+                autoPrompt={!demoMode}
                 overlay
               />
             </div>
@@ -206,7 +216,9 @@ export function HeroSection() {
                 className="mt-5 font-mono text-[10px] uppercase tracking-[0.18em] text-white/55"
                 style={{ textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}
               >
-                Authorized @mitwpu.edu.in accounts only
+                {demoMode
+                  ? "Preview — sample data, no sign-in required"
+                  : "Authorized @mitwpu.edu.in accounts only"}
               </p>
             )}
           </div>
