@@ -74,6 +74,24 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+/**
+ * The image that link previews show, on Cloudinary.
+ *
+ * It is a frame of the hero film with the name laid over it, composed by the
+ * transformation in this URL rather than stored as a separate file — so it
+ * cannot drift out of step with the site the way the previous one had. That
+ * was a screenshot of a long-dead Lovable preview, still being served from
+ * Lovable's bucket, which is why every shared link showed a page that no
+ * longer existed.
+ */
+const socialPreviewImage =
+  "https://res.cloudinary.com/b8aehfw4/video/upload/" +
+  "so_3,w_1280,h_700,c_fill,g_north/e_brightness:-25/" +
+  "l_text:Arial_76_bold:MIT-WPU%20MakerSpace,co_white,g_south_west,x_70,y_150/" +
+  "l_text:Arial_40:Book%20slots%20%C2%B7%20Manage%20projects%20%C2%B7%20Explore%20equipment," +
+  "co_rgb:d8d8e8,g_south_west,x_72,y_95/" +
+  "c_crop,w_1200,h_630,g_north/q_auto/srijan/landing/hero.jpg";
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -94,23 +112,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "सृजन — MIT-WPU MakerSpace" },
       {
         name: "twitter:description",
         content:
           "Book slots, manage projects and explore 3D printing, laser, electronics and robotics equipment at the MIT-WPU MakerSpace.",
       },
-      {
-        property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png",
-      },
-      {
-        name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/9c4b855ee3d4fa669567a5f84b0a8c7a/id-preview-d4b27e88--6af56eae-21c1-4506-a784-2ace4214f113.lovable.app-1786720187658.png",
-      },
+      { property: "og:image", content: socialPreviewImage },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      { property: "og:image:alt", content: "A laser cutter at work in the MIT-WPU MakerSpace" },
+      { name: "twitter:image", content: socialPreviewImage },
     ],
     links: [
       {
