@@ -1,0 +1,22 @@
+{
+  // makerspace.ignisia.tech is deployed from this branch by Cloudflare.
+  //
+  // The demo has no server side: `npm run build` emits a static SPA into
+  // dist/client, and every API call is answered in the browser. So unlike the
+  // previous configuration there is no `main` worker entry — Cloudflare serves
+  // the assets directly, which is both faster and one less thing to break.
+  //
+  // `single-page-application` is what makes deep links work: /dashboard and
+  // /admin are client routes with no file behind them, and without this they
+  // would 404 on a refresh.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "university-makers-space",
+  "compatibility_date": "2026-08-18",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application"
+  }
+}
