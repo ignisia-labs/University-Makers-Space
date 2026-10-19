@@ -34,7 +34,7 @@ export const personas: { role: Role; label: string; description: string }[] = [
   { role: "student", label: "Student", description: "Create projects, book slots, claim materials" },
   {
     role: "faculty",
-    label: "Faculty Mentor — Amit Mishra",
+    label: "Faculty Mentor — Jyoti Mante",
     description: "Approve mentor requests and watch your students' projects",
   },
   { role: "labAssistant", label: "Lab Assistant", description: "Run the console, manage equipment" },

@@ -26,6 +26,17 @@ import fs from "node:fs";
 const MASK_FACULTY_EMAILS = true;
 
 /**
+ * The demo's own student account, kept under its real name.
+ *
+ * Every other student is replaced with a synthetic identity, because they are
+ * third parties who did not ask to appear on a public site. This one is the
+ * account the demo is given as, named deliberately. The enrolment number is
+ * still replaced and the address still masked — a name is the part that has to
+ * be real for the demo to read properly, an identifier is not.
+ */
+const DEMO_STUDENT_ID = "f61c7e9a-fa8d-4dd6-9e52-51bd8f6679ce";
+
+/**
  * Transactional records the demo starts without.
  *
  * The seed carries leftover test projects, and the bookings, claims, visits
@@ -165,7 +176,13 @@ function walk(node) {
   }
 
   if (typeof node.email === "string") {
-    if (isStudent(node)) {
+    if (node.id === DEMO_STUDENT_ID) {
+      // The name stays; the address is masked like everyone else's.
+      if (MASK_FACULTY_EMAILS && node.email.endsWith("@mitwpu.edu.in")) {
+        node.email = mask(node.email);
+        masked += 1;
+      }
+    } else if (isStudent(node)) {
       const fake = alias(node.id ?? node.email);
       node.email = fake.email;
       if (typeof node.name === "string") node.name = fake.name;

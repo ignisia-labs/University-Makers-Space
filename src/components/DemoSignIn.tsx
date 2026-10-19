@@ -111,8 +111,8 @@ export function DemoSignIn({
               <p className="mt-1.5 mb-5 text-center text-xs leading-5 text-white/60">
                 A preview with no live backend. Pick a role to look around as.
                 Open a second tab as another role and they share the same data
-                — create a project as the Student and it is waiting for Amit
-                Mishra in the Faculty tab.
+                — create a project as the Student and it is waiting for Jyoti
+                Mante in the Faculty tab.
               </p>
               {list}
               <div className="mt-4 flex items-center justify-between gap-2">
