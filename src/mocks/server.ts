@@ -267,34 +267,26 @@ function collection(role: Role, path: string): unknown[] | undefined {
 // ─── request handling ──────────────────────────────────────────────────────
 
 /**
- * Finds a row by id anywhere the bundle holds one — the overlay first, then
- * the collections, then the body of any captured list.
+ * Finds a row by id, searching only the collection the path names.
  *
- * This is what answers a detail route for something created during the visit,
- * which by definition has no captured response of its own.
+ * The scoping matters. An earlier version searched every collection the bundle
+ * held, so /bookings/<some-project-id> cheerfully returned a project; the
+ * booking page then formatted a `startsAt` that was not there and the whole
+ * route died with "Invalid time value". A detail route must answer with its
+ * own kind of record or with nothing.
  */
-function findRowById(role: Role, id: string): unknown {
-  for (const rows of Object.values(store().created)) {
-    const hit = rows.find((row) => (row as { id?: string }).id === id);
-    if (hit) return hit;
-  }
-  for (const rows of Object.values(data.collections[role] ?? {})) {
-    const hit = rows.find((row) => (row as { id?: string }).id === id);
-    if (hit) return hit;
-  }
-  for (const entry of Object.values(data.responses[role] ?? {})) {
-    const rows = (entry.body as { data?: unknown })?.data;
-    if (!Array.isArray(rows)) continue;
-    const hit = rows.find((row) => (row as { id?: string }).id === id);
-    if (hit) return hit;
-  }
-  return undefined;
-}
+function findRowById(role: Role, collectionPath: string, id: string): unknown {
+  const matches = (row: unknown) => (row as { id?: string }).id === id;
 
-/** Whether a captured list body is a collection of rows. */
-function listBody(entry: Captured | undefined) {
-  const rows = (entry?.body as { data?: unknown })?.data;
-  return Array.isArray(rows) ? rows : null;
+  const overlay = store().created[collectionPath];
+  const fromOverlay = overlay?.find(matches);
+  if (fromOverlay) return fromOverlay;
+
+  const fromCollection = data.collections[role]?.[collectionPath]?.find(matches);
+  if (fromCollection) return fromCollection;
+
+  const rows = (data.responses[role]?.[collectionPath]?.body as { data?: unknown })?.data;
+  return Array.isArray(rows) ? rows.find(matches) : undefined;
 }
 
 function handleGet(role: Role, path: string, params: URLSearchParams): Response {
@@ -351,24 +343,26 @@ function handleGet(role: Role, path: string, params: URLSearchParams): Response 
   if (id) {
     const { patched, removed } = store();
     if (removed.includes(id)) return failure(404, "NOT_FOUND", "That record no longer exists.");
-    const row = findRowById(role, id);
+    const row = findRowById(role, collectionPathFor(path), id);
     if (row) {
       const patch = patched[id];
       return ok(envelope(patch ? { ...(row as object), ...patch } : row));
     }
+    // A detail route with nothing behind it answers 404, not an empty body.
+    // Every one of these screens renders a "not available" state for a 404,
+    // but formats dates and names straight off the record it is handed — so
+    // an empty stand-in crashes the route instead of degrading it.
+    return failure(404, "NOT_FOUND", "That record could not be found.");
   }
 
-  // 5. Nothing captured. Answer with the empty shape the caller expects rather
-  //    than a 404: an unanswered query leaves a screen on "Loading…" forever,
-  //    and an empty list or record renders as "nothing here yet", which is
-  //    honest and costs the demo nothing. The warning is for whoever extends
-  //    the capture next.
+  // 5. A collection with nothing captured answers empty rather than 404: a
+  //    query that never resolves leaves a screen on "Loading…" forever, while
+  //    an empty list reads as "nothing here yet". The warning is for whoever
+  //    extends the capture next.
   console.warn(`[mock api] no fixture for ${path} — answering empty`);
-  const sibling = captured(role, collectionPathFor(path));
-  if (listBody(sibling) || !trailingId(path)) {
-    return ok(envelope([], { page: 1, limit: 50, total: 0, totalPages: 1, hasNext: false, hasPrev: false }));
-  }
-  return ok(envelope(null));
+  return ok(
+    envelope([], { page: 1, limit: 50, total: 0, totalPages: 1, hasNext: false, hasPrev: false }),
+  );
 }
 
 /** The id at the end of a path, when there is one. */
@@ -433,6 +427,9 @@ type DemoProject = {
   mentorRequests: MentorRequest[];
   equipment: Array<{ id: string; name: string; category: string; status: string }>;
   consumables: Array<Record<string, unknown>>;
+  // The detail screen reads `bookings.length` unguarded, so this is never
+  // optional — omitting it took the whole route down.
+  bookings: Array<{ id: string; status: string; startsAt: string; endsAt: string; canView: boolean }>;
 };
 
 function storedProjects(): DemoProject[] {
@@ -459,6 +456,44 @@ function facultyById(id: string) {
     if (hit) return { id: hit.id, name: hit.name, email: hit.email };
   }
   return { id, name: "Faculty mentor", email: "" };
+}
+
+/**
+ * Expands the material plan the form posts — ids and quantities — into the
+ * named records the project screens render.
+ */
+function consumablesFrom(entries: Array<Record<string, unknown>>) {
+  const catalogue = (
+    (data.responses.student?.[`/reference-data/project-resources?labId=${data.labId}`]?.body as {
+      data?: { consumables?: unknown[] };
+    })?.data?.consumables ?? []
+  ) as Array<{ id: string; name: string; unit: string; category?: { name?: string } }>;
+
+  return entries.map((entry) => {
+    const id = String(entry["consumableId"] ?? entry["id"] ?? "");
+    const match = catalogue.find((c) => c.id === id);
+    return {
+      id,
+      name: match?.name ?? "Material",
+      category: match?.category?.name ?? "Materials",
+      unit: match?.unit ?? "piece",
+      quantity: Number(entry["quantity"] ?? 1),
+      variant: entry["variant"] == null ? null : String(entry["variant"]),
+    };
+  });
+}
+
+/** The bookings held against a project, for its detail screen. */
+function bookingsForProject(projectId: string) {
+  return ((store().created[BOOKINGS] ?? []) as Array<Record<string, unknown>>)
+    .filter((b) => b["projectId"] === projectId)
+    .map((b) => ({
+      id: String(b["id"]),
+      status: String(b["status"]),
+      startsAt: String(b["startsAt"]),
+      endsAt: String(b["endsAt"]),
+      canView: true,
+    }));
 }
 
 function equipmentById(ids: string[]) {
@@ -491,7 +526,14 @@ function projectsFor(role: Role): DemoProject[] {
   const visible: DemoProject[] = [];
   for (const project of storedProjects()) {
     const relationship = relationshipTo(project, viewer.id, role);
-    if (relationship) visible.push({ ...project, viewerRelationship: relationship });
+    if (!relationship) continue;
+    // Bookings are joined on read rather than written into the project, so a
+    // slot booked after the project was created still shows up on it.
+    visible.push({
+      ...project,
+      viewerRelationship: relationship,
+      bookings: bookingsForProject(project.id),
+    });
   }
   return visible;
 }
@@ -579,9 +621,12 @@ function handleProjectWrite(
         },
       ],
       equipment: equipmentById(equipmentIds),
-      consumables: Array.isArray(body["consumables"])
-        ? (body["consumables"] as Array<Record<string, unknown>>)
-        : [],
+      consumables: consumablesFrom(
+        Array.isArray(body["consumables"])
+          ? (body["consumables"] as Array<Record<string, unknown>>)
+          : [],
+      ),
+      bookings: [],
     };
 
     putProject(project);
@@ -643,6 +688,132 @@ function handleProjectWrite(
   return null;
 }
 
+// ─── bookings ──────────────────────────────────────────────────────────────
+
+const BOOKINGS = "/bookings";
+
+/** Finds a slot, and the lab it belongs to, in the captured availability. */
+function slotById(role: Role, slotId: string) {
+  for (const [key, entry] of Object.entries(data.responses[role] ?? {})) {
+    if (!key.includes("/availability?")) continue;
+    const day = entry.body as {
+      data?: { lab?: { id?: string; name?: string; timeZone?: string }; slots?: unknown[] };
+    };
+    const slot = day.data?.slots?.find((s) => (s as { id?: string }).id === slotId) as
+      | { id: string; startsAt: string; endsAt: string }
+      | undefined;
+    if (slot) return { slot, lab: day.data?.lab };
+  }
+  return null;
+}
+
+/**
+ * Builds a booking the detail screen can actually render.
+ *
+ * The generic write handling stored whatever the form posted, which is a slot
+ * id and a list of participants — no `startsAt`, no `endsAt`. Opening such a
+ * booking formatted an absent date and took the whole route down with
+ * "Invalid time value", so the record is assembled in full here.
+ */
+function handleBookingWrite(
+  method: string,
+  role: Role,
+  path: string,
+  body: Record<string, unknown>,
+): Response | null {
+  if (method !== "POST" || !path.startsWith(BOOKINGS)) return null;
+
+  const viewer = viewerFor(role);
+  const now = new Date().toISOString();
+  const segments = path.split("/").filter(Boolean);
+  const id = segments[1];
+  const action = segments[2];
+
+  if (!id) {
+    const slotId = String(body["labSlotId"] ?? "");
+    const found = slotById(role, slotId);
+    if (!found) return null;
+
+    const projectId = String(body["projectId"] ?? "");
+    const project = storedProjects().find((p) => p.id === projectId);
+    const equipmentIds = Array.isArray(body["equipmentIds"])
+      ? (body["equipmentIds"] as string[])
+      : [];
+    const participantIds = Array.isArray(body["participantIds"])
+      ? (body["participantIds"] as string[])
+      : [viewer.id];
+
+    const booking = {
+      id: uuid(),
+      labId: found.lab?.id ?? data.labId,
+      labSlotId: slotId,
+      projectId,
+      createdById: viewer.id,
+      projectTitle: project?.title ?? "Project",
+      labName: found.lab?.name ?? "MakerSpace",
+      timeZone: found.lab?.timeZone ?? "Asia/Kolkata",
+      attendeeCount: participantIds.length,
+      status: "CONFIRMED",
+      statusLabel: "Confirmed",
+      notes: body["notes"] == null ? null : String(body["notes"]),
+      cancellationReason: null,
+      cancellationSource: null,
+      cancelledAt: null,
+      startsAt: found.slot.startsAt,
+      endsAt: found.slot.endsAt,
+      participants: participantIds.map((userId) => ({
+        userId,
+        name: userId === viewer.id ? viewer.name : "Team member",
+        email: userId === viewer.id ? viewer.email : undefined,
+      })),
+      equipment: equipmentById(equipmentIds).map((e) => ({
+        equipmentId: e.id,
+        name: e.name,
+        quantity: 1,
+      })),
+      canCancel: true,
+      canComplete: false,
+      cancellationDeadline: found.slot.startsAt,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    mutate((s) => {
+      s.created[BOOKINGS] = [booking, ...(s.created[BOOKINGS] ?? [])];
+    });
+    return ok(envelope({ booking, replayed: false }), 201);
+  }
+
+  const existing = (store().created[BOOKINGS] ?? []).find(
+    (b) => (b as { id?: string }).id === id,
+  ) as Record<string, unknown> | undefined;
+  if (!existing) return null;
+
+  const patch =
+    action === "cancel"
+      ? {
+          status: "CANCELLED",
+          statusLabel: "Cancelled",
+          cancelledAt: now,
+          cancellationReason: body["reason"] == null ? null : String(body["reason"]),
+          cancellationSource: role === "student" ? "STUDENT" : "LAB_ASSISTANT",
+          canCancel: false,
+          canComplete: false,
+        }
+      : action === "complete"
+        ? { status: "COMPLETED", statusLabel: "Completed", canCancel: false, canComplete: false }
+        : null;
+  if (!patch) return null;
+
+  const next = { ...existing, ...patch, updatedAt: now };
+  mutate((s) => {
+    s.created[BOOKINGS] = (s.created[BOOKINGS] ?? []).map((b) =>
+      (b as { id?: string }).id === id ? next : b,
+    );
+  });
+  return ok(envelope(next));
+}
+
 async function handleWrite(
   method: string,
   role: Role,
@@ -666,6 +837,9 @@ async function handleWrite(
   // another tab.
   const project = handleProjectWrite(method, role, path, body);
   if (project) return project;
+
+  const booking = handleBookingWrite(method, role, path, body);
+  if (booking) return booking;
 
   if (method === "DELETE") {
     if (id) mutate((s) => void s.removed.push(id));
