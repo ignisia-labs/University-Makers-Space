@@ -15,6 +15,11 @@ import { logger } from "./logger.js";
  */
 function createPrismaClient() {
   const client = new PrismaClient({
+    // Prisma's defaults (2 s to get a connection, 5 s to finish) assume the
+    // database is next door. Across regions, with one pooled connection per
+    // invocation, a transaction of a dozen queries overruns 5 s and fails with
+    // "Transaction already closed".
+    transactionOptions: { maxWait: 10_000, timeout: 30_000 },
     log: [
       { level: "error", emit: "event" },
       { level: "warn", emit: "event" },
