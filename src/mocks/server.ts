@@ -15,7 +15,7 @@
  */
 import bundle from "./fixtures.json";
 
-type Role = "student" | "labAssistant" | "superAdmin";
+type Role = "student" | "faculty" | "labAssistant" | "superAdmin";
 
 type Captured = { status: number; body: unknown };
 
@@ -32,9 +32,31 @@ const DEFAULT_ROLE: Role = "student";
 
 export const personas: { role: Role; label: string; description: string }[] = [
   { role: "student", label: "Student", description: "Create projects, book slots, claim materials" },
+  {
+    role: "faculty",
+    label: "Faculty Mentor — Amit Mishra",
+    description: "Approve mentor requests and watch your students' projects",
+  },
   { role: "labAssistant", label: "Lab Assistant", description: "Run the console, manage equipment" },
-  { role: "superAdmin", label: "Super Admin", description: "Everything, plus people and reference data" },
+  {
+    role: "superAdmin",
+    label: "Super Admin",
+    description: "Everything, plus people and reference data",
+  },
 ];
+
+/** The signed-in account for a persona, read from its captured /auth/me. */
+function viewerFor(role: Role): { id: string; name: string; email: string } {
+  const me = data.responses[role]?.["/auth/me"]?.body as
+    | { data?: { user?: { id?: string; name?: string; email?: string } } }
+    | undefined;
+  const user = me?.data?.user;
+  return {
+    id: user?.id ?? role,
+    name: user?.name ?? "Demo user",
+    email: user?.email ?? "demo@mitwpu.edu.in",
+  };
+}
 
 function currentRole(): Role {
   try {
@@ -65,27 +87,88 @@ function clearRole() {
 // ─── mutable overlay ───────────────────────────────────────────────────────
 //
 // Captured collections are frozen fixtures. Anything a visitor creates or
-// edits lands here instead, and reads merge the two. Keyed by the normalised
-// path a collection is read from.
+// edits lands here instead, and reads merge the two.
+//
+// It lives in localStorage rather than in memory, which is what makes the
+// interesting demo possible: a student creates a project and requests a mentor
+// in one tab, and the faculty tab — same origin, same storage — sees the
+// request waiting. TanStack Query refetches on window focus, so simply
+// switching tabs is enough to pick the change up.
 
-const created = new Map<string, unknown[]>();
-const patched = new Map<string, Record<string, unknown>>();
-const removed = new Set<string>();
+const STORE_KEY = "ums_demo_store";
+
+type Store = {
+  created: Record<string, unknown[]>;
+  patched: Record<string, Record<string, unknown>>;
+  removed: string[];
+};
+
+const empty = (): Store => ({ created: {}, patched: {}, removed: [] });
+
+function load(): Store {
+  try {
+    const raw = window.localStorage.getItem(STORE_KEY);
+    if (!raw) return empty();
+    const parsed = JSON.parse(raw) as Partial<Store>;
+    return {
+      created: parsed.created ?? {},
+      patched: parsed.patched ?? {},
+      removed: parsed.removed ?? [],
+    };
+  } catch {
+    // Unreadable or unavailable storage just means a fresh demo.
+    return empty();
+  }
+}
+
+/**
+ * Read fresh on every request rather than cached in a module variable.
+ *
+ * Two tabs run two copies of this file. A cached copy would answer the faculty
+ * tab from the state it held when that tab loaded, and the student's new
+ * project would never appear.
+ */
+function store(): Store {
+  return load();
+}
+
+function save(next: Store) {
+  try {
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(next));
+  } catch {
+    // Over quota or blocked: the visit continues, it just will not persist.
+  }
+}
+
+function mutate(change: (draft: Store) => void) {
+  const draft = store();
+  change(draft);
+  save(draft);
+}
+
+export function resetDemoState() {
+  try {
+    window.localStorage.removeItem(STORE_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
 
 function overlayFor(path: string): unknown[] {
-  return created.get(path) ?? [];
+  return store().created[path] ?? [];
 }
 
 function applyOverlay(path: string, rows: unknown[]): unknown[] {
-  const merged = [...overlayFor(path), ...rows];
+  const { created, patched, removed } = store();
+  const merged = [...(created[path] ?? []), ...rows];
   return merged
     .filter((row) => {
       const id = (row as { id?: string }).id;
-      return !(id && removed.has(id));
+      return !(id && removed.includes(id));
     })
     .map((row) => {
       const id = (row as { id?: string }).id;
-      const patch = id ? patched.get(id) : undefined;
+      const patch = id ? patched[id] : undefined;
       return patch ? { ...(row as object), ...patch } : row;
     });
 }
@@ -191,7 +274,7 @@ function collection(role: Role, path: string): unknown[] | undefined {
  * which by definition has no captured response of its own.
  */
 function findRowById(role: Role, id: string): unknown {
-  for (const rows of created.values()) {
+  for (const rows of Object.values(store().created)) {
     const hit = rows.find((row) => (row as { id?: string }).id === id);
     if (hit) return hit;
   }
@@ -224,7 +307,23 @@ function handleGet(role: Role, path: string, params: URLSearchParams): Response 
   //    finding the data by another route.
   if (hit && hit.status !== 200) return ok(hit.body, hit.status);
 
-  // 2. A merged, re-paginated collection: /equipment, /admin/faculty, …
+  // 2. Projects are scoped to the viewer rather than merged blindly, so the
+  //    mentor's tab shows the request waiting for them and not every project
+  //    in the lab.
+  if (path === PROJECTS) {
+    const { rows: pageRows, meta } = paginate(projectsFor(role), params);
+    return ok(envelope(pageRows, meta));
+  }
+  if (path.startsWith(`${PROJECTS}/`)) {
+    const projectId = path.split("/")[2] ?? "";
+    const project = projectsFor(role).find((p) => p.id === projectId);
+    if (project) {
+      if (path.endsWith("/mentor-requests")) return ok(envelope(project.mentorRequests));
+      if (path === `${PROJECTS}/${projectId}`) return ok(envelope(project));
+    }
+  }
+
+  // 3. A merged, re-paginated collection: /equipment, /admin/faculty, …
   const rows = collection(role, path);
   if (rows) {
     const { rows: pageRows, meta } = paginate(applyOverlay(path, rows), params);
@@ -240,7 +339,7 @@ function handleGet(role: Role, path: string, params: URLSearchParams): Response 
       return ok({ ...body, data: applyOverlay(path, body.data) });
     }
     // Replay a single record with any edits made during this visit applied.
-    const patch = id ? patched.get(id) : undefined;
+    const patch = id ? store().patched[id] : undefined;
     if (patch && body.data && typeof body.data === "object") {
       return ok({ ...body, data: { ...(body.data as object), ...patch } });
     }
@@ -250,10 +349,11 @@ function handleGet(role: Role, path: string, params: URLSearchParams): Response 
   // 4. A detail route for a row created or edited during this visit.
   const id = trailingId(path);
   if (id) {
-    if (removed.has(id)) return failure(404, "NOT_FOUND", "That record no longer exists.");
+    const { patched, removed } = store();
+    if (removed.includes(id)) return failure(404, "NOT_FOUND", "That record no longer exists.");
     const row = findRowById(role, id);
     if (row) {
-      const patch = patched.get(id);
+      const patch = patched[id];
       return ok(envelope(patch ? { ...(row as object), ...patch } : row));
     }
   }
@@ -289,6 +389,260 @@ function collectionPathFor(path: string) {
   return "/" + kept.join("/");
 }
 
+// ─── projects: the demo's story ────────────────────────────────────────────
+//
+// A student creates a project naming a mentor; the mentor sees the request in
+// their own tab and approves or declines it. Everything lives in the shared
+// store, so the two tabs are looking at the same records.
+
+const PROJECTS = "/projects";
+
+type MentorRequest = {
+  id: string;
+  faculty: { id: string; name: string; email: string };
+  status: string;
+  reason: string | null;
+  requestedAt: string;
+  respondedAt: string | null;
+};
+
+type DemoProject = {
+  id: string;
+  labId: string;
+  title: string;
+  description: string;
+  status: string;
+  creatorId: string;
+  leader: { id: string; name: string; email: string };
+  mentor: { id: string; name: string; email: string } | null;
+  memberCount: number;
+  pendingMemberCount: number;
+  declinedMemberCount: number;
+  mentorRequestStatus: string | null;
+  statusMessage: string;
+  viewerRelationship: "LEADER" | "MEMBER" | "MENTOR" | "OVERSIGHT";
+  viewerMemberStatus: string | null;
+  nextBooking: null;
+  createdAt: string;
+  updatedAt: string;
+  domain: string | null;
+  tags: string[];
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  members: Array<Record<string, unknown>>;
+  mentorRequests: MentorRequest[];
+  equipment: Array<{ id: string; name: string; category: string; status: string }>;
+  consumables: Array<Record<string, unknown>>;
+};
+
+function storedProjects(): DemoProject[] {
+  return (store().created[PROJECTS] ?? []) as DemoProject[];
+}
+
+function putProject(next: DemoProject) {
+  mutate((s) => {
+    const rows = (s.created[PROJECTS] ?? []) as DemoProject[];
+    const at = rows.findIndex((p) => p.id === next.id);
+    if (at === -1) rows.unshift(next);
+    else rows[at] = next;
+    s.created[PROJECTS] = rows;
+  });
+}
+
+/** Looks a person up in the faculty directory. */
+function facultyById(id: string) {
+  for (const role of Object.keys(data.collections) as Role[]) {
+    const rows = data.collections[role]?.["/users/search/faculty-mentors"] ?? [];
+    const hit = rows.find((row) => (row as { id?: string }).id === id) as
+      | { id: string; name: string; email: string }
+      | undefined;
+    if (hit) return { id: hit.id, name: hit.name, email: hit.email };
+  }
+  return { id, name: "Faculty mentor", email: "" };
+}
+
+function equipmentById(ids: string[]) {
+  const rows = data.collections.superAdmin?.["/equipment"] ?? [];
+  return ids
+    .map((id) => rows.find((row) => (row as { id?: string }).id === id))
+    .filter(Boolean)
+    .map((row) => {
+      const e = row as { id: string; name: string; category?: { name?: string }; status?: string };
+      return {
+        id: e.id,
+        name: e.name,
+        category: e.category?.name ?? "Equipment",
+        status: e.status ?? "AVAILABLE",
+      };
+    });
+}
+
+/** What this viewer is to this project, or null when they cannot see it. */
+function relationshipTo(project: DemoProject, viewerId: string, role: Role) {
+  if (project.creatorId === viewerId) return "LEADER" as const;
+  if (project.mentorRequests.some((r) => r.faculty.id === viewerId)) return "MENTOR" as const;
+  if (role === "labAssistant" || role === "superAdmin") return "OVERSIGHT" as const;
+  return null;
+}
+
+/** The stored projects this viewer may see, stamped with their relationship. */
+function projectsFor(role: Role): DemoProject[] {
+  const viewer = viewerFor(role);
+  const visible: DemoProject[] = [];
+  for (const project of storedProjects()) {
+    const relationship = relationshipTo(project, viewer.id, role);
+    if (relationship) visible.push({ ...project, viewerRelationship: relationship });
+  }
+  return visible;
+}
+
+function statusMessageFor(status: string, mentorStatus: string | null) {
+  if (status === "VERIFIED") return "Project verified";
+  if (mentorStatus === "REJECTED") return "Mentor declined — choose another mentor";
+  return "Waiting for your mentor to approve this project";
+}
+
+function handleProjectWrite(
+  method: string,
+  role: Role,
+  path: string,
+  body: Record<string, unknown>,
+): Response | null {
+  if (method !== "POST" || !path.startsWith("/projects")) return null;
+
+  const viewer = viewerFor(role);
+  const now = new Date().toISOString();
+  const segments = path.split("/").filter(Boolean);
+  const id = segments[1];
+  const action = segments[2];
+
+  // POST /projects — create
+  if (!id) {
+    const mentorId = String(body["mentorId"] ?? "");
+    const faculty = facultyById(mentorId);
+    const emails = Array.isArray(body["teamMemberEmails"])
+      ? (body["teamMemberEmails"] as string[])
+      : [];
+    const equipmentIds = Array.isArray(body["equipmentIds"])
+      ? (body["equipmentIds"] as string[])
+      : [];
+
+    const project: DemoProject = {
+      id: uuid(),
+      labId: String(body["labId"] ?? data.labId),
+      title: String(body["title"] ?? "Untitled project"),
+      description: String(body["description"] ?? ""),
+      status: "PENDING_MENTOR",
+      creatorId: viewer.id,
+      leader: viewer,
+      mentor: null,
+      memberCount: 1,
+      pendingMemberCount: emails.length,
+      declinedMemberCount: 0,
+      mentorRequestStatus: "PENDING",
+      statusMessage: statusMessageFor("PENDING_MENTOR", "PENDING"),
+      viewerRelationship: "LEADER",
+      viewerMemberStatus: "ACCEPTED",
+      nextBooking: null,
+      createdAt: now,
+      updatedAt: now,
+      domain: null,
+      tags: [],
+      rejectionReason: null,
+      submittedAt: now,
+      members: [
+        {
+          id: uuid(),
+          userId: viewer.id,
+          email: viewer.email,
+          role: "LEADER",
+          status: "ACCEPTED",
+          name: viewer.name,
+        },
+        ...emails.map((email) => ({
+          id: uuid(),
+          userId: null,
+          email,
+          role: "MEMBER",
+          status: "INVITED",
+          name: email.split("@")[0],
+        })),
+      ],
+      mentorRequests: [
+        {
+          id: uuid(),
+          faculty,
+          status: "PENDING",
+          reason: null,
+          requestedAt: now,
+          respondedAt: null,
+        },
+      ],
+      equipment: equipmentById(equipmentIds),
+      consumables: Array.isArray(body["consumables"])
+        ? (body["consumables"] as Array<Record<string, unknown>>)
+        : [],
+    };
+
+    putProject(project);
+    return ok(envelope(project), 201);
+  }
+
+  const project = storedProjects().find((p) => p.id === id);
+  if (!project) return null;
+
+  // POST /projects/:id/mentor-requests — ask a different mentor
+  if (action === "mentor-requests") {
+    const faculty = facultyById(String(body["facultyId"] ?? ""));
+    const next: DemoProject = {
+      ...project,
+      status: "PENDING_MENTOR",
+      mentor: null,
+      mentorRequestStatus: "PENDING",
+      statusMessage: statusMessageFor("PENDING_MENTOR", "PENDING"),
+      rejectionReason: null,
+      updatedAt: now,
+      mentorRequests: [
+        { id: uuid(), faculty, status: "PENDING", reason: null, requestedAt: now, respondedAt: null },
+        ...project.mentorRequests.map((r) =>
+          r.status === "PENDING" ? { ...r, status: "SUPERSEDED", respondedAt: now } : r,
+        ),
+      ],
+    };
+    putProject(next);
+    return ok(envelope(next));
+  }
+
+  // POST /projects/:id/mentor-decision — the mentor answers
+  if (action === "mentor-decision") {
+    const decision = String(body["decision"] ?? "APPROVED");
+    const reason = body["reason"] == null ? null : String(body["reason"]);
+    const approved = decision === "APPROVED";
+    const next: DemoProject = {
+      ...project,
+      status: approved ? "VERIFIED" : "MENTOR_REJECTED",
+      mentor: approved ? project.mentorRequests[0]?.faculty ?? null : null,
+      mentorRequestStatus: decision,
+      rejectionReason: approved ? null : reason,
+      statusMessage: statusMessageFor(approved ? "VERIFIED" : "MENTOR_REJECTED", decision),
+      updatedAt: now,
+      mentorRequests: project.mentorRequests.map((r, index) =>
+        index === 0 ? { ...r, status: decision, reason, respondedAt: now } : r,
+      ),
+    };
+    putProject(next);
+    return ok(envelope(next));
+  }
+
+  if (action === "archive") {
+    const next = { ...project, status: "ARCHIVED", updatedAt: now };
+    putProject(next);
+    return ok(envelope(next));
+  }
+
+  return null;
+}
+
 async function handleWrite(
   method: string,
   role: Role,
@@ -306,8 +660,15 @@ async function handleWrite(
   const base = collectionPathFor(path);
   const id = trailingId(path);
 
+  // The project lifecycle is written out properly rather than left to the
+  // generic handling below, because it is the demo's whole story: a student
+  // creates a project and names a mentor, and the mentor approves it from
+  // another tab.
+  const project = handleProjectWrite(method, role, path, body);
+  if (project) return project;
+
   if (method === "DELETE") {
-    if (id) removed.add(id);
+    if (id) mutate((s) => void s.removed.push(id));
     return new Response(null, { status: 204 });
   }
 
@@ -319,7 +680,9 @@ async function handleWrite(
       status: "PENDING",
       ...body,
     };
-    created.set(base, [row, ...overlayFor(base)]);
+    mutate((s) => {
+      s.created[base] = [row, ...(s.created[base] ?? [])];
+    });
     return ok(envelope(row), 201);
   }
 
@@ -339,7 +702,9 @@ async function handleWrite(
       ...(action && stateFromAction[action] ? { status: stateFromAction[action] } : {}),
       updatedAt: new Date().toISOString(),
     };
-    patched.set(id, { ...(patched.get(id) ?? {}), ...patch });
+    mutate((s) => {
+      s.patched[id] = { ...(s.patched[id] ?? {}), ...patch };
+    });
     return ok(envelope({ id, ...patch }));
   }
 

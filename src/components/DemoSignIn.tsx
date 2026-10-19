@@ -3,7 +3,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { readableError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { personas } from "@/mocks/server";
+import { personas, resetDemoState } from "@/mocks/server";
 
 /**
  * Sign-in for the static demo build.
@@ -109,19 +109,33 @@ export function DemoSignIn({
             >
               <h2 className="text-center text-base font-medium text-white">Explore the demo</h2>
               <p className="mt-1.5 mb-5 text-center text-xs leading-5 text-white/60">
-                This is a preview with no live backend. Pick a role to look
-                around as — everything you change is kept only in this browser
-                tab.
+                A preview with no live backend. Pick a role to look around as.
+                Open a second tab as another role and they share the same data
+                — create a project as the Student and it is waiting for Amit
+                Mishra in the Faculty tab.
               </p>
               {list}
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                disabled={Boolean(busy)}
-                className="mt-4 w-full cursor-pointer rounded-lg px-3 py-2 text-xs text-white/50 transition hover:text-white/80 disabled:opacity-40"
-              >
-                Cancel
-              </button>
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  disabled={Boolean(busy)}
+                  className="cursor-pointer rounded-lg px-3 py-2 text-xs text-white/50 transition hover:text-white/80 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetDemoState();
+                    window.location.reload();
+                  }}
+                  disabled={Boolean(busy)}
+                  className="cursor-pointer rounded-lg px-3 py-2 text-xs text-white/40 transition hover:text-white/70 disabled:opacity-40"
+                >
+                  Reset demo data
+                </button>
+              </div>
             </div>
           </div>,
           document.body,

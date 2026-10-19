@@ -25,6 +25,25 @@ import fs from "node:fs";
 
 const MASK_FACULTY_EMAILS = true;
 
+/**
+ * Transactional records the demo starts without.
+ *
+ * The seed carries leftover test projects, and the bookings, claims, visits
+ * and notifications that hang off them. Showing someone else's "Test" project
+ * is a poor opening, and the point of the demo is to create one live — so
+ * these lists are emptied and their detail routes dropped. The catalogue,
+ * faculty directory and reference data all stay.
+ */
+const STARTS_EMPTY = [
+  "/projects",
+  "/bookings",
+  "/visits",
+  "/quick-visits",
+  "/consumable-claims",
+  "/notifications",
+  "/events",
+];
+
 /** Paths whose pages are merged into one collection and re-paginated at runtime. */
 const PAGED = new Set([
   "/admin/faculty",
@@ -160,6 +179,35 @@ function walk(node) {
   for (const value of Object.values(node)) walk(value);
 }
 
+// ─── clear the leftover test records ───────────────────────────────────────
+
+let emptied = 0;
+let dropped = 0;
+
+for (const role of Object.keys(responses)) {
+  for (const path of Object.keys(responses[role])) {
+    const bare = path.split("?")[0];
+    const owner = STARTS_EMPTY.find((p) => bare === p || bare.startsWith(`${p}/`));
+    if (!owner) continue;
+
+    if (bare === owner) {
+      // The list itself: keep the envelope, empty the rows.
+      const entry = responses[role][path];
+      if (entry.status === 200 && Array.isArray(entry.body?.data)) {
+        entry.body.data = [];
+        if (entry.body.meta) {
+          Object.assign(entry.body.meta, { total: 0, totalPages: 1, hasNext: false, hasPrev: false });
+        }
+        emptied += 1;
+      }
+    } else {
+      // A detail route for a record that no longer exists.
+      delete responses[role][path];
+      dropped += 1;
+    }
+  }
+}
+
 const bundle = { labId: LAB, responses, collections };
 walk(bundle);
 fs.writeFileSync(target, JSON.stringify(bundle));
@@ -176,5 +224,6 @@ for (const role of Object.keys(responses)) {
 }
 console.log(
   `\nwrote src/mocks/fixtures.json (${kb} KB): ` +
-    `${students} student records replaced, ${prns} PRNs replaced, ${masked} emails masked`,
+    `${students} student records replaced, ${prns} PRNs replaced, ${masked} emails masked, ` +
+    `${emptied} lists cleared and ${dropped} stale detail routes dropped`,
 );
