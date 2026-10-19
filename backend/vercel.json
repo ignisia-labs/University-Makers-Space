@@ -1,16 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npx prisma generate && npm run build",
+  "framework": null,
+  "installCommand": "npm install --include=dev && npx prisma generate",
+  "buildCommand": "npx tsc -p tsconfig.build.json",
+  "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
       "maxDuration": 30
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
-  "crons": [
-    {
-      "path": "/api/v1/jobs/run",
-      "schedule": "* * * * *"
-    }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }

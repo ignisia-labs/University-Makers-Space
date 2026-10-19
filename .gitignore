@@ -41,3 +41,4 @@ dist/server
 *.dump
 *.sqlite
 backend/scripts/tmp-*.ts
+.vercel
